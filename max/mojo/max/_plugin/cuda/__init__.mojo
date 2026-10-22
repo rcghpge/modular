@@ -27,8 +27,8 @@ from max.gpu.sync.sync import (
     _SyncwarpPluginHookFnType,
 )
 
-from ._shuffle import shuffle_words
-from ._trait import MaxPlugin, MaxPluginHooks
+from .._shuffle import shuffle_words
+from .._trait import MaxPlugin, MaxPluginHooks
 
 
 @inline(.always)

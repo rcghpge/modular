@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 """Checks how a target's MAX plugin is selected: from the target's plugin
-payload first, then by the vendor of its stdlib plugin."""
+payload first, then by the name of its stdlib plugin."""
 
 from std.builtin.variadics import TypeList
 from std.collections import OptionalReg
@@ -34,7 +34,9 @@ from max._plugin import (
     MaxPluginHooks,
 )
 from max._plugin._trait import DefaultMaxPluginHooks
-from max._plugin.cuda import CudaMaxPluginHooks
+from max._plugin.cuda import CudaMaxPlugin, CudaMaxPluginHooks
+from max._plugin.hip import HipMaxPlugin, HipMaxPluginHooks
+from max._plugin.metal import MetalMaxPlugin, MetalMaxPluginHooks
 from max.gpu.host import get_gpu_target
 from max.gpu.sync import barrier
 from max.gpu.sync.sync import _BarrierPluginHookFnType
@@ -128,6 +130,24 @@ comptime _default_payload_target = CompilationTarget[
 ]()
 
 
+# A payload naming only a stdlib plugin that no MAX registry lists, as an
+# out-of-tree backend with no MAX plugin would write it.
+comptime _std_only_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
+        `opaque_plugin = `,
+        TypeList.of[PayloadStdPlugin]().values,
+        `, `,
+        `arch = "sm_80", `,
+        `features = "+ptx81", `,
+        `data_layout = "e-p6:32:32-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64",`,
+        `simd_bit_width = 128,`,
+        `index_bit_width = 64`,
+        `> : !kgen.target`,
+    ]
+]()
+
+
 def _compile_barrier_kernel[target: CompilationTarget]() raises -> String:
     # Nested so `__functions_in_module()` doesn't compile it for the host,
     # where `barrier()` is rejected.
@@ -167,19 +187,55 @@ def test_payload_default_wins_over_name_list() raises:
     )
 
 
-def test_builtin_target_follows_stdlib_plugin() raises:
-    comptime target = get_gpu_target["sm_80"]()
-    comptime assert MaxPluginForTarget[target] == CudaMaxPluginHooks[target]
-    var llvm = _compile_barrier_kernel[target]()
+def test_builtin_targets_carry_their_plugin() raises:
+    comptime nvidia = get_gpu_target["sm_80"]()
+    comptime amd = get_gpu_target["mi300x"]()
+    comptime apple = get_gpu_target["apple-m4"]()
+    # The plugin comes from the payload, not from a registry entry.
+    comptime assert (
+        nvidia._first_conforming_plugin[MaxPlugin, default=DefaultMaxPlugin]
+        == CudaMaxPlugin
+    )
+    comptime assert (
+        amd._first_conforming_plugin[MaxPlugin, default=DefaultMaxPlugin]
+        == HipMaxPlugin
+    )
+    comptime assert (
+        apple._first_conforming_plugin[MaxPlugin, default=DefaultMaxPlugin]
+        == MetalMaxPlugin
+    )
+    comptime assert MaxPluginForTarget[nvidia] == CudaMaxPluginHooks[nvidia]
+    comptime assert MaxPluginForTarget[amd] == HipMaxPluginHooks[amd]
+    comptime assert MaxPluginForTarget[apple] == MetalMaxPluginHooks[apple]
+    var llvm = _compile_barrier_kernel[nvidia]()
     assert_true("@llvm.nvvm.barrier" in llvm, llvm)
     assert_false("@llvm.nvvm.membar.gl()" in llvm, llvm)
 
 
-def test_bare_triple_follows_stdlib_plugin() raises:
+def test_unlisted_stdlib_plugin_gets_default() raises:
+    comptime assert (
+        MaxPluginForTarget[_std_only_target]
+        == DefaultMaxPluginHooks[_std_only_target]
+    )
+
+
+def test_bare_triple_follows_vendor() raises:
     comptime assert (
         MaxPluginForTarget[_bare_target] == CudaMaxPluginHooks[_bare_target]
     )
     assert_true("@llvm.nvvm.barrier" in _compile_barrier_kernel[_bare_target]())
+    comptime amd = CompilationTarget[
+        _mlir_value=__mlir_attr[
+            `#kgen.target<triple = "amdgcn-amd-amdhsa", arch = "gfx942"> : !kgen.target`
+        ]
+    ]()
+    comptime apple = CompilationTarget[
+        _mlir_value=__mlir_attr[
+            `#kgen.target<triple = "air64-apple-macosx", arch = "apple-m4"> : !kgen.target`
+        ]
+    ]()
+    comptime assert MaxPluginForTarget[amd] == HipMaxPluginHooks[amd]
+    comptime assert MaxPluginForTarget[apple] == MetalMaxPluginHooks[apple]
 
 
 def main() raises:

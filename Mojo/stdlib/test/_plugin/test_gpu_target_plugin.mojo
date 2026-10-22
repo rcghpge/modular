@@ -251,6 +251,16 @@ def test_registry_follows_stdlib_plugin() raises:
     # fmt: on
 
 
+def test_registry_falls_back_to_default() raises:
+    comptime selector = PluginSelector[MetalPlugin, CUDAPlugin]
+    # fmt: off
+    comptime assert selector.for_target_or_default[_h100_target._mlir_value, HIPPlugin] == CUDAPlugin
+    comptime assert selector.for_target_or_default[_bare_air_target._mlir_value, HIPPlugin] == MetalPlugin
+    comptime assert selector.for_target_or_default[_host_target._mlir_value, HIPPlugin] == HIPPlugin
+    comptime assert selector.for_target_or_default[_bare_amdgcn_target._mlir_value, DefaultPlugin] == DefaultPlugin
+    # fmt: on
+
+
 def test_plugin_classifies_target() raises:
     # The plugin decides, so a GPU the stdlib doesn't know by triple is still
     # a GPU, and a payload naming `DefaultPlugin` makes a GPU triple a plain

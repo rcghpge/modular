@@ -22,7 +22,7 @@ from max.gpu.sync.sync import (
     _SyncwarpPluginHookFnType,
 )
 
-from ._trait import MaxPlugin, MaxPluginHooks
+from .._trait import MaxPlugin, MaxPluginHooks
 
 
 @inline(.always)

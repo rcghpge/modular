@@ -36,13 +36,9 @@ from std._gpu.host.info import (
 
 
 @__doc_inline
-from std._gpu.host._builtin_targets import (
+from max._plugin.cuda.targets import (
     A10,
     A100,
-    AMDCDNA2Family,
-    AMDCDNA3Family,
-    AMDCDNA4Family,
-    AMDRDNAFamily,
     B100,
     B200,
     B300,
@@ -53,11 +49,6 @@ from std._gpu.host._builtin_targets import (
     H100,
     JetsonThor,
     L4,
-    MI250X,
-    MI300A,
-    MI300X,
-    MI355X,
-    MI455X,
     NvidiaAdaFamily,
     NvidiaAmpereDatacenterFamily,
     NvidiaAmpereEmbeddedFamily,
@@ -74,6 +65,21 @@ from std._gpu.host._builtin_targets import (
     RTX4090,
     RTX4090m,
     RTX5090,
+    TeslaP100,
+)
+
+
+@__doc_inline
+from max._plugin.hip.targets import (
+    AMDCDNA2Family,
+    AMDCDNA3Family,
+    AMDCDNA4Family,
+    AMDRDNAFamily,
+    MI250X,
+    MI300A,
+    MI300X,
+    MI355X,
+    MI455X,
     Radeon6900,
     Radeon7600,
     Radeon7800,
@@ -85,12 +91,11 @@ from std._gpu.host._builtin_targets import (
     Radeon9060,
     Radeon9070,
     SteamDeck,
-    TeslaP100,
 )
 
 
 @__doc_inline
-from std._plugin.metal.metal_targets import (
+from max._plugin.metal.targets import (
     AppleMetalFamily,
     MetalM1,
     MetalM1Metal4,
@@ -108,18 +113,14 @@ from std._plugin.metal.metal_targets import (
 
 from std._gpu.host.info import TargetAcceleratorCollection
 
-from std._gpu.host._builtin_targets import (
+from max._plugin.cuda.targets import (
     _a100_target,
     _h100_target,
-    _mi300x_target,
-    _mi355x_target,
     _is_sm10x_gpu,
     _is_sm12x_gpu,
 )
-from std._plugin.metal.metal_targets import (
-    _metal_m1_target,
-    _metal_m2_target,
-)
+from max._plugin.hip.targets import _mi300x_target, _mi355x_target
+from max._plugin.metal.targets import _metal_m1_target, _metal_m2_target
 
 from max._plugin._overlay import TARGETS
 

@@ -16,6 +16,12 @@ from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
 from std.utils.index import IndexList
 from std._gpu import lane_id
+from std._gpu.host.info import (
+    NoGPU,
+    TargetAccelerator,
+    TargetAcceleratorCollection,
+    TargetAcceleratorType,
+)
 from std._plugin.selector import Plugin
 from std.sys.info import CompilationTarget
 
@@ -37,9 +43,8 @@ trait MaxPlugin(Plugin):
     """Names the `MaxPluginHooks` a backend uses for each target.
 
     A target selects its MAX plugin from its `opaque_plugin` payload: the
-    first type there that conforms to this trait. A target whose payload
-    names none falls back to the plugin in `MAX_PLUGINS` whose `name` matches
-    the stdlib plugin selected for the target.
+    first type there that conforms to this trait. See `_impl.mojo` for the
+    fallbacks when the payload names none.
     """
 
     comptime HookFor[target: CompilationTarget]: MaxPluginHooks
@@ -343,3 +348,32 @@ struct DefaultMaxPlugin(MaxPlugin):
 
 struct DefaultMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     pass
+
+
+struct DefaultTargets(TargetAcceleratorCollection):
+    """Holds the placeholder target that stands for "no accelerator".
+
+    `default_accelerator()` still has to resolve when no
+    `--target-accelerator` is given, so this collection maps the empty
+    architecture to `NoGPU`. It stays first in `TARGETS`.
+    """
+
+    comptime vendor_name: String = "<none>"
+
+    # TODO(MSTDL-3241): Refactor to avoid needing this dummy value.
+    comptime RAW_TARGETS = TypeList.of[
+        Trait=TargetAcceleratorType,
+        TargetAccelerator[NoGPU, CompilationTarget._unknown()]._with_cli_values[
+            [""]
+        ],
+    ]().values
+
+    @staticmethod
+    def normalize_target_arch(target_arch0: StaticString) -> String:
+        return String(target_arch0)
+
+    @staticmethod
+    def supported_archs_message() -> String:
+        # The placeholder isn't a supported architecture, so the
+        # unsupported-arch error doesn't list it.
+        return ""

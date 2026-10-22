@@ -63,6 +63,25 @@ struct PluginSelector[
         Self.PluginTypes._get_type_at_index[Self.index_for_target[target]]
     )
 
+    comptime for_target_or_default[
+        target: _TargetType, default: Self.Trait
+    ]: Self.Trait = (
+        default if not _index_lt[
+            Self._index_or_length[target], Self._length
+        ]() else Self.PluginTypes._get_type_at_index[
+            Self._index_or_length[target]
+        ]
+    )
+    """Yields the plugin matching `target`, or `default` when none does.
+
+    Unlike `for_target`, a target whose stdlib plugin no entry names doesn't
+    fail to compile, so a registry can serve targets it doesn't list.
+    """
+
+    comptime _index_or_length[target: _TargetType]: __mlir_type.index = (
+        Self._find[target, __mlir_attr.`0 : index`, trap_if_missing=False]()
+    )
+
     comptime _length = Self.PluginTypes._raw_length
 
     @staticmethod
@@ -78,11 +97,17 @@ struct PluginSelector[
 
     @staticmethod
     def _find[
-        target: _TargetType, idx: __mlir_type.index
+        target: _TargetType,
+        idx: __mlir_type.index,
+        *,
+        trap_if_missing: Bool = True,
     ]() -> __mlir_type.index:
-        """Finds the plugin matching `target` through parameter recursion."""
+        """Finds the plugin matching `target` through parameter recursion, or
+        returns the list's length when none matches and `trap_if_missing` is
+        `False`."""
         comptime if not _index_lt[idx, Self._length]():
-            __mlir_op.`llvm.intr.trap`()
+            comptime if trap_if_missing:
+                __mlir_op.`llvm.intr.trap`()
             return idx
         elif Self._matches[target, idx]():
             return idx
@@ -94,6 +119,7 @@ struct PluginSelector[
                     idx,
                     `, 1 : index> : index`,
                 ],
+                trap_if_missing=trap_if_missing,
             ]()
 
 

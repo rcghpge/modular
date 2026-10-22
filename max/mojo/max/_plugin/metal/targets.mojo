@@ -11,6 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+"""Apple GPU targets, each carrying the Metal stdlib and MAX plugins."""
+
 from std.sys import CompilationTarget
 
 from std._gpu.host.info import (
@@ -23,12 +25,16 @@ from std._gpu.host.info import (
     _KB,
     _supported_archs_line,
 )
+from std._plugin.metal import MetalPlugin
 
-from .metal_plugin import MetalPlugin
+from . import MetalMaxPlugin
+
+comptime METAL_PLUGINS = TypeList.of[MetalPlugin, MetalMaxPlugin]().values
+"""The `opaque_plugin` payload of every Apple target."""
 
 
 struct MetalTargets(TargetAcceleratorCollection):
-    """Apple GPU targets that the Metal plugin contributes."""
+    """Apple GPU targets that the Metal plugins contribute."""
 
     comptime vendor_name: String = "Apple"
 
@@ -67,8 +73,6 @@ struct MetalTargets(TargetAcceleratorCollection):
         )
 
 
-comptime MetalPlugin_list = TypeList.of[MetalPlugin]().values
-
 # ===-----------------------------------------------------------------------===#
 # Apple Architecture Families
 # ===-----------------------------------------------------------------------===#
@@ -93,7 +97,7 @@ comptime _metal_m1_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m1", `,
         `features = "+metal3_2,+air2_7_0", `,
@@ -110,7 +114,7 @@ comptime _metal_m2_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m2", `,
         `features = "+metal3_2,+air2_7_0", `,
@@ -127,7 +131,7 @@ comptime _metal_m3_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m3", `,
         `features = "+metal3_2,+air2_7_0", `,
@@ -144,7 +148,7 @@ comptime _metal_m4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m4", `,
         `features = "+metal3_2,+air2_7_0", `,
@@ -161,7 +165,7 @@ comptime _metal_m5_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m5", `,
         `features = "+metal3_2,+air2_7_0", `,
@@ -178,7 +182,7 @@ comptime _metal_m6_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m6", `,
         `features = "+metal3_2,+air2_7_0", `,
@@ -195,7 +199,7 @@ comptime _metal_m1_metal4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m1", `,
         `features = "+metal4_0,+air2_8_0", `,
@@ -212,7 +216,7 @@ comptime _metal_m2_metal4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m2", `,
         `features = "+metal4_0,+air2_8_0", `,
@@ -229,7 +233,7 @@ comptime _metal_m3_metal4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m3", `,
         `features = "+metal4_0,+air2_8_0", `,
@@ -246,7 +250,7 @@ comptime _metal_m4_metal4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m4", `,
         `features = "+metal4_0,+air2_8_0", `,
@@ -263,7 +267,7 @@ comptime _metal_m5_metal4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m5", `,
         `features = "+metal4_0,+air2_8_0", `,
@@ -280,7 +284,7 @@ comptime _metal_m6_metal4_target = CompilationTarget[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
         `opaque_plugin = `,
-        MetalPlugin_list,
+        METAL_PLUGINS,
         `,`,
         `arch = "apple-m6", `,
         `features = "+metal4_0,+air2_8_0", `,

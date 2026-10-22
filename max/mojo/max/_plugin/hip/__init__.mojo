@@ -24,8 +24,8 @@ from max.gpu.sync.sync import (
     _SyncwarpPluginHookFnType,
 )
 
-from ._shuffle import shuffle_words
-from ._trait import MaxPlugin, MaxPluginHooks
+from .._shuffle import shuffle_words
+from .._trait import MaxPlugin, MaxPluginHooks
 
 comptime _USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM = get_defined_bool[
     "USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM", False

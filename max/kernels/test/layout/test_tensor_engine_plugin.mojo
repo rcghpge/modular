@@ -24,14 +24,16 @@ retype every graph-compiler tensor argument, and they cover each
 space a tile is realistically placed in.
 """
 
-from std._gpu.host._builtin_targets import BuiltinTargets
 from std._gpu.host.info import TargetAccelerator, TargetAcceleratorCollection
 from std._plugin import CurrentPlugin, DefaultPluginHooks
-from std._plugin.metal import MetalTargets
 from std.builtin.variadics import TypeList
 from std.memory import AddressSpace
 from std.sys.info import CompilationTarget
 from std.testing import assert_equal, TestSuite
+
+from max._plugin.cuda.targets import CudaTargets
+from max._plugin.hip.targets import HipTargets
+from max._plugin.metal.targets import MetalTargets
 
 from layout import (
     CurrentLayoutPlugin,
@@ -45,7 +47,7 @@ from layout import (
 comptime _DEFAULT = DefaultEngine[element_width=1]
 
 comptime _TARGETS = TypeList.of[
-    Trait=TargetAcceleratorCollection, BuiltinTargets, MetalTargets
+    Trait=TargetAcceleratorCollection, CudaTargets, HipTargets, MetalTargets
 ]()
 
 comptime _target[arch: StaticString] = TargetAccelerator.from_arch[

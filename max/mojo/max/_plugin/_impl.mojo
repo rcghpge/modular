@@ -13,24 +13,37 @@
 """Selects the active `MaxPluginHooks` for a target.
 
 A target's `opaque_plugin` payload is consulted first: the first type in it
-that conforms to `MaxPlugin` is the target's MAX plugin, so a plugin that
-ships with its own target table needs no registry entry here. A target whose
-payload names no MAX plugin falls back to `MAX_PLUGINS`, the name-keyed list
-in `_overlay.mojo`, matched by the name of the stdlib plugin selected for
-the target.
+that conforms to `MaxPlugin` is the target's MAX plugin. The NVIDIA, AMD and
+Apple target tables beside their plugins name both the stdlib and the MAX
+plugin there, as any backend that ships its own targets does, so no registry
+has to list them.
 
-The name list is transitional. It exists only because the builtin target
-tables live in the stdlib, which cannot name MAX plugin types, so the
-NVIDIA, AMD and Apple plugins reach their targets by name instead. The
-intended end state is that every target, builtin or not, carries its MAX
-plugin in its payload and the name list goes away.
+A target whose payload names no MAX plugin is matched by the `name` of its
+stdlib plugin, as every registry built on `PluginSelector` is:
+
+- First against the builtin MAX plugins. This covers a target named only by
+  its triple (`--target-triple`, or a `#kgen.target` written by hand), whose
+  stdlib plugin the stdlib picks by vendor, so MAX inherits that choice
+  instead of repeating it.
+- Then against `MAX_PLUGINS` from `_overlay.mojo`, which serves overlay
+  plugins whose target tables live in stdlib packages and so cannot name MAX
+  types. A name neither lists gets `DefaultMaxPlugin`.
 """
 
 from ._overlay import MAX_PLUGINS
-from ._trait import DefaultMaxPluginHooks, MaxPlugin, MaxPluginHooks
+from ._trait import (
+    DefaultMaxPlugin,
+    DefaultMaxPluginHooks,
+    MaxPlugin,
+    MaxPluginHooks,
+)
+from .cuda import CudaMaxPlugin
+from .hip import HipMaxPlugin
+from .metal import MetalMaxPlugin
 
 from std.collections.string.string_span import _get_kgen_string
 from std.sys.info import CompilationTarget
+from std._plugin.selector import PluginSelector
 
 
 struct _NoMaxPlugin(MaxPlugin):
@@ -44,13 +57,25 @@ struct _NoMaxPlugin(MaxPlugin):
     comptime HookFor[target: CompilationTarget] = DefaultMaxPluginHooks[target]
 
 
+comptime _BUILTIN_MAX_PLUGINS = PluginSelector[
+    Trait=MaxPlugin, CudaMaxPlugin, HipMaxPlugin, MetalMaxPlugin
+]
+
 comptime _payload_plugin[target: CompilationTarget]: MaxPlugin = (
     target._first_conforming_plugin[MaxPlugin, default=_NoMaxPlugin]
 )
 """The MAX plugin named in `target`'s payload, or `_NoMaxPlugin`."""
 
+comptime _fallback_plugin[target: CompilationTarget]: MaxPlugin = (
+    _BUILTIN_MAX_PLUGINS.for_target_or_default[
+        target._mlir_value,
+        MAX_PLUGINS.for_target_or_default[target._mlir_value, DefaultMaxPlugin],
+    ]
+)
+"""The MAX plugin for a target whose payload names none."""
+
 comptime _max_plugin[target: CompilationTarget]: MaxPlugin = (
-    MAX_PLUGINS.for_target[target._mlir_value] if _payload_plugin[target]
+    _fallback_plugin[target] if _payload_plugin[target]
     == _NoMaxPlugin else _payload_plugin[target]
 )
 """The MAX plugin selected for `target`, before specialization."""

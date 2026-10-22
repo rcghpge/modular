@@ -22,7 +22,7 @@
 from std.collections.string.string_span import StaticString, _get_kgen_string
 from max.gpu.compute.mma import mma
 from std.sys.info import _TargetType
-from std._gpu.host._builtin_targets import _7900_target, _9070_target
+from max._plugin.hip.targets import _7900_target, _9070_target
 
 
 @fieldwise_init

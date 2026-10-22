@@ -22,14 +22,14 @@ from std.sys.compile import SanitizeAddress
 
 from max.gpu import barrier
 from max.gpu.host import get_gpu_target
-from std._gpu.host._builtin_targets import CUDAPlugin_list
+from max._plugin.cuda.targets import CUDA_PLUGINS
 
 comptime target_short_ptr = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_80", `,
         `features = "+ptx81", `,
@@ -45,7 +45,7 @@ comptime target_regular = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_80", `,
         `features = "+ptx81", `,

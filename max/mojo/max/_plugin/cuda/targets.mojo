@@ -10,40 +10,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Target descriptions for accelerators with builtin support in Mojo / MAX."""
+"""NVIDIA GPU targets, each carrying the CUDA stdlib and MAX plugins."""
 
 from std.sys import CompilationTarget
 
-from std._plugin.cuda import CUDAPlugin
-from std._plugin.hip import HIPPlugin
-
-from .info import (
-    TargetAcceleratorCollection,
+from std._gpu.host.info import (
     AcceleratorArchitectureFamily,
-    TargetAccelerator,
-    TargetAcceleratorType,
     GPUInfo,
+    TargetAccelerator,
+    TargetAcceleratorCollection,
+    TargetAcceleratorType,
     _K,
     _KB,
-    NoGPU,
 )
+from std._plugin.cuda import CUDAPlugin
 
-comptime CUDAPlugin_list = TypeList.of[CUDAPlugin]().values
-comptime HIPPlugin_list = TypeList.of[HIPPlugin]().values
+from . import CudaMaxPlugin
+
+comptime CUDA_PLUGINS = TypeList.of[CUDAPlugin, CudaMaxPlugin]().values
+"""The `opaque_plugin` payload of every NVIDIA target."""
 
 
-struct BuiltinTargets(TargetAcceleratorCollection):
-    comptime vendor_name = "<builtin>"
+struct CudaTargets(TargetAcceleratorCollection):
+    """NVIDIA GPU targets that the CUDA plugins contribute."""
+
+    comptime vendor_name: String = "NVIDIA"
 
     # fmt: off
     comptime RAW_TARGETS = TypeList.of[
         Trait=TargetAcceleratorType,
-
-        # When no `--target-accelerator` is specified, we still need
-        # `default_accelerator()` to resolve to a "dummy" value.
-        # TODO(MSTDL-3241): Refactor to avoid needing this dummy value.
-        TargetAccelerator[NoGPU, CompilationTarget._unknown()]._with_cli_values[[""]],
-
         # FIXME: GTX1060 and GTX1080Ti share `sm_61` but have different
         # `sm_count`; target resolution should differentiate them at compile time.
         GTX1060   ._with_cli_values[[]       ], # Could be ["sm_61"], but `sm_61` resolves to GTX1080Ti.
@@ -68,40 +63,13 @@ struct BuiltinTargets(TargetAcceleratorCollection):
         JetsonThor._with_cli_values[["sm_110", "sm_110a"]],
         RTX5090   ._with_cli_values[["sm_120", "sm_120a"]],
         DGXSpark  ._with_cli_values[["sm_121", "sm_121a"]],
-        #
-        # AMD
-        #
-        MI250X     ._with_cli_values[["gfx90a", "mi250x"]],
-        MI300X     ._with_cli_values[["gfx942", "mi300x"]],
-        # MI300A shares the gfx942 ISA with MI300X but has fewer CUs and
-        # unified host/device memory. Reached via explicit "mi300a" opt-in
-        # (e.g. `get_gpu_info["amdgpu:mi300a"]()`) since gfx942-only
-        # detection cannot distinguish the two parts.
-        MI300A     ._with_cli_values[["mi300a"]], # Could also include "gfx942", but `gfx942` resolves to MI300X.
-        MI355X     ._with_cli_values[["gfx950", "mi355x"]],
-        MI455X     ._with_cli_values[["gfx1250", "mi455x"]],
-        Radeon6900 ._with_cli_values[["gfx1030"]],
-        SteamDeck  ._with_cli_values[["gfx1033"]],
-        Radeon7900 ._with_cli_values[["gfx1100"]],
-        Radeon7800 ._with_cli_values[["gfx1101"]],
-        Radeon7600 ._with_cli_values[["gfx1102"]],
-        Radeon780m ._with_cli_values[["gfx1103"]],
-        Radeon880m ._with_cli_values[["gfx1150"]],
-        Radeon8060s._with_cli_values[["gfx1151"]],
-        Radeon860m ._with_cli_values[["gfx1152"]],
-        Radeon9060 ._with_cli_values[["gfx1200"]],
-        Radeon9070 ._with_cli_values[["gfx1201"]],
     ]().values
     # fmt: on
 
     @staticmethod
     def normalize_target_arch(target_arch0: StaticString) -> String:
-        # Normalize syntax-level target spellings before resolving table aliases.
-        #
-        # NVIDIA: "nvidia:sm_90a" -> "sm_90a", "nvidia:sm90" -> "sm_90",
-        #         "nvidia:80" -> "sm_80", "sm80" -> "sm_80".
-        # AMD: "amdgpu:gfx942" -> "gfx942", "amd:gfx942" -> "gfx942"
-        #      (Model names such as "mi300x" are aliases in `BuiltinTargets`.)
+        # "nvidia:sm_90a" -> "sm_90a", "nvidia:sm90" -> "sm_90",
+        # "nvidia:80" -> "sm_80", "sm80" -> "sm_80".
         #
         # Keep normalization idempotent: applying it to an already normalized
         # target must not change it.
@@ -109,18 +77,11 @@ struct BuiltinTargets(TargetAcceleratorCollection):
         # These substring replacements must be ordered carefully, as a pattern
         # that is a prefix of an already canonical name corrupts it.
         return (
-            target_arch0
-            # NVIDIA normalization
-            .replace("nvidia:sm_", "sm_")
+            target_arch0.replace("nvidia:sm_", "sm_")
             .replace("nvidia:sm", "sm_")
             .replace("nvidia:", "sm_")
             .replace("sm", "sm_")
             .replace("sm__", "sm_")
-            # AMD normalization. Both "amdgpu:" (LLVM/ROCm target prefix) and
-            # "amd:" (vendor name) are accepted, mirroring the "nvidia:" prefix
-            # above.
-            .replace("amdgpu:", "")
-            .replace("amd:", "")
         )
 
     @staticmethod
@@ -132,24 +93,10 @@ struct BuiltinTargets(TargetAcceleratorCollection):
             " (Blackwell B100/B200), sm_110 (Jetson Thor), sm_120/sm_120a"
             " (Blackwell RTX5090), sm_121 (DGX Spark)"
         )
-        comptime amd_archs = (
-            "gfx90a (MI250X), gfx942 (MI300X/MI300A), gfx950 (MI355X), gfx1030"
-            " (Radeon 6900), gfx1033 (Van Gogh), gfx1100 (Radeon 7900), gfx1101"
-            " (Radeon 7800), gfx1102 (Radeon 7600), gfx1103 (Radeon 780M),"
-            " gfx1150/gfx1151/gfx1152 (Radeon 8xx), gfx1200 (Radeon 9060),"
-            " gfx1201 (Radeon 9070), gfx1250 (MI455X)"
-        )
         return String(
             "  NVIDIA: ",
             nvidia_archs,
             "\n  See: https://developer.nvidia.com/cuda-gpus\n\n",
-            "  AMD: ",
-            amd_archs,
-            (
-                "\n  See:"
-                " https://rocm.docs.amd.com/en/latest/release/gpu_os_support.html"
-                "\n\n"
-            ),
         )
 
 
@@ -253,54 +200,6 @@ comptime NvidiaBlackwellConsumerFamily = AcceleratorArchitectureFamily(
 )
 """NVIDIA Blackwell consumer architecture family (sm_120)."""
 
-# ===----------------------------------------------------------------------=== #
-# AMD Architecture Families
-# ===----------------------------------------------------------------------=== #
-
-comptime AMDCDNA2Family = AcceleratorArchitectureFamily(
-    warp_size=64,
-    threads_per_multiprocessor=64 * 32,
-    shared_memory_per_multiprocessor=64 * _KB,
-    max_registers_per_block=64 * _K,
-    max_thread_block_size=_K,
-)
-"""AMD CDNA2 architecture family (gfx90a)."""
-
-comptime AMDCDNA3Family = AcceleratorArchitectureFamily(
-    warp_size=64,
-    threads_per_multiprocessor=64 * 32,
-    shared_memory_per_multiprocessor=64 * _KB,
-    max_registers_per_block=64 * _K,
-    max_thread_block_size=_K,
-)
-"""AMD CDNA3 architecture family (gfx94x)."""
-
-comptime AMDCDNA4Family = AcceleratorArchitectureFamily(
-    warp_size=64,
-    threads_per_multiprocessor=64 * 32,
-    shared_memory_per_multiprocessor=160 * _KB,
-    max_registers_per_block=64 * _K,
-    max_thread_block_size=_K,
-)
-"""AMD CDNA4 architecture family (gfx95x)."""
-
-comptime AMDCDNA5Family = AcceleratorArchitectureFamily(
-    warp_size=32,
-    threads_per_multiprocessor=32 * 32,
-    shared_memory_per_multiprocessor=320 * _KB,
-    max_registers_per_block=32 * _K,
-    max_thread_block_size=_K,
-)
-"""AMD CDNA5 architecture family (gfx125x)."""
-
-comptime AMDRDNAFamily = AcceleratorArchitectureFamily(
-    warp_size=32,
-    threads_per_multiprocessor=32 * 32,
-    shared_memory_per_multiprocessor=32 * _KB,
-    max_registers_per_block=32 * _K,
-    max_thread_block_size=_K,
-)
-"""AMD RDNA architecture family."""
 
 # ===-----------------------------------------------------------------------===#
 # A100
@@ -320,7 +219,7 @@ comptime _a100_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_80", `,
         `features = "+ptx81,+sm_80", `,
@@ -358,7 +257,7 @@ comptime _a10_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_86", `,
         `features = "+ptx81,+sm_86", `,
@@ -396,7 +295,7 @@ comptime _orin_nano_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_87", `,
         `features = "+ptx81,+sm_87", `,
@@ -434,7 +333,7 @@ comptime _jetson_thor_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_110", `,
         `features = "+ptx90,+sm_110", `,
@@ -472,7 +371,7 @@ comptime _dgx_spark_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_121a", `,
         `features = "+ptx88,+sm_121a", `,
@@ -510,7 +409,7 @@ comptime _l4_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
@@ -548,7 +447,7 @@ comptime _rtx4090m_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
@@ -586,7 +485,7 @@ comptime _rtx4090_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
@@ -625,7 +524,7 @@ comptime _h100_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_90a", `,
         `features = "+ptx85,+sm_90a", `,
@@ -664,7 +563,7 @@ comptime _b100_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_100a", `,
         `features = "+ptx88,+sm_100a", `,
@@ -720,7 +619,7 @@ comptime _b300_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_103a", `,
         `features = "+ptx88,+sm_103a", `,
@@ -795,7 +694,7 @@ comptime _rtx5090_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_120a", `,
         `features = "+ptx87,+sm_120a", `,
@@ -835,7 +734,7 @@ comptime _rtx3090_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_86", `,
         `features = "+ptx63,+sm_86", `,
@@ -877,7 +776,7 @@ comptime _gtx1080ti_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_61", `,
         `features = "+ptx50,+sm_61", `,
@@ -913,7 +812,7 @@ comptime _gtx1060_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_61", `,
         `features = "+ptx50,+sm_61", `,
@@ -954,7 +853,7 @@ comptime _gtx970_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_52", `,
         `features = "+ptx50,+sm_52", `,
@@ -990,7 +889,7 @@ comptime _teslap100_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_60", `,
         `features = "+ptx50,+sm_60", `,
@@ -1029,7 +928,7 @@ comptime _rtx2060_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
         `opaque_plugin = `,
-        CUDAPlugin_list,
+        CUDA_PLUGINS,
         `,`,
         `arch = "sm_75", `,
         `features = "+ptx63,+sm_75", `,
@@ -1056,559 +955,3 @@ comptime RTX2060 = TargetAccelerator[
     _rtx2060_target,
 ]()
 """NVIDIA RTX 2060 GPU configuration."""
-
-
-# ===-----------------------------------------------------------------------===#
-# MI250X
-# ===-----------------------------------------------------------------------===#
-
-
-comptime _mi250x_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu9.0a-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx90a", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD MI250X GPU."""
-
-
-comptime MI250X = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDCDNA2Family,
-        name="MI250X",
-        api="hip",
-        arch_name="gfx90a",
-        compute=9.0,
-        version="CDNA2",
-        sm_count=220,
-    ),
-    _mi250x_target,
-]()
-"""AMD MI250X GPU configuration."""
-
-
-# ===-----------------------------------------------------------------------===#
-# MI300X
-# ===-----------------------------------------------------------------------===#
-
-
-comptime _mi300x_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu9.42-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx942", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD MI300X GPU."""
-
-
-comptime MI300X = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDCDNA3Family,
-        name="MI300X",
-        api="hip",
-        arch_name="gfx942",
-        compute=9.4,
-        version="CDNA3",
-        sm_count=304,
-    ),
-    _mi300x_target,
-]()
-"""AMD MI300X GPU configuration."""
-
-
-# ===-----------------------------------------------------------------------===#
-# MI300A
-# ===-----------------------------------------------------------------------===#
-
-
-comptime _mi300a_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu9.42-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx942", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD MI300A APU."""
-
-
-comptime MI300A = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDCDNA3Family,
-        name="MI300A",
-        api="hip",
-        arch_name="gfx942",
-        compute=9.4,
-        version="CDNA3",
-        sm_count=228,
-    ),
-    _mi300a_target,
-]()
-"""AMD MI300A APU configuration.
-
-The MI300A is an Accelerated Processing Unit (APU) that integrates Zen 4 CPU
-cores with CDNA 3 GPU compute units and unified HBM3 memory. It shares the
-`gfx942` ISA with the MI300X but has fewer compute units (228 vs 304) and
-unified host/device memory. Found in systems such as the CINES Adastra
-supercomputer.
-"""
-
-
-# ===-----------------------------------------------------------------------===#
-# MI355X
-# ===-----------------------------------------------------------------------===#
-
-
-comptime _mi355x_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu9.50-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx950", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD MI355X GPU."""
-
-
-comptime MI355X = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDCDNA4Family,
-        name="MI355X",
-        api="hip",
-        arch_name="gfx950",
-        compute=9.5,
-        version="CDNA4",
-        sm_count=256,
-    ),
-    _mi355x_target,
-]()
-"""AMD MI355X GPU configuration."""
-
-
-# ===-----------------------------------------------------------------------===#
-# MI455X
-# ===-----------------------------------------------------------------------===#
-
-
-comptime _mi455x_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu12.50-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1250", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD MI455X GPU."""
-
-
-comptime MI455X = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDCDNA5Family,
-        name="MI455X",
-        api="hip",
-        arch_name="gfx1250",
-        compute=12.5,
-        version="CDNA5",
-        sm_count=256,
-    ),
-    _mi455x_target,
-]()
-"""AMD MI455X GPU configuration."""
-
-
-# ===-----------------------------------------------------------------------===#
-# Radeon 7xxx, 9xxx, 780m
-# ===-----------------------------------------------------------------------===#
-
-
-comptime _9070_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu12.01-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1201", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 9070 GPU."""
-
-
-comptime _9060_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu12.00-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1200", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 9060 GPU."""
-
-
-comptime _7900_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.00-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1100", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 7900 GPU."""
-
-
-comptime _7800_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.01-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1101", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 7800/7700 GPU."""
-
-
-comptime _7600_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.02-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1102", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 7600 GPU."""
-
-
-comptime _6900_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu10.30-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1030", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 6900 GPU."""
-
-
-comptime _780m_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.03-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1103", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 780m GPU."""
-
-
-comptime _880m_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.50-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1150", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 880M GPU."""
-
-
-comptime _8060s_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.51-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1151", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 8060S GPU."""
-
-
-comptime _860m_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu11.52-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1152", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for AMD Radeon 860M GPU."""
-
-
-comptime _steamdeck_target = CompilationTarget[
-    _mlir_value=__mlir_attr[
-        `#kgen.target<triple = "amdgpu10.33-amd-amdhsa", `,
-        `stdlib_plugin = "hip", `,
-        `opaque_plugin = `,
-        HIPPlugin_list,
-        `,`,
-        `arch = "gfx1033", `,
-        `features = "", `,
-        `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
-        `index_bit_width = 64,`,
-        `simd_bit_width = 128`,
-        `> : !kgen.target`,
-    ]
-]()
-"""Target configuration for the Steam Deck's Van Gogh APU."""
-
-
-comptime Radeon9070 = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 9070",
-        api="hip",
-        arch_name="gfx1201",
-        compute=12.0,
-        version="RDNA4",
-        sm_count=64,
-    ),
-    _9070_target,
-]()
-"""AMD Radeon 9070 GPU configuration."""
-
-comptime Radeon9060 = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 9060",
-        api="hip",
-        arch_name="gfx1200",
-        compute=12.0,
-        version="RDNA4",
-        sm_count=32,
-    ),
-    _9060_target,
-]()
-"""AMD Radeon 9060 GPU configuration."""
-
-comptime Radeon7900 = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 7900",
-        api="hip",
-        arch_name="gfx1100",
-        compute=11.0,
-        version="RDNA3",
-        sm_count=96,
-    ),
-    _7900_target,
-]()
-"""AMD Radeon 7900 GPU configuration."""
-
-comptime Radeon7800 = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 7800/7700",
-        api="hip",
-        arch_name="gfx1101",
-        compute=11.0,
-        version="RDNA3",
-        sm_count=60,
-    ),
-    _7800_target,
-]()
-"""AMD Radeon 7800/7700 GPU configuration."""
-
-comptime Radeon7600 = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 7600",
-        api="hip",
-        arch_name="gfx1102",
-        compute=11.0,
-        version="RDNA3",
-        sm_count=32,
-    ),
-    _7600_target,
-]()
-"""AMD Radeon 7600 GPU configuration."""
-
-comptime Radeon6900 = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 6900",
-        api="hip",
-        arch_name="gfx1030",
-        compute=10.3,
-        version="RDNA2",
-        sm_count=60,
-    ),
-    _6900_target,
-]()
-"""AMD Radeon 6900 GPU configuration."""
-
-
-comptime Radeon780m = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 780M",
-        api="hip",
-        arch_name="gfx1103",
-        compute=11.0,
-        version="RDNA3",
-        sm_count=12,
-    ),
-    _780m_target,
-]()
-"""AMD Radeon 780M GPU configuration."""
-
-comptime Radeon880m = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 880M",
-        api="hip",
-        arch_name="gfx1150",
-        compute=11.5,
-        version="RDNA3.5",
-        sm_count=12,
-    ),
-    _880m_target,
-]()
-"""AMD Radeon 880M GPU configuration."""
-
-comptime Radeon8060s = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 8060S",
-        api="hip",
-        arch_name="gfx1151",
-        compute=11.5,
-        version="RDNA3.5",
-        sm_count=40,
-    ),
-    _8060s_target,
-]()
-"""AMD Radeon 8060S GPU configuration."""
-
-comptime Radeon860m = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Radeon 860M",
-        api="hip",
-        arch_name="gfx1152",
-        compute=11.5,
-        version="RDNA3.5",
-        sm_count=8,
-    ),
-    _860m_target,
-]()
-"""AMD Radeon 860M GPU configuration."""
-
-comptime SteamDeck = TargetAccelerator[
-    GPUInfo.from_family(
-        family=AMDRDNAFamily,
-        name="Steam Deck",
-        api="hip",
-        arch_name="gfx1033",
-        compute=10.3,
-        version="RDNA2",
-        sm_count=8,
-    ),
-    _steamdeck_target,
-]()
-"""Steam Deck (Van Gogh) APU configuration."""
