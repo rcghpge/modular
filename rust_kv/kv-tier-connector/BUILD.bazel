@@ -8,12 +8,8 @@ rust_library(
     name = "kv-tier-connector",
     srcs = glob(["src/**/*.rs"]),
     edition = "2024",
-    proc_macro_deps = all_crate_deps(proc_macro = True),
     target_compatible_with = GPU_PLATFORM,
-    deps = all_crate_deps(normal = True) + [
-        "//rust_kv/kv-core",
-        "//rust_kv/max-profiler",
-    ],
+    deps = all_crate_deps(normal = True),
 )
 
 rust_test(

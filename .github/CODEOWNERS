@@ -11,7 +11,6 @@
 /bazel* @modular/sdlc
 /BUILD.bazel @modular/sdlc
 /bazel/public-patches/hello_imgui.patch @modular/sdlc
-/bazel/internal/rules_rust_extra_exec_triple.patch @modular/sdlc
 /bazel/public-patches/cufile.patch @modular/sdlc
 /bazel/public-patches/llvm-amd-relax-alloca-verifier.patch @modular/sdlc
 /bazel/public-patches/llvm-amd.patch @modular/sdlc
