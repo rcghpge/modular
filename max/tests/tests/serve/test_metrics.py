@@ -173,7 +173,12 @@ def test_tokens_per_request_histograms() -> None:
 
 
 @pytest.mark.parametrize(
-    "method", ["input_tokens_per_request", "output_tokens_per_request"]
+    "method",
+    [
+        "input_tokens_per_request",
+        "output_tokens_per_request",
+        "prefix_coverage_per_request",
+    ],
 )
 @pytest.mark.parametrize(
     ("turn", "expected_attributes"),

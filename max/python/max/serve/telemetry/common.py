@@ -246,6 +246,7 @@ HISTOGRAM_BUCKETS_BY_METRIC: dict[str, tuple[float, ...]] = {
     "maxserve.dp_active_token_occupancy": HISTOGRAM_PERCENT_BUCKETS,
     "maxserve.dp_context_token_occupancy": HISTOGRAM_PERCENT_BUCKETS,
     "maxserve.cache.request_prefix_coverage": HISTOGRAM_PERCENT_BUCKETS,
+    "maxserve.prefix_coverage_per_request": HISTOGRAM_PERCENT_BUCKETS,
     "maxserve.cache.used_kv_pct": HISTOGRAM_PERCENT_BUCKETS,
     "maxserve.cache.used_host_kv_pct": HISTOGRAM_PERCENT_BUCKETS,
     "maxserve.cache.used_disk_kv_pct": HISTOGRAM_PERCENT_BUCKETS,

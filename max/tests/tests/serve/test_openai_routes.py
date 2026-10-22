@@ -124,6 +124,7 @@ from max.serve.schemas.openai import (
     CreateChatCompletionResponse,
     CreateChatCompletionStreamResponse,
 )
+from max.serve.telemetry.metrics import ConversationTurn
 from max.serve.worker_interface.zmq_interface import ZmqModelWorkerProxy
 from openai.types.chat.chat_completion_stream_options_param import (
     ChatCompletionStreamOptionsParam,
@@ -2096,6 +2097,29 @@ def test_record_request_end_without_a_turn_leaves_token_counts_unlabelled() -> (
     metrics_mock.output_tokens_per_request.assert_called_once_with(3, None)
 
 
+@pytest.mark.parametrize("turn", ["first", "later"])
+def test_record_request_end_labels_prefix_coverage_with_the_turn(
+    turn: ConversationTurn,
+) -> None:
+    with patch("max.serve.router.openai_routes.METRICS") as metrics_mock:
+        record_request_end(
+            "/v1/chat/completions", 1.0, 3, 8, turn, cached_tokens=6
+        )
+
+    metrics_mock.prefix_coverage_per_request.assert_called_once_with(75.0, turn)
+
+
+def test_record_request_end_skips_prefix_coverage_without_prompt_tokens() -> (
+    None
+):
+    with patch("max.serve.router.openai_routes.METRICS") as metrics_mock:
+        record_request_end(
+            "/v1/chat/completions", 1.0, 0, 0, "first", cached_tokens=0
+        )
+
+    metrics_mock.prefix_coverage_per_request.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_openai_chat_completion_reports_the_conversation_turn() -> None:
     chunks = [
@@ -2106,6 +2130,7 @@ async def test_openai_chat_completion_reports_the_conversation_turn() -> None:
             decoded_tokens="done",
             token_count=1,
             prompt_token_count=9,
+            cached_token_count=4,
         ),
     ]
     mock_pipeline = Mock()
@@ -2130,6 +2155,7 @@ async def test_openai_chat_completion_reports_the_conversation_turn() -> None:
     assert end_mock.call_count == 1
     assert end_mock.call_args.args[3] == 9
     assert end_mock.call_args.args[4] == "later"
+    assert end_mock.call_args.kwargs["cached_tokens"] == 4
 
 
 @pytest.mark.parametrize("stream", [False, True], ids=["complete", "stream"])

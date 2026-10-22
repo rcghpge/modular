@@ -396,6 +396,7 @@ def record_request_end(
     output_tokens: int | None = None,
     input_tokens: int | None = None,
     turn: ConversationTurn | None = None,
+    cached_tokens: int | None = None,
 ) -> None:
     # The HTTP status code is labeled onto ``maxserve.request_count`` by the
     # ``register_request`` middleware, which knows the code actually returned to
@@ -408,6 +409,10 @@ def record_request_end(
     if input_tokens is not None:
         METRICS.input_tokens(input_tokens)
         METRICS.input_tokens_per_request(input_tokens, turn)
+        if cached_tokens is not None and input_tokens > 0:
+            METRICS.prefix_coverage_per_request(
+                cached_tokens / input_tokens * 100, turn
+            )
 
 
 @overload
@@ -1203,6 +1208,7 @@ class OpenAIChatResponseGenerator(
                 n_reasoning_tokens + n_tokens,
                 n_prompt_tokens,
                 self._turn or _conversation_turn(request.messages),
+                cached_tokens=n_cached_prompt_tokens,
             )
 
     async def complete(
@@ -1458,6 +1464,7 @@ class OpenAIChatResponseGenerator(
                 n_reasoning_tokens + n_tokens,
                 n_prompt_tokens,
                 self._turn or _conversation_turn(request.messages),
+                cached_tokens=n_cached_prompt_tokens,
             )
 
     def _parse_resp_to_json(self, text: str) -> list[Any] | None:

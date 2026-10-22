@@ -59,7 +59,7 @@ _meter = get_meter_provider().get_meter("modular")
 
 NumberType = float | int
 OtelAttributes = Mapping[str, str] | None
-# The ``turn`` label on the per-request input and output token histograms.
+# The ``turn`` label on the per-request token and prefix coverage histograms.
 ConversationTurn = Literal["first", "later"]
 # The ``phase`` label on ``maxserve.request.client_disconnect_cancellations``:
 # whether the status code was still unsent when the client hung up.
@@ -402,6 +402,13 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="tokens",
         description=(
             "Distribution of input tokens per request. Chat requests carry a `turn` label: `first` when the conversation has no assistant message yet, `later` when it resends earlier turns. Completion requests carry none."
+        ),
+    ),  # type: ignore
+    "maxserve.prefix_coverage_per_request": _meter.create_histogram(
+        "maxserve.prefix_coverage_per_request",
+        unit="percent",
+        description=(
+            "Per-request prefix cache coverage (cached prefix tokens / prompt tokens) for chat requests, recorded when the request ends. Carries a `turn` label: `first` when the conversation has no assistant message yet, `later` when it resends earlier turns. `maxserve_cache_request_prefix_coverage_percent` records the same ratio for every request from the scheduler, without the label."
         ),
     ),  # type: ignore
     "maxserve.output_tokens_per_request": _meter.create_histogram(
@@ -1880,6 +1887,17 @@ class _AsyncMetrics:
             MaxMeasurement(
                 "maxserve.input_tokens_per_request",
                 value,
+                self._with_turn(turn),
+            ),
+        )
+
+    def prefix_coverage_per_request(
+        self, coverage: float, turn: ConversationTurn | None = None
+    ) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.prefix_coverage_per_request",
+                coverage,
                 self._with_turn(turn),
             ),
         )
