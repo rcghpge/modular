@@ -1199,9 +1199,48 @@ def _chat_template_kwargs_for(payload: dict[str, Any]) -> dict[str, Any] | None:
             {
                 "enable_thinking": False,
                 "thinking": False,
-                "reasoning_effort": "high",
             },
-            id="openrouter_enabled_wins_over_effort",
+            id="openrouter_enabled_false_discards_effort_high",
+        ),
+        pytest.param(
+            {"reasoning": {"enabled": False, "effort": "medium"}},
+            {
+                "enable_thinking": False,
+                "thinking": False,
+            },
+            id="openrouter_enabled_false_discards_effort_medium",
+        ),
+        pytest.param(
+            {"reasoning": {"enabled": False, "effort": "minimal"}},
+            {
+                "enable_thinking": False,
+                "thinking": False,
+            },
+            id="openrouter_enabled_false_discards_effort_minimal",
+        ),
+        pytest.param(
+            {"reasoning": {"enabled": False, "effort": "max"}},
+            {
+                "enable_thinking": False,
+                "thinking": False,
+            },
+            id="openrouter_enabled_false_discards_effort_max",
+        ),
+        pytest.param(
+            {"reasoning": {"enabled": False, "effort": "none"}},
+            {
+                "enable_thinking": False,
+                "thinking": False,
+            },
+            id="openrouter_enabled_false_discards_effort_none",
+        ),
+        pytest.param(
+            {"reasoning": {"enabled": True, "effort": "none"}},
+            {
+                "enable_thinking": False,
+                "thinking": False,
+            },
+            id="openrouter_enabled_true_effort_none_is_off",
         ),
         pytest.param(
             {"reasoning_effort": "high", "reasoning": {"effort": "low"}},
@@ -1226,6 +1265,147 @@ def _chat_template_kwargs_for(payload: dict[str, Any]) -> dict[str, Any] | None:
                 "thinking": False,
             },
             id="client_kwargs_win",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "low",
+                "chat_template_kwargs": {
+                    "enable_thinking": True,
+                    "thinking": False,
+                },
+            },
+            {
+                "reasoning_effort": "low",
+                "enable_thinking": True,
+                "thinking": False,
+            },
+            id="conflicting_flags_true_first_stay_as_written",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "low",
+                "chat_template_kwargs": {
+                    "enable_thinking": False,
+                    "thinking": True,
+                },
+            },
+            {
+                "reasoning_effort": "low",
+                "enable_thinking": False,
+                "thinking": True,
+            },
+            id="conflicting_flags_false_first_stay_as_written",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "high",
+                "chat_template_kwargs": {"reasoning_effort": None},
+            },
+            {"reasoning_effort": None},
+            id="kwargs_null_effort_overrides_top_level",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "high",
+                "chat_template_kwargs": {"reasoning_effort": 0},
+            },
+            {"reasoning_effort": 0},
+            id="kwargs_zero_effort_overrides_top_level",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "high",
+                "chat_template_kwargs": {"reasoning_effort": False},
+            },
+            {"reasoning_effort": False},
+            id="kwargs_false_effort_overrides_top_level",
+        ),
+        pytest.param(
+            {"chat_template_kwargs": {"reasoning_effort": 0}},
+            {"reasoning_effort": 0},
+            id="kwargs_zero_effort_alone_keeps_the_model_default",
+        ),
+        pytest.param(
+            {"chat_template_kwargs": {"reasoning_effort": False}},
+            {"reasoning_effort": False},
+            id="kwargs_false_effort_alone_keeps_the_model_default",
+        ),
+        pytest.param(
+            {
+                "reasoning": {"effort": "high"},
+                "chat_template_kwargs": {"reasoning_effort": 50},
+            },
+            {
+                "enable_thinking": True,
+                "thinking": True,
+                "reasoning_effort": 50,
+            },
+            id="kwargs_numeric_effort_overrides_openrouter",
+        ),
+        pytest.param(
+            {
+                "chat_template_kwargs": {
+                    "thinking_mode": "adaptive",
+                    "reasoning_effort": "low",
+                },
+            },
+            {
+                "thinking_mode": "adaptive",
+                "enable_thinking": True,
+                "thinking": True,
+                "reasoning_effort": "low",
+            },
+            id="unrelated_thinking_mode_stays_untouched",
+        ),
+        pytest.param(
+            {
+                "chat_template_kwargs": {"thinking": True},
+                "reasoning": {"effort": "none"},
+            },
+            {"thinking": True},
+            id="openrouter_none_ignores_explicit_flag",
+        ),
+        pytest.param(
+            {
+                "chat_template_kwargs": {"thinking": False},
+                "reasoning": {"enabled": True},
+            },
+            {"thinking": False},
+            id="openrouter_enabled_ignores_explicit_flag",
+        ),
+        pytest.param(
+            {
+                "chat_template_kwargs": {"thinking_mode": "adaptive"},
+                "reasoning": {"enabled": False},
+            },
+            {"thinking_mode": "adaptive"},
+            id="openrouter_ignores_explicit_thinking_mode",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "high",
+                "chat_template_kwargs": {"reasoning_effort": None},
+                "reasoning": {"enabled": False},
+            },
+            {"reasoning_effort": None},
+            id="openrouter_ignores_explicit_null_effort",
+        ),
+        pytest.param(
+            {
+                "reasoning_effort": "high",
+                "reasoning": {"enabled": False},
+            },
+            {
+                "enable_thinking": True,
+                "thinking": True,
+                "reasoning_effort": "high",
+            },
+            id="top_level_effort_ignores_openrouter_enabled",
+        ),
+        pytest.param(
+            {"reasoning": {}},
+            None,
+            id="empty_reasoning_object_preserves_default",
         ),
     ],
 )

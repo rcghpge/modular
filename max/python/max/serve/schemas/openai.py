@@ -106,7 +106,6 @@ from typing_extensions import NotRequired, TypedDict
 
 from max.serve.schemas._chat_template import (
     thinking_requested,
-    with_thinking,
 )
 
 # ---------------------------------------------------------------------------
@@ -546,38 +545,70 @@ class CreateChatCompletionRequest(
         ``reasoning`` object are folded into it here (OpenRouter sends both).
 
         The effort is taken from ``chat_template_kwargs`` first, then the
-        top-level field, then the ``reasoning`` object; whichever wins also
+        top-level field, then the ``reasoning`` object; a kwarg present at
+        all — even null or falsy — is never replaced. A falsy effort
+        (``None``, ``0``, ``false``) asks for nothing: the kwargs travel as
+        sent and the model's own thinking default stands. The ``reasoning``
+        object is consulted only when no explicit kwarg or top-level effort
+        was sent, and an empty one asks nothing. Whichever effort wins also
         decides whether the model thinks at all, unless the client set the
-        toggle itself. Templates disagree on the name of that toggle, so both
-        ``enable_thinking`` and ``thinking`` are set.
+        toggle itself. Templates disagree on the name of that toggle, so a
+        missing ``enable_thinking`` or ``thinking`` is filled in, and a
+        spelling the client already set is left as written.
 
         Returns:
             The chat-template kwargs, or ``None`` when the request carries
             none at all.
         """
         kwargs = dict(self.chat_template_kwargs or {})
-        effort = (
-            kwargs.get("reasoning_effort")
-            or self.reasoning_effort
-            or (self.reasoning.effort if self.reasoning is not None else None)
+        reasoning = self.reasoning
+        spoken_for = any(
+            key in kwargs
+            for key in ("thinking_mode", "enable_thinking", "thinking", "reasoning_effort")
         )
-        if self.reasoning is None and effort is None:
+        if reasoning is not None and (
+            spoken_for or self.reasoning_effort is not None
+        ):
+            # The ``reasoning`` object ranks below every explicit kwarg and
+            # the top-level effort, matching the orchestrator's parser.
+            reasoning = None
+        elif reasoning is not None and reasoning.enabled is None and reasoning.effort is None:
+            # An empty ``reasoning`` object asks nothing; the default stands.
+            reasoning = None
+
+        if "reasoning_effort" in kwargs:
+            effort = kwargs["reasoning_effort"]
+        else:
+            effort = self.reasoning_effort or (
+                reasoning.effort if reasoning is not None else None
+            )
+        if reasoning is None and not effort:
+            # A falsy effort (an explicit null kwarg, 0 or false) means the
+            # client asked for nothing: keep the kwargs as sent — the explicit
+            # kwarg still wins over a top-level effort — and let the model's
+            # own thinking default stand.
             return self.chat_template_kwargs
 
-        if self.reasoning is not None and self.reasoning.enabled is not None:
-            enable_thinking = self.reasoning.enabled
+        if reasoning is not None:
+            # Within the object, ``enabled: false`` or ``effort: "none"``
+            # wins and discards its own effort, matching the orchestrator's
+            # parser.
+            off = reasoning.enabled is False or reasoning.effort == "none"
+            enable_thinking = not off
+            if off:
+                effort = None
         else:
-            # ``none`` is OpenAI's "don't reason" effort, and a bare
-            # ``reasoning`` object carrying neither field asks for no
-            # reasoning either.
+            # ``none`` is OpenAI's "don't reason" effort.
             enable_thinking = effort is not None and effort != "none"
 
-        # Client may set either spelling of the thinking toggle, here we merge
-        # both.
+        # Client may set either spelling of the thinking toggle, here we fill
+        # in the one missing; a spelling already set stays as the client
+        # wrote it.
         requested = thinking_requested(kwargs)
         if requested is not None:
             enable_thinking = requested
-        kwargs = with_thinking(kwargs, enable_thinking)
+        kwargs.setdefault("enable_thinking", enable_thinking)
+        kwargs.setdefault("thinking", enable_thinking)
         if effort is not None:
             kwargs["reasoning_effort"] = effort
         return kwargs
