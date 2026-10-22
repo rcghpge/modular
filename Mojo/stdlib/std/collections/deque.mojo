@@ -34,14 +34,13 @@ from std.memory.alloc import alloc, dealloc, ThinAllocation, Layout
 # ===-----------------------------------------------------------------------===#
 
 
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `Deque` of"
-    " non-`Deinitable` elements"
-)
 struct Deque[ElementType: Movable](
     Boolable,
     Copyable where conforms_to(ElementType, Copyable),
-    Deinitable where conforms_to(ElementType, Deinitable),
+    Deinitable where conforms_to(ElementType, Deinitable) else (
+        "Use `deinit_with()` to explicitly destroy a `Deque` of"
+        " non-`Deinitable` elements"
+    ),
     Equatable where conforms_to(ElementType, Equatable),
     Hashable where conforms_to(ElementType, Hashable),
     Iterable,

@@ -207,17 +207,18 @@ struct Group(Copyable, Movable):
 
 
 @fieldwise_init
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `SwissTableEntry` with"
-    " non-`Deinitable` keys or values"
-)
 struct SwissTableEntry[
     K: KeyElement,
     V: Movable,
     H: Hasher & Defaultable & Deinitable,
 ](
     Copyable where conforms_to(K, Copyable) and conforms_to(V, Copyable),
-    Deinitable where conforms_to(K, Deinitable) and conforms_to(V, Deinitable),
+    Deinitable where (
+        conforms_to(K, Deinitable) and conforms_to(V, Deinitable)
+    ) else (
+        "Use `deinit_with()` to explicitly destroy a `SwissTableEntry` with"
+        " non-`Deinitable` keys or values"
+    ),
     Movable,
 ):
     """Store a key-value pair entry inside a SwissTable-based collection.
@@ -309,17 +310,18 @@ struct SwissTableEntry[
 # ===-----------------------------------------------------------------------===#
 
 
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `SwissTable` with"
-    " non-`Deinitable` keys or values"
-)
 struct SwissTable[
     K: KeyElement,
     V: Movable,
     H: Hasher & Defaultable & Deinitable = default_hasher,
 ](
     Copyable where conforms_to(K, Copyable) and conforms_to(V, Copyable),
-    Deinitable where conforms_to(K, Deinitable) and conforms_to(V, Deinitable),
+    Deinitable where (
+        conforms_to(K, Deinitable) and conforms_to(V, Deinitable)
+    ) else (
+        "Use `deinit_with()` to explicitly destroy a `SwissTable` with"
+        " non-`Deinitable` keys or values"
+    ),
     Movable,
 ):
     """Raw SwissTable providing the hash table core for Dict and HashMap.

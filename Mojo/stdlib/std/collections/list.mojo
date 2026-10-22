@@ -149,16 +149,15 @@ struct _ListIterOwned[T: Movable & Deinitable](
         return (iter_len, {iter_len})
 
 
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `List` of"
-    " non-`Deinitable` elements"
-)
 @stable(since="1.0")
 struct List[T: AnyType, /](
     Boolable,
     Copyable where conforms_to(T, Copyable),
     Defaultable,
-    Deinitable where conforms_to(T, Deinitable),
+    Deinitable where conforms_to(T, Deinitable) else (
+        "Use `deinit_with()` to explicitly destroy a `List` of"
+        " non-`Deinitable` elements"
+    ),
     Equatable where conforms_to(T, Equatable),
     Hashable where conforms_to(T, Hashable),
     Iterable,

@@ -1554,11 +1554,12 @@ struct TestSynthesizedConditionalDtor[T: Movable](
 
 # MOCO-4059: Conditionally linear type with concrete struct.
 # CHECK-LABEL: lit.struct.decl @AConditionallyLinearType
-@explicit_destroy("I am conditionally linear!")
 @fieldwise_init
 struct AConditionallyLinearType[T: AnyType](
     Copyable,
-    Deinitable where conforms_to(T, Deinitable),
+    Deinitable where conforms_to(T, Deinitable) else (
+        "I am conditionally linear!"
+    ),
 ):
 
     def __deinit__(deinit self) where conforms_to(Self.T, Deinitable):

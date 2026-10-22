@@ -594,9 +594,11 @@ def test_unused_var(mut mut_arg: Int):
     ref z = mut_arg
 
 
-@explicit_destroy("Use `consume() method` to finalize")
 @fieldwise_init
-struct LinearType(Deinitable where False, Movable where False):
+struct LinearType(
+    Deinitable where False else "Use `consume() method` to finalize",
+    Movable where False,
+):
     def consume(deinit self):
         pass
 
@@ -646,9 +648,11 @@ struct ReducedStorage(Deinitable where False, Movable where False):
         abort()
 
 
-@explicit_destroy("This needs explicit destruction when T isn't linear")
 struct ConditionallyLinearType[T: AnyType](
-    Deinitable where conforms_to(T, Deinitable), Movable where False
+    Deinitable where conforms_to(T, Deinitable) else (
+        "This needs explicit destruction when T isn't linear"
+    ),
+    Movable where False
 ):
     # var data: Self.T
 

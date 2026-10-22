@@ -30,15 +30,14 @@ from std.utils._visualizers import lldb_formatter_wrapping_type
 
 
 @lldb_formatter_wrapping_type
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `Tuple` with"
-    " non-`Deinitable` elements"
-)
 struct Tuple[*Ts: AnyType](
     Comparable where Ts.all_conforms_to[Comparable](),
     Copyable where Ts.all_conforms_to[Copyable](),
     Defaultable where Ts.all_conforms_to[Defaultable](),
-    Deinitable where Ts.all_conforms_to[Deinitable](),
+    Deinitable where Ts.all_conforms_to[Deinitable]() else (
+        "Use `deinit_with()` to explicitly destroy a `Tuple` with"
+        " non-`Deinitable` elements"
+    ),
     Equatable where Ts.all_conforms_to[Equatable](),
     Hashable where Ts.all_conforms_to[Hashable](),
     ImplicitlyCopyable where Ts.all_conforms_to[ImplicitlyCopyable](),

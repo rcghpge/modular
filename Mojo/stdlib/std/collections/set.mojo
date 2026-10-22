@@ -32,10 +32,6 @@ from .dict import (
 )
 
 
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `Set` with a"
-    " non-`Deinitable` element type"
-)
 struct Set[
     T: KeyElement,
     H: Hasher & Defaultable & Deinitable = default_hasher,
@@ -43,7 +39,10 @@ struct Set[
     Boolable,
     Comparable where conforms_to(T, Copyable) and conforms_to(T, Equatable),
     Copyable where conforms_to(T, Copyable),
-    Deinitable where conforms_to(T, Deinitable),
+    Deinitable where conforms_to(T, Deinitable) else (
+        "Use `deinit_with()` to explicitly destroy a `Set` with a"
+        " non-`Deinitable` element type"
+    ),
     Equatable where conforms_to(T, Copyable) and conforms_to(T, Equatable),
     Hashable where conforms_to(T, Copyable) and conforms_to(T, Hashable),
     Iterable,

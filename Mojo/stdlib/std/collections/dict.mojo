@@ -463,10 +463,6 @@ struct _DictValueIter[
 # ===-----------------------------------------------------------------------===#
 
 
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy a `Dict` with"
-    " non-`Deinitable` keys or values"
-)
 struct Dict[
     K: KeyElement,
     V: Movable,
@@ -475,7 +471,12 @@ struct Dict[
     Boolable,
     Copyable where conforms_to(K, Copyable) and conforms_to(V, Copyable),
     Defaultable,
-    Deinitable where conforms_to(K, Deinitable) and conforms_to(V, Deinitable),
+    Deinitable where (
+        conforms_to(K, Deinitable) and conforms_to(V, Deinitable)
+    ) else (
+        "Use `deinit_with()` to explicitly destroy a `Dict` with"
+        " non-`Deinitable` keys or values"
+    ),
     Equatable where conforms_to(K, Copyable) and conforms_to(V, Equatable),
     Hashable where conforms_to(K, Copyable) and conforms_to(V, Hashable),
     Iterable,

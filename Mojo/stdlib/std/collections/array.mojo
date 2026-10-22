@@ -210,16 +210,15 @@ struct _ArrayIterOwned[T: Movable & Deinitable, length: Int](
         return (remaining, {remaining})
 
 
-@explicit_destroy(
-    "Use `deinit_with()` to explicitly destroy an `Array` of"
-    " non-`Deinitable` elements"
-)
 @stable(since="1.0")
 struct Array[T: AnyType, length: Int](
     Comparable where conforms_to(T, Comparable),
     Copyable where conforms_to(T, Copyable),
     Defaultable where conforms_to(T, Defaultable),
-    Deinitable where conforms_to(T, Deinitable),
+    Deinitable where conforms_to(T, Deinitable) else (
+        "Use `deinit_with()` to explicitly destroy an `Array` of"
+        " non-`Deinitable` elements"
+    ),
     DevicePassable where conforms_to(T, DevicePassable) and conforms_to(
         T, Copyable
     ),

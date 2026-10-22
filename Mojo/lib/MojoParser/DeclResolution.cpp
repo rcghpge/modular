@@ -3674,7 +3674,7 @@ static void emitExplicitDestroyRequiresArgError(SharedState &shared,
                  "`@explicit_destroy(\"...\")`";
   diag.attachNote(decl)
       << "Use a `not Deinitable` conformance to opt out of implicit "
-         "deletion. `@explicit_destroy` is no longer required.";
+         "deletion. `@explicit_destroy` is deprecated.";
 }
 
 /// Validates that an `@explicit_destroy(...)` call has exactly one string
@@ -3697,6 +3697,86 @@ static LogicalResult parseExplicitDestroyMessage(SharedState &shared,
   }
   message = strExpr->getValue();
   return success();
+}
+
+/// Returns a fix-it that deletes an `@explicit_destroy(...)` decorator, which
+/// is always on its own line, along with the indentation of the line after it
+/// so that line takes over the decorator's indentation.
+static FixIt removeExplicitDestroyDecorator(const CallNode *call) {
+  const char *start = call->getRangeStart().getPointer();
+  while (*start != '@')
+    --start;
+  const char *end = call->rparenLoc.getPointer() + 1;
+  while (*end != '\n' && *end != '\0')
+    ++end;
+  if (*end == '\n')
+    ++end;
+  while (*end == ' ' || *end == '\t')
+    ++end;
+  return FixIt(SourceRange::getByteLevel(SMLoc::getFromPointer(start),
+                                         SMLoc::getFromPointer(end)),
+               "");
+}
+
+/// Returns the source text of an `@explicit_destroy(...)` message argument,
+/// parenthesized when it spans lines so it can follow an `else`.
+static std::string getExplicitDestroyMessageSource(const CallNode *call) {
+  const char *start = call->operands.front().expr->getRangeStart().getPointer();
+  StringRef text(start, call->rparenLoc.getPointer() - start);
+  text = text.rtrim().rtrim(',').rtrim();
+  if (text.contains('\n'))
+    return ("(" + text + ")").str();
+  return text.str();
+}
+
+/// Returns the conformance list entry written as `Deinitable`, if any.
+static const ParsedConformanceEntry *
+findDeinitableEntry(ArrayRef<ParsedConformanceEntry> entries) {
+  for (const ParsedConformanceEntry &entry : entries)
+    if (auto *ref = dyn_cast<DeclRefNode>(entry.typeExpr);
+        ref && ref->spelling == "Deinitable")
+      return &entry;
+  return nullptr;
+}
+
+/// Warns that `@explicit_destroy("...")` on a struct is deprecated, with a note
+/// on the struct's `Deinitable` conformance, and a fix-it that moves the
+/// message there.
+// TODO(MOCO-4468): Deprecate the trait form too once traits accept a message
+// on their conformances.
+static void
+emitExplicitDestroyDeprecation(SharedState &shared, const CallNode *call,
+                               StringRef message,
+                               ConstraintAttr declaredDeinitable,
+                               const ParsedConformanceEntry *deinitableEntry) {
+  std::string shown = message.size() > 40
+                          ? (message.take_front(37) + "...").str()
+                          : message.str();
+  auto diag = shared.emitWarning(call->getLoc())
+              << "'@explicit_destroy' is deprecated; use an 'else' message on "
+                 "the 'Deinitable' conformance";
+  // Only `@explicit_destroy("")` gets here alongside a conformance message,
+  // since two non-empty messages are an error.
+  if (declaredDeinitable.getMessage()) {
+    diag.attachNote(declaredDeinitable.getLoc())
+        << "conformance already gives a message; remove '@explicit_destroy'";
+    diag.addFixIt(removeExplicitDestroyDecorator(call));
+    return;
+  }
+  diag.attachNote(declaredDeinitable.getLoc())
+      << "add 'else \"" << shown << "\"' to this conformance";
+  // A qualified spelling such as `std.Deinitable` is not matched, so it gets
+  // the note without a fix-it.
+  if (!deinitableEntry)
+    return;
+  const ExprNode *last =
+      deinitableEntry->constraint && deinitableEntry->constraint->propExpr
+          ? deinitableEntry->constraint->propExpr
+          : deinitableEntry->typeExpr;
+  diag.addFixIt(removeExplicitDestroyDecorator(call));
+  diag.addFixIt(FixIt::insertAfterToken(
+      last->getRangeEnd(), " else " + getExplicitDestroyMessageSource(call),
+      shared.diags));
 }
 
 /// structdef ::=
@@ -3727,8 +3807,13 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
                    "internal error: checked by stmt parser") ||
       p.parseIdentifier("internal error: checked by stmt parser",
                         &identifierLoc) ||
-      parsedParams.parseParametersIfPresent(p, ArgListKind::kParamList) ||
-      parseOptionalConformanceListSyntax(
+      parsedParams.parseParametersIfPresent(p, ArgListKind::kParamList))
+    return failure();
+  // The location to insert a conformance list to a struct that has none (for
+  // generating fix-its).
+  SMLoc conformanceListLoc = p.getToken().getLoc();
+  bool hasConformanceParens = p.getToken().is(Token::l_paren);
+  if (parseOptionalConformanceListSyntax(
           p, parsedConformances, sigDecl.getIndentation(),
           /*allowConformanceConstraints=*/true) ||
       parsedParams.parseTrailingConstraintsIfPresent(
@@ -3845,6 +3930,7 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
   // Capture the location of the `@explicit_destroy` decorator for more
   // accurate diagnostics later.
   std::optional<std::tuple<std::string, SMLoc>> linearTypeErrorMsg;
+  const CallNode *explicitDestroyDecoratorNode = nullptr;
   for (auto decoratorExpr : decoratorExprs) {
     if (auto *callNode = dyn_cast<CallNode>(decoratorExpr.first)) {
       if (auto declRef = dyn_cast<DeclRefNode>(callNode->callee)) {
@@ -3854,6 +3940,7 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
             return failure();
           linearTypeErrorMsg =
               std::make_tuple(std::move(message), callNode->getLoc());
+          explicitDestroyDecoratorNode = callNode;
         }
       }
     }
@@ -3865,27 +3952,28 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
         std::make_optional(llvm::StringRef(std::get<0>(*linearTypeErrorMsg))));
   }
 
-  // An always-false `Deinitable` conformance makes the struct linear, so its
-  // reason, if any, is recorded here.
+  // The message on a `Deinitable` conformance explains why the struct cannot
+  // be deleted implicitly.
+  std::optional<ConstraintAttr> declaredDeinitable;
   if (implicitDelDecl) {
     auto it = traitConstraints.find(
         TraitSymbolAttr::get(implicitDelDecl->getSymbolRef()));
-    StringAttr reason =
-        it != traitConstraints.end() && isTriviallyFalseConstraint(it->second)
-            ? it->second.getMessage()
-            : StringAttr();
-    if (reason) {
-      if (hasDecoratorMessage) {
-        MojoInflightDiag diag =
-            shared.emitError(std::get<1>(*linearTypeErrorMsg));
-        diag << "@explicit_destroy and the 'Deinitable' opt-out both give a "
-                "message; keep only one";
-        diag.attachNote(it->second.getLoc()) << "opt-out message written here";
-        setErroneous();
-        return failure();
-      }
-      structOp.setLinearTypeErrorMsg(reason.getValue());
+    if (it != traitConstraints.end())
+      declaredDeinitable = it->second;
+  }
+  if (StringAttr reason = declaredDeinitable ? declaredDeinitable->getMessage()
+                                             : StringAttr()) {
+    if (hasDecoratorMessage) {
+      MojoInflightDiag diag =
+          shared.emitError(std::get<1>(*linearTypeErrorMsg));
+      diag << "@explicit_destroy and the 'Deinitable' opt-out both give a "
+              "message; remove '@explicit_destroy'";
+      diag.attachNote(declaredDeinitable->getLoc())
+          << "opt-out message written here";
+      setErroneous();
+      return failure();
     }
+    structOp.setLinearTypeErrorMsg(reason.getValue());
   }
 
   // Build canonical trait with constraints for conditional conformance.
@@ -3911,6 +3999,29 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
                        "unconditional conformance to `Deinitable`";
         diag.attachNote(getLoc()) << "Add a `not Deinitable` conformance or "
                                      "remove `@explicit_destroy`";
+        // Teach the user to move the message onto a `not Deinitable` entry.
+        std::string optOut =
+            "not Deinitable else " +
+            getExplicitDestroyMessageSource(explicitDestroyDecoratorNode);
+        if (!findDeinitableEntry(parsedConformances)) {
+          if (!parsedConformances.empty()) {
+            diag.addFixIt(
+                removeExplicitDestroyDecorator(explicitDestroyDecoratorNode));
+            diag.addFixIt(FixIt::insertBeforeToken(
+                parsedConformances.front().loc, optOut + ", "));
+          } else if (!hasConformanceParens) {
+            // Insert right after the previous token, not before the `:` or
+            // `where` that follows, to avoid leaving a space before `(`.
+            const char *insertAt = conformanceListLoc.getPointer();
+            while (llvm::isSpace(insertAt[-1]))
+              --insertAt;
+            SMLoc loc = SMLoc::getFromPointer(insertAt);
+            diag.addFixIt(
+                removeExplicitDestroyDecorator(explicitDestroyDecoratorNode));
+            diag.addFixIt(
+                FixIt(SourceRange::getByteLevel(loc, loc), "(" + optOut + ")"));
+          }
+        }
         setErroneous();
         return failure();
       }
@@ -3928,6 +4039,13 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
         "' does not conform to 'Deinitable' and must be explicitly "
         "destroyed");
   }
+
+  // Reaching here with the decorator means the struct explicitly mentions
+  // `Deinitable` in its conformance list.
+  if (explicitDestroyDecoratorNode && declaredDeinitable)
+    emitExplicitDestroyDeprecation(
+        shared, explicitDestroyDecoratorNode, std::get<0>(*linearTypeErrorMsg),
+        *declaredDeinitable, findDeinitableEntry(parsedConformances));
 
   // Make the decl as signature resolved before we check rp conformance.
   resolvedness = DeclResolvedness::signature;

@@ -70,7 +70,7 @@ trait PipelineBackend(TrivialRegisterPassable):
     comptime BarrierStorage: AnyType
 
     # What `full_handle`/`empty_handle` return for one slot. Bound to
-    # TrivialRegisterPassable (like the backend itself) so the @explicit_destroy
+    # TrivialRegisterPassable (like the backend itself) so the `not Deinitable`
     # stage handles can store it as a field with no custom destroy semantics
     # to reason about generically.
     comptime Handle: TrivialRegisterPassable

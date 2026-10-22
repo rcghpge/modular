@@ -88,7 +88,7 @@ of leaving them as runtime hazards.
 An accidental leak is rejected: the compiler requires every `Allocation` to be
 destroyed on every path, including error paths. If an intervening operation can
 raise, skipping the `dealloc`, that is an error (whose message includes the
-guidance from `@explicit_destroy(..)`):
+guidance from its `not Deinitable else ...` conformance):
 
 ```mojo
 from std.memory import alloc, dealloc, Layout
@@ -191,13 +191,15 @@ struct Alignment(TrivialRegisterPassable, Writable):
         writer.write(self._value)
 
 
-@explicit_destroy(
-    "An `Allocation` owns heap storage and must be consumed before it goes"
-    " out of scope. Deallocate it with `dealloc(allocation^)`, or call"
-    " `unsafe_leak()` to take ownership of the underlying pointer."
-)
 struct Allocation[T: AnyType, *, alignment: Alignment = .of[T]()](
-    not Deinitable, RegisterPassable, Sized, Writable
+    not Deinitable else (
+        "An `Allocation` owns heap storage and must be consumed before it goes"
+        " out of scope. Deallocate it with `dealloc(allocation^)`, or call"
+        " `unsafe_leak()` to take ownership of the underlying pointer."
+    ),
+    RegisterPassable,
+    Sized,
+    Writable,
 ):
     """An owning handle to a heap allocation of `T` together with its `Layout`.
 
@@ -613,13 +615,17 @@ struct ManagedAllocation[T: AnyType, *, alignment: Alignment = .of[T]()](
         return len(self._alloc)
 
 
-@explicit_destroy(
-    "A `ThinAllocation` owns heap storage and must be consumed before it goes"
-    " out of scope. It carries no `Layout`, so deallocate it by pairing it"
-    " with its layout: `dealloc(allocation^.unsafe_with_layout(layout))`, or"
-    " call `unsafe_leak()` to take ownership of the underlying pointer."
-)
-struct ThinAllocation[T: AnyType](not Deinitable, RegisterPassable, Writable):
+struct ThinAllocation[T: AnyType](
+    not Deinitable else (
+        "A `ThinAllocation` owns heap storage and must be consumed before it"
+        " goes out of scope. It carries no `Layout`, so deallocate it by"
+        " pairing it with its layout:"
+        " `dealloc(allocation^.unsafe_with_layout(layout))`, or call"
+        " `unsafe_leak()` to take ownership of the underlying pointer."
+    ),
+    RegisterPassable,
+    Writable,
+):
     """An owning handle to a heap allocation of `T`, without its `Layout`.
 
     A `ThinAllocation` is the minimal owning handle to allocated storage: just
@@ -628,7 +634,7 @@ struct ThinAllocation[T: AnyType](not Deinitable, RegisterPassable, Writable):
     the storage. This makes `ThinAllocation` a good storage field for a
     container that already tracks its own capacity, such as `List`.
 
-    `ThinAllocation` is an explicitly destroyed (`@explicit_destroy`) type: it
+    `ThinAllocation` is an explicitly destroyed (`not Deinitable`) type: it
     is never deallocated automatically, and the compiler requires every value to
     be destroyed manually on all paths. Destroy one by either:
 

@@ -18,6 +18,36 @@ This version is still a work in progress.
 
 ## Language changes
 
+- `@explicit_destroy("<message>")` on a struct is deprecated and now emits a
+  warning. Give the message on the struct's `Deinitable` conformance instead:
+
+  ```mojo
+  # Before
+  @explicit_destroy("call `close()` instead")
+  struct File(not Deinitable):
+      ...
+
+  @explicit_destroy("use `deinit_with()` for non-Deinitable elements")
+  struct Box[T: Movable](Deinitable where conforms_to(T, Deinitable)):
+      ...
+
+  # After
+  struct File(not Deinitable else "call `close()` instead"):
+      ...
+
+  struct Box[T: Movable](
+      Deinitable where conforms_to(T, Deinitable) else (
+          "use `deinit_with()` for non-Deinitable elements"
+      ),
+  ):
+      ...
+  ```
+
+  The message on a conditional `Deinitable where <condition> else "<message>"`
+  conformance is now reported when a value is abandoned for parameters that
+  don't satisfy the condition. Previously, only an always-false conformance's
+  message was reported.
+
 - Precompiled packages now no longer leak names and provide the same surface as
   the same packages compiled from source. This may break your code (especially
   from `std`):

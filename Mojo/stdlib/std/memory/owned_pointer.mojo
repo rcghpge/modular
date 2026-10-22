@@ -33,13 +33,12 @@ from std.memory.alloc import (
 )
 
 
-@explicit_destroy(
-    "Use `into_inner()` (for a `Movable` `T`) or `unsafe_take_allocation()`"
-    " to consume an `OwnedPointer` whose element type is not"
-    " `Deinitable`"
-)
 struct OwnedPointer[T: AnyType](
-    Deinitable where conforms_to(T, Deinitable),
+    Deinitable where conforms_to(T, Deinitable) else (
+        "Use `into_inner()` (for a `Movable` `T`) or `unsafe_take_allocation()`"
+        " to consume an `OwnedPointer` whose element type is not"
+        " `Deinitable`"
+    ),
     RegisterPassable,
     Writable where conforms_to(T, Writable),
 ):
