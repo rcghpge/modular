@@ -516,11 +516,45 @@ def test_dkv_peer_counters_are_silent_without_a_tier() -> None:
     mock_metrics.dkv_peer_loads.assert_not_called()
     mock_metrics.dkv_hints_rejected.assert_not_called()
     mock_metrics.dkv_touches_deduplicated.assert_not_called()
+    mock_metrics.dkv_settle_queue_depth.assert_not_called()
+    mock_metrics.dkv_settle_jobs_finished.assert_not_called()
+    mock_metrics.dkv_owner_releases_halted.assert_not_called()
 
     extra = metrics.to_log_extra()
     assert "dkv_peer_loads" not in extra
     assert "dkv_touches_deduplicated" not in extra
+    assert "dkv_settle_queue_depth" not in extra
     assert "dkv_hints_rejected" not in extra
+
+
+def test_dkv_settle_metrics_reach_the_log_and_the_published_metrics() -> None:
+    """An attached tier reports the settle levels and its finished count.
+
+    Each value is distinct, so a field published under its neighbour's name
+    fails here.
+    """
+    metrics = _make_metrics(
+        dkv_connected_clients=1,
+        dkv_total_clients=1,
+        dkv_settle_queue_depth=3,
+        dkv_settle_queue_oldest_age_ms=2.5,
+        dkv_settle_jobs_finished=9,
+        dkv_owner_releases_halted=1,
+    )
+
+    extra = metrics.to_log_extra()
+    assert extra["dkv_settle_queue_depth"] == 3
+    assert extra["dkv_settle_queue_oldest_age_ms"] == 2.5
+    assert extra["dkv_settle_jobs_finished"] == 9
+    assert extra["dkv_owner_releases_halted"] == 1
+
+    with patch("max.serve.scheduler.utils.METRICS") as mock_metrics:
+        metrics.publish_metrics()
+
+    mock_metrics.dkv_settle_queue_depth.assert_called_once_with(3)
+    mock_metrics.dkv_settle_queue_oldest_age_ms.assert_called_once_with(2.5)
+    mock_metrics.dkv_settle_jobs_finished.assert_called_once_with(9)
+    mock_metrics.dkv_owner_releases_halted.assert_called_once_with(1)
 
 
 def test_dkv_peer_counters_carry_their_values_to_every_surface() -> None:

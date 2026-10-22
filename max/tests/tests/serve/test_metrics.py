@@ -205,6 +205,54 @@ def test_tokens_per_request_carry_the_turn_when_given(
     assert async_metrics.extra_attributes == {"model": "m"}
 
 
+@pytest.mark.parametrize(
+    ("method", "value", "instrument", "is_gauge"),
+    [
+        ("dkv_settle_queue_depth", 3, "maxserve.dkv.settle_queue_depth", True),
+        (
+            "dkv_settle_queue_oldest_age_ms",
+            2.5,
+            "maxserve.dkv.settle_queue_oldest_age_ms",
+            True,
+        ),
+        (
+            "dkv_owner_releases_halted",
+            1,
+            "maxserve.dkv.owner_releases_halted",
+            True,
+        ),
+        (
+            "dkv_settle_jobs_finished",
+            9,
+            "maxserve.dkv.settle_jobs_finished",
+            False,
+        ),
+    ],
+)
+def test_dkv_settle_metrics_record_on_their_own_instruments(
+    method: str, value: float, instrument: str, is_gauge: bool
+) -> None:
+    """Each settle metric lands on its own instrument, the levels as gauges.
+
+    The finished count is a per-window delta, so it is a counter. A gauge would
+    keep only the last window's count and drop the rest.
+    """
+    client = mock.Mock()
+    recorder = metrics._AsyncMetrics()
+    recorder.configure(client, {"model": "m"})
+
+    getattr(recorder, method)(value)
+
+    measurement = client.send_measurement.call_args.args[0]
+    assert (measurement.instrument_name, measurement.value) == (
+        instrument,
+        value,
+    )
+    assert (
+        isinstance(metrics.SERVE_METRICS[instrument], _ProxyGauge) == is_gauge
+    )
+
+
 def _is_histogram(inst: object) -> bool:
     """True if a SERVE_METRICS instrument is a Histogram.
 

@@ -2420,6 +2420,22 @@ class DKVConnector(KVConnector):
                     dkv_prepare_load_degraded=m["prepare_load_degraded"],
                     dkv_load_with_plan_degraded=m["load_with_plan_degraded"],
                     dkv_load_with_plan_expired=m["load_with_plan_expired"],
+                    # The settle worker, which every leaf client runs for
+                    # itself, so these fold per leaf client and KVCacheMetrics
+                    # sums the depth and the finished count and maxes the age
+                    # and the halt. The depth, the age and the halt are levels
+                    # the client reads fresh on every snapshot, so they survive
+                    # take_metrics like the health keys above. An extension
+                    # predating them reports none, which reads as an idle
+                    # worker rather than as a missing key.
+                    dkv_settle_queue_depth=m.get("settle_queue_depth", 0),
+                    dkv_settle_queue_oldest_age_ms=m.get(
+                        "settle_queue_oldest_age_ms", 0.0
+                    ),
+                    dkv_settle_jobs_finished=m.get("settle_jobs_finished", 0),
+                    dkv_owner_releases_halted=int(
+                        m.get("owner_releases_halted", False)
+                    ),
                     # Per-call counters: summed per leaf client, since each
                     # client issues its own RPCs on its own socket and lock.
                     dkv_rpc_calls=dict(m["rpc_calls"]),

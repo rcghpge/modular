@@ -302,6 +302,15 @@ class BatchMetrics:
     dkv_total_clients: int = 0
     dkv_reconnect_attempts: int = 0
 
+    # The dKV settle worker and the owner release halt. The depth, the oldest
+    # job's age and the halt are levels that publish as gauges, and
+    # settle_jobs_finished is a per-window delta that publishes as a counter.
+    # See KVCacheMetrics for how each folds. Zero when no dKV tier is attached.
+    dkv_settle_queue_depth: int = 0
+    dkv_settle_queue_oldest_age_ms: float = 0.0
+    dkv_settle_jobs_finished: int = 0
+    dkv_owner_releases_halted: int = 0
+
     # Cache blocks dKV landed in device memory this batch, credited from
     # transfer accounting: a block behind a hole in the request's hash chain is
     # served and then dropped untransferred, and never reaches this count. The
@@ -490,6 +499,10 @@ class BatchMetrics:
         dkv_connected_clients = 0
         dkv_total_clients = 0
         dkv_reconnect_attempts = 0
+        dkv_settle_queue_depth = 0
+        dkv_settle_queue_oldest_age_ms = 0.0
+        dkv_settle_jobs_finished = 0
+        dkv_owner_releases_halted = 0
         dkv_read_blocks = 0
         dkv_read_bytes = 0
         dkv_peer_attaches = 0
@@ -610,6 +623,15 @@ class BatchMetrics:
             dkv_connected_clients = metrics_agg.dkv_connected_clients
             dkv_total_clients = metrics_agg.dkv_total_clients
             dkv_reconnect_attempts = metrics_agg.dkv_reconnect_attempts
+            # The settle worker's levels stay in place the same way, and its
+            # finished count is a per-window delta take_metrics_aggregated
+            # cleared.
+            dkv_settle_queue_depth = metrics_agg.dkv_settle_queue_depth
+            dkv_settle_queue_oldest_age_ms = (
+                metrics_agg.dkv_settle_queue_oldest_age_ms
+            )
+            dkv_settle_jobs_finished = metrics_agg.dkv_settle_jobs_finished
+            dkv_owner_releases_halted = metrics_agg.dkv_owner_releases_halted
             dkv_read_blocks = metrics_agg.nixl_read_blocks
             dkv_read_bytes = metrics_agg.nixl_read_bytes
 
@@ -761,6 +783,10 @@ class BatchMetrics:
             dkv_connected_clients=dkv_connected_clients,
             dkv_total_clients=dkv_total_clients,
             dkv_reconnect_attempts=dkv_reconnect_attempts,
+            dkv_settle_queue_depth=dkv_settle_queue_depth,
+            dkv_settle_queue_oldest_age_ms=dkv_settle_queue_oldest_age_ms,
+            dkv_settle_jobs_finished=dkv_settle_jobs_finished,
+            dkv_owner_releases_halted=dkv_owner_releases_halted,
             dkv_read_blocks=dkv_read_blocks,
             dkv_read_bytes=dkv_read_bytes,
             dkv_peer_attaches=dkv_peer_attaches,
@@ -1227,6 +1253,12 @@ class BatchMetrics:
             extra["dkv_connected_clients"] = self.dkv_connected_clients
             extra["dkv_total_clients"] = self.dkv_total_clients
             extra["dkv_reconnect_attempts"] = self.dkv_reconnect_attempts
+            extra["dkv_settle_queue_depth"] = self.dkv_settle_queue_depth
+            extra["dkv_settle_queue_oldest_age_ms"] = (
+                self.dkv_settle_queue_oldest_age_ms
+            )
+            extra["dkv_settle_jobs_finished"] = self.dkv_settle_jobs_finished
+            extra["dkv_owner_releases_halted"] = self.dkv_owner_releases_halted
             # Same guard as the health gauges above.
             extra["dkv_peer_attaches"] = self.dkv_peer_attaches
             extra["dkv_peer_attach_failures"] = self.dkv_peer_attach_failures
@@ -1426,6 +1458,14 @@ class BatchMetrics:
             METRICS.dkv_connected_clients(self.dkv_connected_clients)
             METRICS.dkv_total_clients(self.dkv_total_clients)
             METRICS.dkv_reconnect_attempts(self.dkv_reconnect_attempts)
+            METRICS.dkv_settle_queue_depth(self.dkv_settle_queue_depth)
+            METRICS.dkv_settle_queue_oldest_age_ms(
+                self.dkv_settle_queue_oldest_age_ms
+            )
+            METRICS.dkv_owner_releases_halted(self.dkv_owner_releases_halted)
+            # A per-window delta, so a window skipped here loses its count for
+            # good, the same as the peer counters below.
+            METRICS.dkv_settle_jobs_finished(self.dkv_settle_jobs_finished)
             # Same guard as the health gauges: per-window deltas, so a window
             # skipped here loses its count for good.
             METRICS.dkv_peer_attaches(self.dkv_peer_attaches)

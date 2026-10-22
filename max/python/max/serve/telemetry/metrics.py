@@ -463,6 +463,26 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="attempts",
         description="Cumulative dKV reconnect attempts across all clients, reported as a gauge of the current lifetime total.",
     ),  # type: ignore
+    # The dKV settle worker and the owner release halt. Mach exports the halt
+    # under the same name as dkv.connector.owner_releases_halted.
+    "maxserve.dkv.settle_queue_depth": _meter.create_gauge(
+        "maxserve.dkv.settle_queue_depth",
+        unit="jobs",
+        description="dKV settle jobs queued and not yet finished, summed over every connector client. A level.",
+    ),  # type: ignore
+    "maxserve.dkv.settle_queue_oldest_age_ms": _meter.create_gauge(
+        "maxserve.dkv.settle_queue_oldest_age_ms",
+        unit="ms",
+        description="How long the oldest unfinished dKV settle job has waited, the max over every connector client, zero when none is queued. A head stuck on an RPC or a reconnect ages at wall-clock rate while maxserve.dkv.settle_jobs_finished stays flat, and a worker that is only behind under load ages more slowly while that count keeps rising.",
+    ),  # type: ignore
+    "maxserve.dkv.owner_releases_halted": _meter.create_gauge(
+        "maxserve.dkv.owner_releases_halted",
+        description="1 while any dKV connector client's owner release halt is up, else 0. While it is up the owner's failing cleanups wait on the orphan queue and its drain backs off.",
+    ),  # type: ignore
+    "maxserve.dkv.settle_jobs_finished": _create_counter(
+        "maxserve.dkv.settle_jobs_finished",
+        description="dKV settle jobs the connector workers finished or dropped for a gone dKV incarnation.",
+    ),
     # Cross-node pull. Counters, not gauges: take_metrics clears these every
     # batch, so each publish carries that window's delta. Mach exports the same
     # set under dkv.connector.peer_attach_count, peer_drop_count,
@@ -1980,6 +2000,42 @@ class _AsyncMetrics:
         self.client.send_measurement(
             MaxMeasurement(
                 "maxserve.dkv.reconnect_attempts",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_settle_queue_depth(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.settle_queue_depth",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_settle_queue_oldest_age_ms(self, value: float) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.settle_queue_oldest_age_ms",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_owner_releases_halted(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.owner_releases_halted",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_settle_jobs_finished(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.settle_jobs_finished",
                 value,
                 self.extra_attributes,
             ),

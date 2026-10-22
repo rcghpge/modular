@@ -154,6 +154,31 @@ class KVCacheMetrics:
     leaves would multiply a four-leaf deployment's reading by four.
     """
 
+    # The dKV settle worker and the owner release halt. Every leaf client runs
+    # its own worker, so these fold over leaf clients as well as replicas. The
+    # depth, the age and the halt are levels the connector reads fresh on every
+    # snapshot, so take_metrics leaves them in place like the health keys
+    # above. settle_jobs_finished is a per-window delta that take_metrics
+    # clears.
+    dkv_settle_queue_depth: int = 0
+    """Settle jobs queued and not yet finished, summed over every leaf client."""
+    dkv_settle_queue_oldest_age_ms: float = 0.0
+    """How long the oldest unfinished settle job has waited, in milliseconds.
+
+    The max over every leaf client, and zero when none is queued. Read it
+    against ``dkv_settle_jobs_finished``. A head stuck on an RPC or a reconnect
+    ages at wall-clock rate while that count stays flat, and a worker that is
+    only behind under load ages more slowly while the count keeps rising.
+    """
+    dkv_settle_jobs_finished: int = 0
+    """Settle jobs the workers finished or dropped this window, summed."""
+    dkv_owner_releases_halted: int = 0
+    """1 while any leaf client's owner release halt is up, else 0.
+
+    While it is up, the owner's failing cleanups wait on the orphan queue and
+    its drain backs off.
+    """
+
     # Cross-node pull. Per-window deltas like nixl_read_blocks and the latency
     # pairs, so they sum and take_metrics clears them, unlike the three dKV
     # health keys above. The connector's ConnectorMetrics is the canonical
@@ -377,6 +402,20 @@ class KVCacheMetrics:
             dkv_total_clients=self.dkv_total_clients + other.dkv_total_clients,
             dkv_reconnect_attempts=self.dkv_reconnect_attempts
             + other.dkv_reconnect_attempts,
+            dkv_settle_queue_depth=self.dkv_settle_queue_depth
+            + other.dkv_settle_queue_depth,
+            # A max, not a sum, for the same reason as the read latency peak:
+            # the oldest job across two workers is still one job's wait.
+            dkv_settle_queue_oldest_age_ms=max(
+                self.dkv_settle_queue_oldest_age_ms,
+                other.dkv_settle_queue_oldest_age_ms,
+            ),
+            dkv_settle_jobs_finished=self.dkv_settle_jobs_finished
+            + other.dkv_settle_jobs_finished,
+            # Up when either side's is, and still 1 rather than a count.
+            dkv_owner_releases_halted=max(
+                self.dkv_owner_releases_halted, other.dkv_owner_releases_halted
+            ),
             dkv_peer_attaches=self.dkv_peer_attaches + other.dkv_peer_attaches,
             dkv_peer_attach_failures=self.dkv_peer_attach_failures
             + other.dkv_peer_attach_failures,
