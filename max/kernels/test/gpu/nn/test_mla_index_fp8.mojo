@@ -2778,6 +2778,49 @@ def main() raises:
             ctx=ctx,
         )
 
+        # ===== GLM-5.3 MTP decode shape, through the cluster-cooperative
+        # top-k =====
+        # Batch 4 x 6 speculative tokens (24 query rows) over a ~107K cache,
+        # top_k=2048: the M0 baseline shape. 24 rows under-fill the GPU, so on
+        # SM90+ `persistent_topk_block_split`'s cluster gate routes these
+        # launches' top-k to `nn/attention/gpu/nvidia/topk_cluster.mojo`
+        # (each row spread over a thread-block cluster); the checks below are
+        # contract-level, so the same cases also cover the histogram selects
+        # on targets without clusters. `check_remap` runs the whole selection
+        # through the indexer's fused sink, so the cluster path's slot
+        # placement is exercised in the op it serves, not only in isolation.
+        print("\n--- GLM MTP decode shape (cluster-cooperative top-k) ---")
+
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=64,
+            depth=128,
+            page_size=128,
+            top_k=2048,
+            mask_name=MaskName.CAUSAL.name,
+            check_remap=True,
+        ](
+            seq_lens=[6, 6, 6, 6],
+            cache_lens=[107226, 107226, 107226, 107226],
+            ctx=ctx,
+        )
+
+        # Same shape under capture-frozen metadata: the stride frozen at
+        # 131072 sits far above every row's live length, and the cluster
+        # top-k's per-row bound must keep the selection valid while its scan
+        # tracks the real lengths.
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=64,
+            depth=128,
+            page_size=128,
+            top_k=2048,
+            mask_name=MaskName.CAUSAL.name,
+        ](
+            seq_lens=[6, 6, 6, 6],
+            cache_lens=[107226, 107226, 107226, 107226],
+            ctx=ctx,
+            metadata_cache_len=131072,
+        )
+
         # ===== Regression: topk out_vals/out_idxs row-stride desync =====
         # GLM-5.1 / DSv3.2 prefix-cached prefill: a multi-token chunk on top of
         # a cached prefix where max_num_keys < top_k, so effective_k =

@@ -4015,6 +4015,14 @@ def persistent_topk_block_split[
     each producing a sorted top-`_TILE` partial, then merged per row (phase 2).
     All other shapes fall back to `persistent_topk_block` unchanged.
 
+    On SM90+ targets (SM12x excluded), at most `_CTOPK_MAX_ROWS` rows that do
+    not fill the GPU instead take the cluster-cooperative kernel
+    (`nn/attention/gpu/nvidia/topk_cluster.mojo`), which spreads each row over
+    a thread-block cluster — and only under the
+    `ordered=False, deterministic=False` contract, which is all that kernel
+    promises; every stronger contract keeps the kernels this docstring
+    otherwise describes.
+
     The score-dtype and pointer-alignment contract is `persistent_topk_block`'s,
     unchanged.
 
@@ -4084,6 +4092,47 @@ def persistent_topk_block_split[
             ctx, in_scores, out_idxs, N, K, total_seq_len, row_bounds
         )
         return
+
+    # Cluster-cooperative tier: rows that under-fill the GPU, where one CTA
+    # per row leaves SMs idle for the whole scan. The kernel matches only the
+    # `ordered=False, deterministic=False` contract (its threshold plateau is
+    # cut first-come), so callers holding a stronger promise keep the selects
+    # below unchanged. Everything the gate reads -- `N`, `rows`, `K`, the
+    # compile target -- is host-known, so a captured device graph replays the
+    # same route.
+    comptime if (
+        ctx.target._is_sm_9x_or_newer()
+        and not ctx.target._is_sm_120x_or_newer()
+    ):
+        comptime if (not ordered) and (not deterministic):
+            from nn.attention.gpu.nvidia.topk_cluster import (
+                _CTOPK_MAX_ROWS,
+                _choose_topk_cluster_size,
+                topk_cluster_split,
+            )
+
+            var sm_count = ctx.get_attribute(
+                DeviceAttribute.MULTIPROCESSOR_COUNT
+            )
+            if (
+                total_seq_len > 0
+                and total_seq_len <= _CTOPK_MAX_ROWS
+                and total_seq_len < sm_count
+                and K <= PERSISTENT_TOPK_MAX_N
+            ):
+                topk_cluster_split[RB=RB](
+                    ctx,
+                    in_scores,
+                    out_idxs,
+                    N,
+                    K,
+                    total_seq_len,
+                    row_bounds,
+                    _choose_topk_cluster_size[ctx.default_device_info.sm_count](
+                        total_seq_len, N
+                    ),
+                )
+                return
 
     if N >= _HSEL_MIN_N:
         # Both selects below want the same question answered: do the rows fill
