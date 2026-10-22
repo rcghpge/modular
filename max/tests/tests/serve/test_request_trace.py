@@ -29,7 +29,6 @@ from fastapi.testclient import TestClient
 from max.pipelines.context import GenerationStatus, TextContext, TokenBuffer
 from max.pipelines.lib import PipelineConfig
 from max.pipelines.modeling.types import RequestID
-from max.serve import request as request_module
 from max.serve.api_server import ServingTokenGeneratorSettings, fastapi_app
 from max.serve.config import APIType, Settings
 from max.serve.pipelines.echo_gen import (
@@ -96,7 +95,7 @@ def spans(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
     provider.add_span_processor(SimpleSpanProcessor(finished))
     tracer = provider.get_tracer("test")
     monkeypatch.setattr(_trace_context, "_tracer", tracer)
-    monkeypatch.setattr(request_module, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
     monkeypatch.setattr(openai_routes, "_tracer", tracer)
     return finished
 
@@ -229,7 +228,7 @@ def test_unsampled_server_span_still_parents_the_request(
     # worker's spans, so parent-based sampling drops them with it.
     tracer = TracerProvider(sampler=ALWAYS_OFF).get_tracer("test")
     monkeypatch.setattr(_trace_context, "_tracer", tracer)
-    monkeypatch.setattr(request_module, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
     app = FastAPI()
     register_request(app)
     seen: list[trace.Span] = []

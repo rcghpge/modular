@@ -25,7 +25,6 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from max.pipelines.context import TextContext, TokenBuffer
 from max.pipelines.modeling.types import RequestID
-from max.serve import request as serve_request
 from max.serve.config import Settings
 from max.serve.request import register_request
 from max.serve.telemetry import common
@@ -43,7 +42,7 @@ def restore_gate(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _open_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     # The gate implies a provider, which the middleware checks first.
-    monkeypatch.setattr(serve_request, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
     monkeypatch.setattr(common, "_trace_level_header_enabled", True)
 
 
@@ -114,7 +113,7 @@ def test_configure_tracing_sets_the_gate(
     for provider in installed:
         provider.shutdown()
     assert bool(installed) is expected_installed
-    assert common._trace_level_header_enabled is expected_gate
+    assert common._trace_level_header_honored() is expected_gate
 
 
 def test_default_never_reads_the_headers(
@@ -132,7 +131,7 @@ def test_default_never_reads_the_headers(
     assert reads == []
 
     # Tracing reads them once, for the inbound trace context.
-    monkeypatch.setattr(serve_request, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
     assert _carrier({"x-max-trace-level": "kernel"}) is None
     assert reads == ["/v1/carrier"]
 

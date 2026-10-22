@@ -21,6 +21,7 @@ from max.serve.scheduler.base import SchedulerProgress
 from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
 )
+from max.serve.telemetry import common
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -47,7 +48,7 @@ def finished(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
     monkeypatch.setattr(
         f"{_SCHEDULER_MODULE}._tracer", provider.get_tracer("test")
     )
-    monkeypatch.setattr(f"{_SCHEDULER_MODULE}._tracing_enabled", lambda: True)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
     return exporter
 
 

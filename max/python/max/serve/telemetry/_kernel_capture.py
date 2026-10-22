@@ -37,7 +37,6 @@ from max.pipelines.context import TextContext
 from max.pipelines.lib import ProfilingConfig
 from max.pipelines.request import RequestID
 from max.serve.config import KernelTraceLevel, Settings
-from max.serve.telemetry import common as telemetry
 from max.serve.telemetry._trace_context import (
     TRACE_LEVEL_HEADER,
     RequestTraceLevel,
@@ -60,20 +59,21 @@ from opentelemetry.trace import (
     set_span_in_context,
 )
 
-_kernel_capture_permitted = False
 
+def configure_kernel_capture(settings: Settings) -> bool:
+    """Loads the profiler plugin for per-request captures, or refuses them.
 
-def kernel_capture_permitted() -> bool:
-    """Returns whether a request's ``x-max-trace-level`` header may arm a
-    kernel capture in this model worker, as decided by
-    :func:`configure_kernel_capture`."""
-    return _kernel_capture_permitted
+    Call it only where trace levels are honored, and before any device is
+    created: on AMD, a plugin loaded later can't record.
 
+    Args:
+        settings: Server settings carrying ``kernel_trace_level``.
 
-def _permit_kernel_capture(level: KernelTraceLevel) -> bool:
-    """Loads the profiler plugin for per-request captures, or refuses them."""
+    Returns:
+        Whether requests may arm kernel captures.
+    """
     logger = logging.getLogger("max.serve")
-    if level == KernelTraceLevel.KERNEL:
+    if settings.kernel_trace_level == KernelTraceLevel.KERNEL:
         # The session-wide capture holds the profiler for the whole run, so
         # no per-request capture could start.
         logger.warning(
@@ -87,23 +87,6 @@ def _permit_kernel_capture(level: KernelTraceLevel) -> bool:
         )
         return False
     return True
-
-
-def configure_kernel_capture(settings: Settings) -> None:
-    """Decides :func:`kernel_capture_permitted`, loading the profiler plugin
-    when it is permitted.
-
-    Must be called in the model worker after ``configure_tracing``, and
-    before any device is created: on AMD, a plugin loaded later can't record.
-
-    Args:
-        settings: Server settings carrying ``kernel_trace_level``.
-    """
-    global _kernel_capture_permitted
-    _kernel_capture_permitted = (
-        telemetry._trace_level_header_enabled
-        and _permit_kernel_capture(settings.kernel_trace_level)
-    )
 
 
 @dataclasses.dataclass(frozen=True)

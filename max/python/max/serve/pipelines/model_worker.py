@@ -24,7 +24,7 @@ from contextlib import (
     asynccontextmanager,
 )
 from multiprocessing.synchronize import Event
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import uvloop
 from max.driver import (
@@ -90,32 +90,37 @@ from max.serve.worker_interface.lora_request_processor import (
     LoRARequestProcessor,
 )
 
+# Annotation only: _configure_kernel_capture() imports the module lazily.
+if TYPE_CHECKING:
+    from max.serve.telemetry._kernel_capture import KernelCapture
+
 logger = logging.getLogger("max.serve")
 
 GiB = 1024 * 1024 * 1024
 
 
 def _configure_kernel_capture(
-    settings: Settings, pipeline_role: PipelineRole
-) -> bool:
-    """Returns whether requests may arm kernel captures in this worker,
+    settings: Settings, pipeline_role: PipelineRole, profiling: ProfilingConfig
+) -> KernelCapture | None:
+    """Returns the scheduler's kernel capture if requests may arm one here,
     loading the profiler plugin if they may."""
     # Only load_scheduler's prefill_and_decode scheduler takes a capture, so
     # other roles skip the profiler plugin, though non-text pipelines in that
     # role still load it, harmlessly.
     if (
-        not telemetry._trace_level_header_enabled
+        not telemetry._trace_level_header_honored()
         or pipeline_role != "prefill_and_decode"
     ):
-        return False
+        return None
     # Lazy so default startup skips the capture module.
     from max.serve.telemetry._kernel_capture import (
+        KernelCapture,
         configure_kernel_capture,
-        kernel_capture_permitted,
     )
 
-    configure_kernel_capture(settings)
-    return kernel_capture_permitted()
+    return (
+        KernelCapture(profiling) if configure_kernel_capture(settings) else None
+    )
 
 
 def _configure_worker_tracing(
@@ -374,10 +379,13 @@ class ModelWorker:
         configure_logging(settings, sets_request_ids=False)
         configure_kernel_tracing(settings)
         pipeline_role = pipeline_config.runtime.pipeline_role
+        kernel_capture = _configure_kernel_capture(
+            settings, pipeline_role, pipeline_config.profiling
+        )
         _warn_raised_kernel_trace_limits(
             pipeline_config.profiling,
             pipeline_role,
-            _configure_kernel_capture(settings, pipeline_role),
+            kernel_capture is not None,
         )
         pid = os.getpid()
         logger.debug("Starting model worker on process %d!", pid)
@@ -554,6 +562,7 @@ class ModelWorker:
                 settings,
                 worker_queues,
                 memory_plan,
+                kernel_capture=kernel_capture,
             )
 
             # Get the reset prefix cache backend.

@@ -161,22 +161,20 @@ def test_no_link_warning_in_a_disaggregated_worker(
         (True, "prefill_and_decode", True, True),
     ],
 )
-def test_configure_kernel_capture_returns_the_permission(
+def test_worker_builds_a_capture_only_when_permitted(
     monkeypatch: pytest.MonkeyPatch,
     headers: bool,
     role: PipelineRole,
     permitted: bool,
     expected: bool,
 ) -> None:
-    """The worker warns about the capture limits only when it may capture."""
     monkeypatch.setattr(common, "_trace_level_header_enabled", headers)
     monkeypatch.setattr(
-        _kernel_capture, "configure_kernel_capture", lambda settings: None
+        _kernel_capture, "configure_kernel_capture", lambda settings: permitted
     )
-    monkeypatch.setattr(
-        _kernel_capture, "kernel_capture_permitted", lambda: permitted
-    )
-    assert model_worker._configure_kernel_capture(Settings(), role) is expected
+    limits = ProfilingConfig()
+    capture = model_worker._configure_kernel_capture(Settings(), role, limits)
+    assert (capture and capture._limits) is (limits if expected else None)
 
 
 @pytest.mark.parametrize(("links", "kept"), [(64, 128), (129, 129)])

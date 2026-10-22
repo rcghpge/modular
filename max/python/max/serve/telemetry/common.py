@@ -23,12 +23,11 @@ import platform
 import signal
 import threading
 import uuid
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from time import time
 from types import FrameType
-from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import requests
@@ -87,11 +86,6 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import set_tracer_provider
 from opentelemetry.util.types import Attributes
 from pythonjsonlogger import jsonlogger
-
-if TYPE_CHECKING:
-    # For annotations only: the CLI imports this module early.
-    from max.pipelines.context import TextContext
-    from max.pipelines.request import RequestID
 
 otelBaseUrl = "https://telemetry.modular.com:443"
 
@@ -153,8 +147,8 @@ _trace_level_header_enabled = False
 """Whether per-request trace levels are honored in this process: the API
 server reads the ``x-max-trace-level`` header and the model worker may arm
 captures. Set by :func:`configure_tracing` when it installs a provider and
-``kernel_trace_headers`` is on. Read it through the module: that call
-rebinds it."""
+``kernel_trace_headers`` is on. That call rebinds it, so read it through
+``_trace_level_header_honored()``, or through the module per request."""
 
 
 def _tracing_enabled() -> bool:
@@ -1104,79 +1098,9 @@ def batch_spans_enabled() -> bool:
     return _kernel_trace_level >= KernelTraceLevel.BATCH
 
 
-def _sampled_link(parent: OtelContext) -> trace.Link | None:
-    """Returns a link to the span in ``parent``, or None when it has none or
-    it is not sampled, since an unsampled span is never exported.
-
-    Args:
-        parent: A request's context, as extracted from its trace carrier.
-    """
-    span_context = trace.get_current_span(parent).get_span_context()
-    if span_context.is_valid and span_context.trace_flags.sampled:
-        return trace.Link(span_context)
-    return None
-
-
-class _BatchLinks:
-    """The links from the scheduler's ``max.batch`` spans to their members'
-    sampled request spans, kept from admission until each request leaves.
-
-    Args:
-        link_every_member: Whether every member is linked, as at global level
-            ``batch`` or higher, rather than only traced members.
-        max_links: The most links one ``max.batch`` span keeps.
-    """
-
-    def __init__(self, link_every_member: bool, max_links: int) -> None:
-        self._link_every_member = link_every_member
-        self._max_links = max_links
-        self._links: dict[RequestID, trace.Link] = {}
-
-    def admit(
-        self, request_id: RequestID, parent: OtelContext | None, traced: bool
-    ) -> None:
-        """Keeps a link to a new request's span if its passes link to it.
-
-        Args:
-            request_id: The request.
-            parent: The request's context, from its trace carrier.
-            traced: Whether the request is traced.
-        """
-        if parent is None or not (traced or self._link_every_member):
-            return
-        if (link := _sampled_link(parent)) is not None:
-            self._links[request_id] = link
-
-    def for_pass(
-        self,
-        batch: Sequence[TextContext],
-        is_traced: Callable[[RequestID], bool] | None,
-    ) -> list[trace.Link]:
-        """Returns a pass's links, and over the cap keeps traced members'
-        first, so the requests that asked for the pass's capture can find it.
-
-        Args:
-            batch: The pass's requests.
-            is_traced: Says whether a request is traced, as the scheduler's
-                kernel capture does, or None without a capture.
-        """
-        members = [
-            ctx.request_id for ctx in batch if ctx.request_id in self._links
-        ]
-        if len(members) > self._max_links and is_traced is not None:
-            members.sort(key=lambda r: not is_traced(r))
-        return [self._links[r] for r in members[: self._max_links]]
-
-    def drop_untraced(self, request_ids: Iterable[RequestID]) -> None:
-        """Drops the links of running requests that are no longer traced,
-        which only traced requests have below global level ``batch``."""
-        if not self._link_every_member:
-            for request_id in request_ids:
-                self._links.pop(request_id, None)
-
-    def drop(self, request_id: RequestID) -> None:
-        """Drops the link of a request that has left."""
-        self._links.pop(request_id, None)
+def _trace_level_header_honored() -> bool:
+    """Returns whether per-request trace levels are honored in this process."""
+    return _trace_level_header_enabled
 
 
 def _exit_on_sigterm(signum: int, frame: FrameType | None) -> None:

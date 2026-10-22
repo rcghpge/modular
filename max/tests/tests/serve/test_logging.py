@@ -34,10 +34,8 @@ from max.pipelines.modeling.types import (
     RequestID,
     TextGenerationInputs,
 )
-from max.serve import request as request_module
 from max.serve.config import KernelTraceLevel, Settings
 from max.serve.request import register_request
-from max.serve.scheduler import text_generation_scheduler
 from max.serve.scheduler.config import TokenGenerationSchedulerConfig
 from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
@@ -224,7 +222,7 @@ def test_middleware_stamps_both_ids_on_an_arbitrary_route(
     # covers the wiring. This route builds no max.request span, which is what
     # makes it a test of "every route". The server span needs a real tracer
     # to continue the inbound trace.
-    monkeypatch.setattr(request_module, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
     monkeypatch.setattr(
         _trace_context, "_tracer", TracerProvider().get_tracer("test")
     )
@@ -309,9 +307,7 @@ def test_batch_id_is_scoped_to_the_forward_pass(
     # The record the pipeline logs mid-pass carries the batch ID; one logged
     # after the pass must not keep the finished batch's ID. The batch_metrics
     # line names the pass it reports: under overlap, the completed one.
-    monkeypatch.setattr(
-        text_generation_scheduler, "_tracing_enabled", lambda: True
-    )
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
 
     def execute(
         inputs: TextGenerationInputs[TextContext],
@@ -337,9 +333,7 @@ def test_batch_id_is_not_set_without_tracing(
 ) -> None:
     # Nothing reads it then, even with structured logging on, so a forward
     # pass must not pay to set it.
-    monkeypatch.setattr(
-        text_generation_scheduler, "_tracing_enabled", lambda: False
-    )
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: False)
     seen: list[int | None] = []
 
     def execute(
@@ -363,7 +357,7 @@ def test_middleware_captures_the_context_only_when_something_reads_it(
 ) -> None:
     # Structured logs read only the request ID, and spans and dd.trace_id
     # need tracing, so the middleware must capture no more than that.
-    monkeypatch.setattr(request_module, "_tracing_enabled", lambda: tracing)
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: tracing)
     app = FastAPI()
     register_request(app, structured_logging=structured_logging)
     seen: list[object] = []
@@ -393,7 +387,6 @@ def test_structured_logging_without_tracing_adds_only_the_request_id(
     # The MAX container images turn structured logging on. With tracing off
     # its lines carry request_id, but no dd.trace_id field.
     monkeypatch.setattr(common, "_tracing_enabled", lambda: False)
-    monkeypatch.setattr(request_module, "_tracing_enabled", lambda: False)
     log_path = tmp_path / "max-serve.json"
     _configure_structured(log_path)
     app = FastAPI()
