@@ -341,6 +341,22 @@ def test_openai_parse_rejects_unknown_role() -> None:
         CreateChatCompletionRequest.model_validate(request_data)
 
 
+@pytest.mark.parametrize("field", ["max_tokens", "max_completion_tokens"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_openai_chat_completion_rejects_non_positive_token_limit(
+    field: str, value: int
+) -> None:
+    """OpenAI rejects token limits below 1 rather than generating one token."""
+    with pytest.raises(ValidationError):
+        CreateChatCompletionRequest.model_validate(
+            {
+                "model": "test",
+                "messages": [{"role": "user", "content": "hi"}],
+                field: value,
+            }
+        )
+
+
 def test_openai_chat_completion_accepts_prompt_tokens() -> None:
     """Schema must accept ``prompt_tokens`` (orchestrator pre-tokenized input).
 

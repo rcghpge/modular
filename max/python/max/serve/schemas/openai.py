@@ -469,8 +469,8 @@ class CreateChatCompletionRequest(
     model: str
     messages: list[ChatCompletionMessageParam] = Field(min_length=1)
 
-    max_tokens: int | None = None
-    max_completion_tokens: int | None = None
+    max_tokens: int | None = Field(default=None, ge=1)
+    max_completion_tokens: int | None = Field(default=None, ge=1)
 
     # Re-typed from the SDK union so the ``json_schema`` arm advertises a
     # boolean ``schema`` (a valid JSON Schema). Pydantic emits a plain dict;
