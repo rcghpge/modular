@@ -42,6 +42,7 @@ from max.graph import TensorValue, ops
 from max.nn.attention import MHAMaskVariant
 from max.nn.quant_config import QuantConfig
 
+from ...deepseekV3_2.layers.sparse_mla import sparse_selection_width
 from .indexer import Indexer
 
 logger = logging.getLogger("max.pipelines")
@@ -53,10 +54,11 @@ logger = logging.getLogger("max.pipelines")
 # than tripping the kernel's comptime assert.
 _SPARSE_PREFILL_SUPPORTED_HEADS = (64, 128)
 # GLM 5.2's TP-sharded counts (64 // {8, 4, 2}) route to the combined op over a
-# bfloat16 OR float8_e4m3fn latent cache.  The combined op's prefill arm takes
-# the sparse-prefill kernel for both cache dtypes, so the absorbed sparse path
-# -- not the dense unabsorbed FP8 prefill, whose extra Q/K/V requantization
-# cost accuracy -- runs for FP8-cache prefill at these head counts.
+# bfloat16, float8_e4m3fn or NVFP4 (uint8) latent cache.  The combined op's
+# prefill arm takes the sparse-prefill kernel for each cache dtype, so the
+# absorbed sparse path -- not the dense unabsorbed FP8 prefill, whose extra
+# Q/K/V requantization cost accuracy -- runs for FP8-cache prefill at these
+# head counts.
 _SPARSE_PREFILL_TP_SHARDED_HEADS = (8, 16, 32)
 
 # Master gate for the sparse-MLA *prefill* kernel. When False, prefill is
@@ -92,6 +94,7 @@ def _sparse_prefill_head_count_supported(
     return n_heads in _SPARSE_PREFILL_TP_SHARDED_HEADS and cache_dtype in (
         DType.bfloat16,
         DType.float8_e4m3fn,
+        DType.uint8,
     )
 
 
@@ -512,7 +515,9 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
             self.kv_a_proj_layernorm,
             mla_prefill_metadata,
             sparse_indices=topk_indices,
-            sparse_indices_stride=self.index_topk,
+            sparse_indices_stride=sparse_selection_width(
+                self.kv_params, self.index_topk
+            ),
             selection_lag=selection_lag,
         )
 

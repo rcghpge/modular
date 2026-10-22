@@ -56,6 +56,9 @@ from max.nn.kv_cache import (
     MLAKVCacheParams,
 )
 from max.nn.quant_config import QuantConfig
+from max.pipelines.architectures.deepseekV3.model_config import (
+    mla_kv_cache_quant_config,
+)
 from max.pipelines.architectures.deepseekV3_2_modulev3.layers.sparse_mla import (
     QuantizedSparseLatentAttentionWithRope,
     tensor_parallel_sparse_latent_attention_with_rope,
@@ -119,6 +122,8 @@ def _build_kv_collection(
 
     sym_values = {
         "total_num_pages": n_pages,
+        # An NVFP4 cache pages its scales in a pool of their own.
+        "total_num_scale_pages": n_pages,
         "batch_size": batch_size,
         "max_num_pages": n_pages,
         "steps_remaining": 2,
@@ -501,22 +506,38 @@ _SPARSE_V_HEAD_DIM = 256
 _SPARSE_CACHE_HEAD_DIM = _SPARSE_KV_LORA_RANK + _QK_ROPE_HEAD_DIM
 _SPARSE_SCALE_WEIGHTS = ("w_uk", "w_uv", "w_k")
 _DENSE_PLANNER = "mo.mla.prefill.ragged.plan"
+_SPARSE_TOPK = 64
 
 
-def _make_sparse_layer(
-    devices: Sequence[Device],
-    quant_config: QuantConfig,
-    *,
-    graph_mode: str = "decode",
-) -> QuantizedSparseLatentAttentionWithRope:
-    kv_params = MLAKVCacheParams(
-        dtype=DType.float32,
+def _make_sparse_kv_params(
+    devices: Sequence[Device], dtype: DType = DType.float32
+) -> MLAKVCacheParams:
+    """Returns a latent cache of `dtype`; `uint8` is the packed NVFP4 one."""
+    return MLAKVCacheParams(
+        dtype=dtype,
         head_dim=_SPARSE_CACHE_HEAD_DIM,
         num_layers=1,
         devices=[DeviceRef.from_device(device) for device in devices],
         num_q_heads=_SPARSE_N_HEADS,
         page_size=_PAGE_SIZE,
+        kvcache_quant_config=mla_kv_cache_quant_config(dtype, _QK_ROPE_HEAD_DIM)
+        if dtype == DType.uint8
+        else None,
     )
+
+
+def _make_sparse_layer(
+    devices: Sequence[Device],
+    quant_config: QuantConfig | None,
+    *,
+    graph_mode: str = "decode",
+    kv_params: MLAKVCacheParams | None = None,
+    indexer_quant_config: QuantConfig | None = None,
+) -> QuantizedSparseLatentAttentionWithRope:
+    if kv_params is None:
+        kv_params = _make_sparse_kv_params(devices)
+    indexer_quant_config = indexer_quant_config or quant_config
+    assert indexer_quant_config is not None
     return QuantizedSparseLatentAttentionWithRope(
         num_attention_heads=_SPARSE_N_HEADS,
         num_key_value_heads=1,
@@ -532,8 +553,8 @@ def _make_sparse_layer(
         quant_config=quant_config,
         index_n_heads=4,
         index_head_dim=128,
-        index_topk=64,
-        indexer_quant_config=quant_config,
+        index_topk=_SPARSE_TOPK,
+        indexer_quant_config=indexer_quant_config,
     )
 
 
@@ -918,3 +939,114 @@ def test_dense_mla_prefill_metadata_retains_planner(
         ir = str(Graph.current._mlir_op)
 
     assert _DENSE_PLANNER in ir
+
+
+# --------------------------------------------------------------------------- #
+# NVFP4 latent cache
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("cache_dtype", "stride"),
+    [(DType.float8_e4m3fn, _SPARSE_TOPK), (DType.uint8, 2 * _SPARSE_TOPK)],
+)
+def test_sparse_mla_passes_the_cache_selection_width(
+    mock_accelerator: MagicMock,
+    fp8_quant_config: QuantConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    cache_dtype: DType,
+    stride: int,
+) -> None:
+    """An NVFP4 cache's selection rows carry scale rows after value rows."""
+    device = mock_accelerator()
+    seen: dict[str, object] = {}
+
+    def record(*args: object, **kwargs: object) -> Tensor:
+        seen.update(kwargs)
+        return Tensor.zeros(
+            [4, _SPARSE_N_HEADS * _SPARSE_V_HEAD_DIM],
+            dtype=DType.bfloat16,
+            device=device,
+        )
+
+    with F.lazy(), default_dtype(DType.bfloat16):
+        layer = _make_sparse_layer(
+            [device],
+            None,
+            kv_params=_make_sparse_kv_params([device], cache_dtype),
+            indexer_quant_config=fp8_quant_config,
+        ).to(device)
+        monkeypatch.setattr(layer, "_mla_impl", record)
+        layer(
+            Tensor.zeros([4, _HIDDEN_SIZE], device=device),
+            MagicMock(),
+            MagicMock(),
+            Tensor.zeros([4, _QK_ROPE_HEAD_DIM], device=device),
+            F.constant(0, DType.uint32, device=CPU()),
+            Tensor.zeros([2], dtype=DType.uint32),
+            prev_topk_indices=Tensor.zeros(
+                [4, stride], dtype=DType.int32, device=device
+            ),
+            reuse_prev_topk=True,
+        )
+
+    assert seen["sparse_indices_stride"] == stride
+
+
+def test_sparse_mla_nvfp4_prefill_keeps_tp_sharded_heads(
+    mock_accelerator: MagicMock, fp8_quant_config: QuantConfig
+) -> None:
+    """A TP-sharded head count prefills through the sparse prefill kernel.
+
+    Falling back would run every NVFP4 prefill through the decode kernel.
+    """
+    device = mock_accelerator()
+    with F.lazy():
+        layer = _make_sparse_layer(
+            [device],
+            None,
+            graph_mode="auto",
+            kv_params=_make_sparse_kv_params([device], DType.uint8),
+            indexer_quant_config=fp8_quant_config,
+        )
+    assert layer._effective_graph_mode() == "auto"
+
+
+@pytest.mark.parametrize("graph_mode", ["decode", "auto"])
+def test_sparse_mla_nvfp4_forward_reads_the_nvfp4_op(
+    mock_accelerator: MagicMock,
+    fp8_quant_config: QuantConfig,
+    sm100_arch: None,
+    graph_mode: str,
+) -> None:
+    """A reused selection over an NVFP4 cache traces the ``.nvfp4`` op."""
+    total_seq_len = 4
+    device = mock_accelerator()
+    mesh = DeviceMesh((device,), (1,), ("axis",))
+    kv_params = _make_sparse_kv_params([device], DType.uint8)
+    with F.lazy(), default_dtype(DType.bfloat16):
+        layer = _make_sparse_layer(
+            [device],
+            None,
+            graph_mode=graph_mode,
+            kv_params=kv_params,
+            indexer_quant_config=fp8_quant_config,
+        ).to(device)
+        out, _ = layer(
+            Tensor.zeros([total_seq_len, _HIDDEN_SIZE], device=device),
+            _build_kv_collection(kv_params, 1, 4, mesh),
+            MagicMock(),
+            Tensor.zeros([total_seq_len, _QK_ROPE_HEAD_DIM], device=device),
+            F.constant(0, DType.uint32, device=CPU()),
+            Tensor.zeros([2], dtype=DType.uint32, device=device),
+            prev_topk_indices=Tensor.zeros(
+                [total_seq_len, 2 * _SPARSE_TOPK],
+                dtype=DType.int32,
+                device=device,
+            ),
+            reuse_prev_topk=True,
+        )
+        ir = str(Graph.current._mlir_op)
+
+    assert list(out.shape) == [total_seq_len, _HIDDEN_SIZE]
+    assert ".nvfp4" in ir

@@ -47,6 +47,7 @@ from max.pipelines.speculative.driver import (
 )
 from max.pipelines.speculative.spec_target import Verified
 
+from ..deepseekV3_2.layers.sparse_mla import sparse_selection_width
 from ..deepseekV3_2_modulev3.deepseekV3_2 import (
     DeepseekV3_2,
     project_to_logits,
@@ -149,7 +150,10 @@ class Glm5_2ModuleV3MTPProposer(TensorAdapter):
         self.mesh = mesh
         self.hidden_dim: DimLike = draft.config.hidden_size
         self.reuse: ReuseSpec | None = ReuseSpec(
-            dim=draft.config.index_topk, split_prefix="mtp_topk"
+            dim=sparse_selection_width(
+                draft.config.mla_kv_params, draft.config.index_topk
+            ),
+            split_prefix="mtp_topk",
         )
 
     def prefill(
