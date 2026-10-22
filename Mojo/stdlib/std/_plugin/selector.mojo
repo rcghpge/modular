@@ -38,8 +38,12 @@ struct PluginSelector[
     //,
     *PluginTypes: Trait,
 ]:
-    """Selects one of `PluginTypes` by matching a target's `stdlib_plugin`
-    field against each plugin's `name`.
+    """Selects one of `PluginTypes` by matching the `name` of the stdlib plugin
+    selected for a target against each plugin's `name`.
+
+    Keying off the stdlib's choice, rather than the target's `stdlib_plugin`
+    field, means a GPU target named only by its triple gets its vendor's plugin
+    in every registry, not just in the stdlib.
 
     The selected plugin is not yet specialized to a target; callers apply it
     with `HookFor`, for example
@@ -66,12 +70,7 @@ struct PluginSelector[
         """Returns whether plugin `idx` matches `target`."""
         return __mlir_attr[
             `#kgen.param.identical<`,
-            __mlir_attr[
-                `#kgen.param.expr<target_get_field,`,
-                target,
-                `, "stdlib_plugin" : !kgen.string`,
-                `> : !kgen.string`,
-            ],
+            CompilationTarget[_mlir_value=target]._std_plugin.name,
             `,`,
             Self.PluginTypes._get_type_at_index[idx].name,
             `> : !kgen.scalar<bool>`,

@@ -13,8 +13,8 @@
 """Selects the active `PluginHooks` used by the stdlib.
 
 `CurrentPlugin` is selected from the current target's opaque plugin payload.
-Targets without a payload use `DefaultPlugin`, which leaves every hook at its
-default value.
+A GPU target without a payload gets its vendor's plugin, and any other target
+without one gets `DefaultPlugin`, which leaves every hook at its default value.
 """
 
 from std.sys.info import CompilationTarget

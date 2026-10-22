@@ -63,9 +63,9 @@ comptime _NO_CLUSTER_ID_NOTE = (
 )
 
 comptime _NO_GPU_ID_HOOK_NOTE = (
-    "the target's stdlib plugin does not provide `gpu_id_fn`. A GPU target"
-    " built without a plugin, such as one named only by its triple, gets the"
-    " default plugin; use a target from `get_gpu_target()` instead."
+    "the target's stdlib plugin does not provide `gpu_id_fn`. NVIDIA, AMD, and"
+    " Apple GPU targets get one, whether from `get_gpu_target()` or named only"
+    " by their triple."
 )
 
 

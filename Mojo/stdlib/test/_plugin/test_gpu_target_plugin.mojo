@@ -16,10 +16,13 @@ from std.testing import assert_equal, assert_false, assert_true, TestSuite
 from std.sys.info import CompilationTarget
 from std.sys.intrinsics import PrefetchOptions
 
-from std._plugin import DefaultPluginHooks
-from std._plugin.metal import MetalPluginHooks
-from std._plugin.cuda import CUDAPluginHooks
-from std._plugin.hip import HIPPluginHooks
+from std.builtin.variadics import TypeList
+
+from std._plugin import DefaultPlugin, DefaultPluginHooks
+from std._plugin.metal import MetalPlugin, MetalPluginHooks
+from std._plugin.cuda import CUDAPlugin, CUDAPluginHooks
+from std._plugin.hip import HIPPlugin, HIPPluginHooks
+from std._plugin.selector import PluginSelector
 
 from max.gpu.host.info import (
     _a100_target,
@@ -32,6 +35,38 @@ from max.gpu.host.info import (
 comptime _host_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "x86_64-unknown-linux-gnu", arch = "x86-64"> : !kgen.target`
+    ]
+]()
+
+# Named only by their triple, as `--target-triple` builds them: no plugin payload.
+comptime _bare_nvptx_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", arch = "sm_90"> : !kgen.target`
+    ]
+]()
+comptime _bare_sm80_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", arch = "sm_80"> : !kgen.target`
+    ]
+]()
+comptime _bare_amdgcn_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "amdgcn-amd-amdhsa", arch = "gfx942"> : !kgen.target`
+    ]
+]()
+comptime _bare_air_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "air64-apple-macosx", arch = "apple-m4"> : !kgen.target`
+    ]
+]()
+
+# An NVIDIA triple whose payload names `DefaultPlugin`, as an out-of-tree plugin
+# would name its own.
+comptime _nvptx_default_payload_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", opaque_plugin = `,
+        TypeList.of[DefaultPlugin]().values,
+        `, arch = "sm_90"> : !kgen.target`,
     ]
 ]()
 
@@ -111,6 +146,44 @@ def test_payload_plugin_selection() raises:
     comptime assert _h100_target.stdlib_plugin == CUDAPluginHooks[_h100_target]
     comptime assert _mi300x_target.stdlib_plugin == HIPPluginHooks[_mi300x_target]
     comptime assert _metal_m1_target.stdlib_plugin == MetalPluginHooks[_metal_m1_target]
+    # fmt: on
+
+
+def test_payloadless_target_gets_vendor_plugin() raises:
+    # fmt: off
+    comptime assert _bare_nvptx_target.stdlib_plugin == CUDAPluginHooks[_bare_nvptx_target]
+    comptime assert _bare_amdgcn_target.stdlib_plugin == HIPPluginHooks[_bare_amdgcn_target]
+    comptime assert _bare_air_target.stdlib_plugin == MetalPluginHooks[_bare_air_target]
+    # fmt: on
+
+
+def test_payload_wins_over_vendor_default() raises:
+    # fmt: off
+    comptime assert _nvptx_default_payload_target.stdlib_plugin == DefaultPluginHooks[_nvptx_default_payload_target]
+    # fmt: on
+
+
+def test_vendor_default_specializes_on_target_arch() raises:
+    # bfloat16 `exp2` has a native lowering only from SM90.
+    comptime assert not _bare_sm80_target.stdlib_plugin.unary_math_fn[
+        .exp2, DType.bfloat16, 1
+    ]
+    comptime assert _bare_nvptx_target.stdlib_plugin.unary_math_fn[
+        .exp2, DType.bfloat16, 1
+    ]
+
+
+def test_registry_follows_stdlib_plugin() raises:
+    comptime selector = PluginSelector[
+        DefaultPlugin, MetalPlugin, CUDAPlugin, HIPPlugin
+    ]
+    # fmt: off
+    comptime assert selector.for_target[_host_target._mlir_value] == DefaultPlugin
+    comptime assert selector.for_target[_h100_target._mlir_value] == CUDAPlugin
+    comptime assert selector.for_target[_bare_nvptx_target._mlir_value] == CUDAPlugin
+    comptime assert selector.for_target[_bare_amdgcn_target._mlir_value] == HIPPlugin
+    comptime assert selector.for_target[_bare_air_target._mlir_value] == MetalPlugin
+    comptime assert selector.for_target[_nvptx_default_payload_target._mlir_value] == DefaultPlugin
     # fmt: on
 
 

@@ -27,7 +27,8 @@ from std.collections.string.string_span import _get_kgen_string
 from std.ffi import _external_call_const, external_call
 
 from std._plugin.selector import TargetPluginSelector
-from std._plugin import StdPlugin, DefaultPlugin, PluginHooks
+from std._plugin import StdPlugin, PluginHooks
+from std._plugin._triple_default import _default_std_plugin
 
 comptime _TargetType = __mlir_type.`!kgen.target`
 
@@ -344,9 +345,16 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
         default: The default implementation of `Trait` to use if no conforming plugin is set.
     """
 
-    comptime stdlib_plugin: PluginHooks = Self._first_conforming_plugin[
-        StdPlugin, default=DefaultPlugin
-    ].HookFor[Self()]
+    comptime _std_plugin: StdPlugin = Self._first_conforming_plugin[
+        StdPlugin, default=_default_std_plugin[Self()]
+    ]
+    """The stdlib plugin selected for this target, before specialization.
+
+    Other plugin registries select their own plugin by this plugin's `name`, so
+    every registry agrees on a target's vendor.
+    """
+
+    comptime stdlib_plugin: PluginHooks = Self._std_plugin.HookFor[Self()]
     """The stdlib plugin to use for this target."""
 
     # ===----------------------------------------------------------------------=== #
