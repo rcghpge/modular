@@ -1376,10 +1376,9 @@ ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
         parentDecl.getContext(), Twine(name.getValue()) + ".__error_module");
     FileModuleOp moduleOp = FileModuleOp::create(
         builder, shared.translateLocation(loc), symbolName);
-    ASTDecl &decl = shared.declResolver->addDecl(
+    auto &moduleDecl = cast<FileModuleASTDecl>(shared.declResolver->addDecl(
         moduleOp.getOperation(), loc, StringAttr(), &parentDecl, LexerCursor(),
-        LexerCursor(), /*indentation=*/-1);
-    auto &moduleDecl = cast<FileModuleASTDecl>(decl);
+        LexerCursor(), /*indentation=*/-1));
     moduleDecl.resolvedness = DeclResolvedness::body;
     moduleDecl.setErroneous();
     state = std::make_unique<ModuleState>(&moduleDecl);

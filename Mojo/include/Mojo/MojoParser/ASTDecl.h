@@ -1056,12 +1056,8 @@ public:
   UnresolvedImportOp getIfUnresolvedOp() const {
     return dyn_cast_if_present<UnresolvedImportOp>(getIfOperation());
   }
-  UnresolvedWildcardImportOp getIfWildcardOp() const {
-    return dyn_cast_if_present<UnresolvedWildcardImportOp>(getIfOperation());
-  }
   bool isResolved() const { return bool(getIfResolvedOp()); }
   bool isUnresolved() const { return bool(getIfUnresolvedOp()); }
-  bool isWildcard() const { return bool(getIfWildcardOp()); }
   void setResolvedOp(ImportOp op) { setOperation(*op.getOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;

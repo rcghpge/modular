@@ -2686,7 +2686,7 @@ LogicalResult PackageASTDecl::resolvePackage() {
 
   // Resolve __init__ (the public surface) if present, inheriting its docstring.
   if (std::filesystem::exists(directory / "__init__.mojo", ec) && !ec) {
-    ASTDecl &initModule = shared.importModule(
+    ModuleASTDecl &initModule = shared.importModule(
         SharedState::ImportPath({"__init__"}, /*relativeLevel=*/1), op,
         getLoc());
     if (!initModule.isErroneous()) {

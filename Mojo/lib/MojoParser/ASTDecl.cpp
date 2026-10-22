@@ -392,8 +392,7 @@ ImportASTDecl::ImportASTDecl(SharedState &shared, Operation &importOp,
                              ssize_t indentation)
     : OpASTDecl(Kind::Import, shared, importOp, loc, parentDecl, cursor,
                 endCursor, indentation) {
-  assert((isa<ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp>(
-             importOp)) &&
+  assert((isa<ImportOp, UnresolvedImportOp>(importOp)) &&
          "expected an import operation");
 }
 

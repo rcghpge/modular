@@ -4624,7 +4624,7 @@ ParseResult StmtParser::parseImportStmt() {
     // missing module is reported eagerly (this locates the module file; it does
     // not parse its body). This one call records the dep edges for both
     // binding forms below.
-    ASTDecl &module = shared.importModule(
+    ModuleASTDecl &module = shared.importModule(
         modulePath, /*currentPackage=*/nullptr, importLoc, curDeclScope);
 
     if (!boundModuleName.has_value()) {

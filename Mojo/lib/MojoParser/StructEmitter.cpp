@@ -1244,8 +1244,8 @@ static constexpr StringLiteral kEnumStorageGetterName = "__get_enum_storage";
 ASTDecl *LIT::lookupEnumSupportDecl(SharedState &shared, StringRef name,
                                     SMLoc loc) {
   if (shared.hasBuiltinModule()) {
-    ASTDecl &module = shared.importModule({"std", "builtin", "_enum"},
-                                          /*currentPackage=*/nullptr, loc);
+    ModuleASTDecl &module = shared.importModule(
+        {"std", "builtin", "_enum"}, /*currentPackage=*/nullptr, loc);
     LookupResult result = shared.lookupAndResolveDecl(
         name, loc, module, /*searchParentScopes=*/false);
     if (result.isSuccess() && result.getIfSuccess().size() == 1)

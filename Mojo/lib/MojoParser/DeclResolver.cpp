@@ -205,8 +205,7 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *op, SMLoc loc,
   } else if (auto caseOp = dyn_cast_if_present<EnumCaseOp>(op)) {
     decl = shared.persistentAllocator.create<EnumCaseASTDecl>(
         shared, caseOp, loc, parentDecl, cursor, endCursor, indentation);
-  } else if (isa_and_nonnull<ImportOp, UnresolvedImportOp,
-                             UnresolvedWildcardImportOp>(op)) {
+  } else if (isa_and_nonnull<ImportOp, UnresolvedImportOp>(op)) {
     decl = shared.persistentAllocator.create<ImportASTDecl>(
         shared, *op, loc, parentDecl, cursor, endCursor, indentation);
   } else if (auto fieldOp = dyn_cast_if_present<StructFieldOp>(op)) {
@@ -1334,12 +1333,9 @@ LogicalResult DeclResolver::importDeclFromModule(
     SMLoc destNameLoc, bool resolveTarget) {
 
   auto modulePath = SharedState::ImportPath::fromAttr(moduleName);
-  // A failed import yields an erroneous placeholder (a plain ASTDecl backed by
-  // no operation), so keep this a ModuleASTDecl-tolerant lookup until the
-  // erroneous check below has ruled the placeholder out.
-  ASTDecl &imported =
+  ModuleASTDecl &module =
       shared.importModule(modulePath, currentPackage, loc, /*importer=*/&dest);
-  shared.notifyListenerOnModuleImport(imported, modulePath, loc);
+  shared.notifyListenerOnModuleImport(module, modulePath, loc);
 
   // A relative self-import written inside a package's __init__ (`from . import
   // sub`) would, via the package->__init__ redirect, look up the submodule in
@@ -1351,8 +1347,8 @@ LogicalResult DeclResolver::importDeclFromModule(
   // is still resolving; this one fires once the body is resolved but a specific
   // re-export binding inside it is being resolved on demand.
   bool selfReferential = false;
-  ASTDecl *initDecl = nullptr;
-  if (auto *package = dyn_cast<PackageASTDecl>(&imported)) {
+  ModuleASTDecl *initDecl = nullptr;
+  if (auto *package = dyn_cast<PackageASTDecl>(&module)) {
     if (auto initOrFail = package->resolveInitModule(loc);
         succeeded(initOrFail)) {
       initDecl = *initOrFail;
@@ -1370,20 +1366,18 @@ LogicalResult DeclResolver::importDeclFromModule(
   LookupResult result =
       selfReferential
           ? LookupResult::getFailure({})
-          : shared.lookupAndResolveDecl(sourceName, sourceNameLoc, imported,
+          : shared.lookupAndResolveDecl(sourceName, sourceNameLoc, module,
                                         /*searchParentScopes=*/false,
                                         /*resolveTarget=*/resolveTarget);
   if (result.isErroneous())
     return failure();
 
-  // Only now is the import known to name a real module or package.
-  auto &module = cast<ModuleASTDecl>(imported);
   SmallVector<ASTDecl *> results;
   if (result.isFailure()) {
     // The name was not bound in the module's (or, for a package, its
     // __init__'s) scope. It may instead be a submodule of the package -
     // resolve it lazily from the filesystem.
-    if (ASTDecl *sub =
+    if (ModuleASTDecl *sub =
             shared.tryImportSubModule(module, sourceName, sourceNameLoc)) {
       results.push_back(sub);
     } else {
@@ -1496,22 +1490,22 @@ LogicalResult DeclResolver::importWildcardDeclsFromModule(
     currentPackage = context.getIfOperation()->getParentOfType<PackageOp>();
 
   // Make sure the module has been resolved.
-  ASTDecl &module = shared.importModule(modulePath, currentPackage, loc,
-                                        /*importer=*/&context);
+  ModuleASTDecl &module = shared.importModule(modulePath, currentPackage, loc,
+                                              /*importer=*/&context);
   if (failed(resolveBody(module, loc)))
     return failure();
 
   // For packages, wildcard-import from __init__'s scope: it holds all
   // re-exported symbols and any sibling-module stubs. A PackageOp's own scope
   // is always empty.
-  ASTDecl *initDecl = nullptr;
+  ModuleASTDecl *initDecl = nullptr;
   if (auto *package = dyn_cast<PackageASTDecl>(&module)) {
-    FailureOr<ASTDecl *> initOrFailure = package->resolveInitModule(loc);
+    FailureOr<ModuleASTDecl *> initOrFailure = package->resolveInitModule(loc);
     if (failed(initOrFailure))
       return failure();
     initDecl = *initOrFailure;
   }
-  ASTDecl &iterScope = initDecl ? *initDecl : module;
+  ModuleASTDecl &iterScope = initDecl ? *initDecl : module;
 
   // Imports a wildcard decl into the current scope. Returns true on failure.
   auto importWildcardDecl = [this, moduleName, &context,
@@ -2097,7 +2091,7 @@ void DeclResolver::exportMain(DefASTDecl &funcDecl) {
   }
 
   // Utility for resolving a decl within the Startup module.
-  ASTDecl &startupModule = shared.importModule(
+  ModuleASTDecl &startupModule = shared.importModule(
       {"std", "builtin", "_startup"}, /*currentPackage=*/nullptr,
       funcDecl.getLoc(), /*importer=*/&funcDecl);
   auto resolveStartDecl = [&](StringRef name) -> DefASTDecl * {

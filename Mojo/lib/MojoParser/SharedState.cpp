@@ -707,10 +707,11 @@ auto SharedState::lookupAndResolveDecl(StringRef name, SMLoc loc,
     // scope. Redirect any lookup *rooted at* a package to __init__, so
     // component access and re-export resolution see the package's symbols.
     if (auto *package = dyn_cast<PackageASTDecl>(&scope)) {
-      FailureOr<ASTDecl *> initOrFailure = package->resolveInitModule(loc);
+      FailureOr<ModuleASTDecl *> initOrFailure =
+          package->resolveInitModule(loc);
       if (failed(initOrFailure))
         return LookupResult::getErroneous();
-      if (ASTDecl *initDecl = *initOrFailure)
+      if (ModuleASTDecl *initDecl = *initOrFailure)
         return lookupAndResolveDecl(name, loc, *initDecl, searchParentScopes,
                                     resolveTarget);
       return LookupResult::getFailure({});
@@ -1071,7 +1072,8 @@ ASTDecl *SharedState::getCachedBuiltinTypeDecl(const ImportPath &path,
       it != impl->builtinTypeDeclCache.end())
     return it->second;
 
-  ASTDecl &moduleDecl = importModule(path, /*currentPackage=*/nullptr, loc);
+  ModuleASTDecl &moduleDecl =
+      importModule(path, /*currentPackage=*/nullptr, loc);
   if (ASTDecl *decl = lookupNamedTypeDecl(name, moduleDecl, loc)) {
     impl->builtinTypeDeclCache.try_emplace(cacheKey, decl);
     return decl;
@@ -1094,7 +1096,7 @@ ASTDecl *SharedState::getBuiltinCoroutineType(llvm::SMLoc loc) {
 }
 
 TraitASTDecl *SharedState::getBuiltinDevicePassableTrait(llvm::SMLoc loc) {
-  ASTDecl &devicePassableModule =
+  ModuleASTDecl &devicePassableModule =
       importModule({"std", "builtin", "device_passable"},
                    /*currentPackage=*/nullptr, loc);
   LookupResult result = lookupAndResolveDecl(
@@ -1129,7 +1131,8 @@ ASTType SharedState::getBuiltinStubsMLIRType(llvm::SMLoc loc) {
 ArrayRef<ASTDecl *>
 SharedState::getBuiltinFunction(ASTDecl &context, const ImportPath &modulePath,
                                 StringRef fnName, llvm::SMLoc loc) {
-  ASTDecl &module = importModule(modulePath, /*currentPackage=*/nullptr, loc);
+  ModuleASTDecl &module =
+      importModule(modulePath, /*currentPackage=*/nullptr, loc);
   return getBuiltinFunction(module, fnName, loc);
 }
 
@@ -1176,7 +1179,7 @@ void SharedState::importBuiltinModules(ModuleASTDecl &moduleDecl) {
       return;
 
     // Import the prelude package.
-    ASTDecl &preludePackageDecl =
+    ModuleASTDecl &preludePackageDecl =
         *getModuleLoader()
              .importModuleState({"std", "prelude"}, impl->topLevelDecl,
                                 moduleDecl.getLoc(), /*isImplicit=*/true)
@@ -1562,7 +1565,7 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
       // mojo-precompile's buildPackage), so any periods belong to the package
       // name itself; this is never a dotted path.
       for (FlatSymbolRefAttr dep : deps) {
-        ASTDecl *depDecl =
+        ModuleASTDecl *depDecl =
             &importModule({dep.getValue()},
                           /*currentPackage=*/nullptr, packageImportLoc);
         if (failed(declResolver->resolveBody(*depDecl, decl.getLoc())))

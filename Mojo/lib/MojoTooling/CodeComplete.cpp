@@ -231,7 +231,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
       collectDeclChildren(decl);
       SharedState &shared = parserContext->getSharedState();
       SMLoc importLoc = shared.diags.convertLocToSMLoc(importOp->getLoc());
-      ASTDecl &target = shared.importModule(
+      ModuleASTDecl &target = shared.importModule(
           SharedState::ImportPath::fromAttr(importOp.getModulePath()),
           /*currentPackage=*/PackageOp(), importLoc);
       (void)shared.getDeclResolver().resolveBody(target, importLoc);
