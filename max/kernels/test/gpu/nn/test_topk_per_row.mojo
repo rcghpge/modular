@@ -22,7 +22,9 @@ exactly the value in its slot. Slots past `k[r]` hold `(-inf, -1)`.
 including a row with no live candidate, as the indexer's are. `tied` rows draw
 from a handful of values so the cutoff falls inside a run of equal scores.
 `edges` rows keep a live prefix of 0, 1, 511, 512 or 513 columns, around
-`k = 512`.
+`k = 512`. `masked` and `edges` rows under `all` picks ask for more slots than
+the row has finite entries, so the picked range itself carries `-inf` slots
+whose column may be a sort padding lane (negative).
 
 Rows of 1030 and 4097 columns put odd rows' bases off a 16 byte boundary.
 Past 2048 columns, the shapes reach each select the ordered top-k picks:
@@ -168,6 +170,9 @@ def main() raises:
         check[.float32](ctx, state, 10, 2048, 512, "edges", "live")
         check[.float32](ctx, state, 10, 5000, 512, "edges", "live")
         check[.float32](ctx, state, 7, 1030, 512, "random", "all")
+        check[.float32](ctx, state, 32, 1024, 512, "masked", "all")
+        check[.float32](ctx, state, 10, 2048, 512, "edges", "all")
+        check[.float32](ctx, state, 7, 1030, 512, "edges", "all")
         check[.float32](ctx, state, 5, 4097, 512, "random", "all")
         check[.float32](ctx, state, 4, 12000, 512, "masked", "live")
         check[.float32](ctx, state, 300, 5000, 512, "masked", "live")
