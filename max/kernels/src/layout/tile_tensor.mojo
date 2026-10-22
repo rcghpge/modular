@@ -21,6 +21,7 @@ from std.os import abort
 from std.builtin.builtin_slice import ContiguousSlice
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.builtin.int import index as _index
+from std.builtin.rebind import downcast
 from std.collections._conditional import _ComptimeConditional
 from std.memory import unsafe_stack_allocation as _std_stack_allocation
 from std.memory.unsafe_pointer import unsafe_cast
@@ -38,6 +39,7 @@ from .tensor_engine import (
     DevicePointerEngine,
     TensorOps,
     TensorEngine,
+    TileIO,
     DefaultEngine,
 )
 from .tile_layout import (
@@ -1419,6 +1421,41 @@ struct TileTensor[
         self._store_storage[alignment=alignment, non_temporal=non_temporal](
             self.layout[linear_idx_type=Self.linear_idx_type](coord),
             value,
+        )
+
+    @inline(.always)
+    def load(
+        self,
+    ) -> downcast[Self.Engine, TileIO].TileValueType[
+        Self.dtype
+    ] where conforms_to(Self.Engine, TileIO):
+        """Loads the whole tile into the engine's register value type.
+
+        Only available when the engine conforms to `TileIO`. The
+        coordinate-taking `load` overload is the element-granular path and is
+        unaffected.
+
+        Returns:
+            The tile's contents as `Engine.TileValueType[dtype]`.
+        """
+        return Self.Engine.load_tile((self._storage, self.layout))
+
+    @inline(.always)
+    def store(
+        self,
+        value: downcast[Self.Engine, TileIO].TileValueType[Self.dtype],
+    ) where Self.mut and conforms_to(Self.Engine, TileIO):
+        """Stores an engine register value over the whole tile.
+
+        Only available when the engine conforms to `TileIO`. The
+        coordinate-taking `store` overload is the element-granular path and
+        is unaffected.
+
+        Args:
+            value: The register value to store.
+        """
+        Self.Engine.store_tile(
+            (self._unsafe_storage_cast[to_mut=True](), self.layout), value
         )
 
     @inline(.nodebug)

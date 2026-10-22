@@ -1878,6 +1878,84 @@ trait TensorOps(TensorEngine):
         ...
 
 
+trait TileIO(TensorEngine):
+    """Extends `TensorEngine` with whole-tile loads and stores.
+
+    A conforming engine names a register value type that holds a whole tile,
+    `TileValueType`, and moves storage into and out of it. The layout travels
+    with the storage handle, as in `TensorOps`, so an engine whose storage
+    bakes in its extents can check them against the layout. `TileTensor`
+    exposes these as the zero-coordinate `load()` and `store(value)`
+    overloads.
+    """
+
+    # TODO(HWB-749): Unify with a generic `InlineTensor`.
+    comptime TileValueType[dtype: DType]: TrivialRegisterPassable
+    """The register value holding a whole tile of `dtype` elements.
+
+    Parameters:
+        dtype: The element data type of the tile.
+    """
+
+    @staticmethod
+    def load_tile[
+        mut: Bool,
+        dtype: DType,
+        origin: Origin[mut=mut],
+        address_space: AddressSpace,
+        LayoutType: TensorLayout,
+        //,
+    ](
+        storage: Tuple[
+            Self.StorageType[dtype, origin, address_space], LayoutType
+        ],
+    ) -> Self.TileValueType[dtype]:
+        """Loads the whole tile into a register value.
+
+        Parameters:
+            mut: The mutability of the storage, inferred from `origin`.
+            dtype: The element data type of the storage.
+            origin: The origin tracking the lifetime of the storage.
+            address_space: The address space the storage resides in.
+            LayoutType: The layout type of the tile.
+
+        Args:
+            storage: A tuple of the storage handle and its layout.
+
+        Returns:
+            The tile's contents as a `TileValueType[dtype]`.
+        """
+        ...
+
+    @staticmethod
+    def store_tile[
+        dtype: DType,
+        origin: MutOrigin,
+        address_space: AddressSpace,
+        LayoutType: TensorLayout,
+        //,
+    ](
+        storage: Tuple[
+            Self.StorageType[dtype, origin, address_space], LayoutType
+        ],
+        value: Self.TileValueType[dtype],
+    ):
+        """Stores a register value over the whole tile.
+
+        Parameters:
+            dtype: The element data type of the storage.
+            origin: The origin tracking the lifetime of the storage.
+            address_space: The address space the storage resides in.
+            LayoutType: The layout type of the tile.
+
+        Args:
+            storage: A tuple of the storage handle (modified in place) and its
+                layout.
+            value: The register value to store.
+        """
+        ...
+
+
 struct DefaultEngine[*, element_width: Int = 1](TensorOps):
     """Implements `TensorOps` backed by a raw `Pointer`.
 
