@@ -46,6 +46,12 @@ bool consumerReadsThroughReshape(LoadOp load);
 /// it is valid but only relabels the store index, so a wrapper may decline it.
 bool consumerIsPureReshape(LoadOp load);
 
+/// Whether `consumer` is a `mo.mutable.store` that can fuse into `dst`. Its
+/// lowering (`lowerMutableStoreToForeach`) returns only a chain and stores into
+/// its buffer input. It fuses when `dst` doesn't read that buffer, its input
+/// chain is fresh (`mo.chain.create`), and nothing uses its output chain.
+bool isFusibleMutableStore(IterElementwiseOp consumer, mlir::Operation *dst);
+
 /// The policy a wrapper supplies to narrow generic output fusion.
 struct OutputFusionConfig {
   /// Whether the edge from `epilogueStore` (the producer's epilogue store) to

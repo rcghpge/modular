@@ -50,6 +50,15 @@ bool isPureViewForeach(IterElementwiseOp op);
 /// every extra copy re-reads all of them (JSC-30 / MSTDL-2759).
 bool isCheapToDuplicate(IterElementwiseOp op);
 
+/// Whether `load`'s index runs through a `map.index.reshape`. A reshape changes
+/// rank, so `LoopInvariantViewMotion` can't hoist a view fused above it;
+/// nothing may fuse into such a load.
+bool loadIndexCrossesReshape(LoadOp load);
+
+/// Whether a load of `tensor`, a kernel body's block argument, already crosses
+/// a reshape (`loadIndexCrossesReshape`), so no view may fuse into it.
+bool anyLoadCrossesReshape(mlir::Value tensor);
+
 /// Clones `src`'s body into `dst` at each load of `src`'s result, at the
 /// load's own index, and replaces that input with `src`'s inputs. Loads of
 /// one index in one block share a clone. Leaves `src` and duplicate inputs in

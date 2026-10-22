@@ -15,12 +15,14 @@
 //
 // - A producer only the rowwise reads is cloned at each load of its result.
 // - A consumer over the per-row shape that reads a per-row result at its own
-//   index becomes row-level ops; its result becomes a rowwise output.
+//   index becomes row-level ops; its result becomes a rowwise output, or, for
+//   a `mo.mutable.store`, its store writes the buffer.
 //
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
 #include "GraphCompiler/MAPDialect/Support/InputFusion.h"
+#include "GraphCompiler/MAPDialect/Support/OutputFusion.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
@@ -53,11 +55,16 @@ bool sameDevice(IterElementwiseOp foreachOp, IterRowwiseOp rowwiseOp) {
              cast<MO::MOHasDeviceInterface>(rowwiseOp.getOperation()));
 }
 
-void stampFusion(IterRowwiseOp dst, IterElementwiseOp src) {
+// Records `src` as fused into `dst`, in dataflow order: a producer before the
+// rowwise, a consumer after it.
+void stampFusion(IterRowwiseOp dst, IterElementwiseOp src, bool isProducer) {
   MLIRContext *ctx = dst->getContext();
+  SmallVector<Operation *, 2> ops = {src, dst};
+  if (!isProducer)
+    std::swap(ops[0], ops[1]);
   dst.setFusionInfoAttr(
-      MOGG::createFusionInfo<MOGG::FusionRowwiseAttr>(ctx, {src, dst}));
-  dst->setLoc(FusedLoc::get(ctx, {src->getLoc(), dst->getLoc()}));
+      MOGG::createFusionInfo<MOGG::FusionRowwiseAttr>(ctx, ops));
+  dst->setLoc(FusedLoc::get(ctx, {ops[0]->getLoc(), ops[1]->getLoc()}));
   dst.setHasReadEffect(src.getHasReadEffect() || dst.getHasReadEffect());
   dst.setHasWriteEffect(src.getHasWriteEffect() || dst.getHasWriteEffect());
 }
@@ -72,8 +79,12 @@ bool canFuseProducer(IterRowwiseOp dst, IterElementwiseOp src) {
   if (!llvm::all_of(result.getUsers(),
                     [&](Operation *user) { return user == dst; }))
     return false;
+  // Reshape barrier, as in input fusion: a view cannot fuse into a load
+  // already past a reshape.
   for (auto [input, arg] : llvm::zip(dst.getInputs(), dst.getInputBlockArgs()))
-    if (input == result && !llvm::all_of(arg.getUsers(), llvm::IsaPred<LoadOp>))
+    if (input == result &&
+        (!llvm::all_of(arg.getUsers(), llvm::IsaPred<LoadOp>) ||
+         anyLoadCrossesReshape(arg)))
       return false;
   return true;
 }
@@ -82,7 +93,7 @@ bool canFuseProducer(IterRowwiseOp dst, IterElementwiseOp src) {
 void fuseProducer(IterRowwiseOp dst, IterElementwiseOp src,
                   RewriterBase &rewriter) {
   spliceProducer(dst, src, rewriter);
-  stampFusion(dst, src);
+  stampFusion(dst, src, /*isProducer=*/true);
   IterOpInterface(dst).dedupeInputs(rewriter);
 }
 
@@ -133,9 +144,9 @@ bool needsSink(IterRowwiseOp dst, IterElementwiseOp consumer) {
 }
 
 bool canFuseConsumer(IterRowwiseOp dst, IterElementwiseOp consumer) {
-  if (!isPlainForeach(consumer) || dst.getInputChain() ||
-      consumer->getBlock() != dst->getBlock() || !sameDevice(consumer, dst) ||
-      !isPerRowShape(dst, consumer.getShape()))
+  if (!(isPlainForeach(consumer) || isFusibleMutableStore(consumer, dst)) ||
+      dst.getInputChain() || consumer->getBlock() != dst->getBlock() ||
+      !sameDevice(consumer, dst) || !isPerRowShape(dst, consumer.getShape()))
     return false;
 
   Block &body = consumer.getBody().front();
@@ -216,14 +227,20 @@ IterRowwiseOp fuseConsumer(IterRowwiseOp dst, IterElementwiseOp consumer,
     mapping.map(arg, dst.getInputBlockArgs()[idx]);
   }
 
+  // A `mo.mutable.store` stores into its buffer input, now one of `dst`'s, so
+  // it adds no output; its chain has no use.
+  Value consumerResult = consumer.getResult(0);
+  bool storesToBuffer = isa<MO::ChainType>(consumerResult.getType());
   unsigned numOutputs = dst.getOutputBlockArgs().size();
   auto all = llvm::to_vector(llvm::seq<unsigned>(0, numOutputs));
-  Value consumerResult = consumer.getResult(0);
-  IterRowwiseOp newDst =
-      rebuildResults(dst, all, TypeRange{consumerResult.getType()}, rewriter);
+  IterRowwiseOp newDst = rebuildResults(
+      dst, all,
+      storesToBuffer ? TypeRange{} : TypeRange{consumerResult.getType()},
+      rewriter);
   mapping.map(consumerBody.getArguments().back(), newDst.getRowArg());
-  mapping.map(consumerBody.getArgument(consumer.getInputs().size()),
-              newDst.getOutputBlockArgs().back());
+  if (!storesToBuffer)
+    mapping.map(consumerBody.getArgument(consumer.getInputs().size()),
+                newDst.getOutputBlockArgs().back());
 
   rewriter.setInsertionPointToEnd(&newDst.getBody().front());
   for (Operation &op : consumerBody) {
@@ -237,8 +254,11 @@ IterRowwiseOp fuseConsumer(IterRowwiseOp dst, IterElementwiseOp consumer,
     rewriter.clone(op, mapping);
   }
 
-  stampFusion(newDst, consumer);
-  rewriter.replaceAllUsesWith(consumerResult, newDst.getResult(numOutputs));
+  stampFusion(newDst, consumer, /*isProducer=*/false);
+  if (storesToBuffer)
+    newDst.setHasWriteEffect(true);
+  else
+    rewriter.replaceAllUsesWith(consumerResult, newDst.getResult(numOutputs));
   rewriter.eraseOp(consumer);
   IterOpInterface(newDst).dedupeInputs(rewriter);
 

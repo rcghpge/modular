@@ -52,3 +52,21 @@ mo.graph @chain_consumed_not_fused(
   %out = mo.mutable.store(%buf, %c, %chain) : (!mo.buffer<[4], f32>, !mo.tensor<[4], f32>, !mo.chain) -> !mo.chain
   mo.output %out : !mo.chain
 }
+
+// Declined when the store is ordered after another one: the store's input
+// chain would be dropped with the ordering it carries.
+// CHECK-LABEL: mo.graph @store_after_store_not_fused
+// CHECK:       map.iter.opaque
+// CHECK:       map.iter.elementwise
+// CHECK:       map.call.elementwise @{{.*}}MutableStore
+mo.graph @store_after_store_not_fused(
+  %buf: !mo.buffer<[4], f32>,
+  %a: !mo.tensor<[4], f32>,
+  %b: !mo.tensor<[4], f32>
+) {
+  %c0 = mo.chain.create()
+  %c1 = mo.mutable.store(%buf, %b, %c0) : (!mo.buffer<[4], f32>, !mo.tensor<[4], f32>, !mo.chain) -> !mo.chain
+  %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %c2 = mo.mutable.store(%buf, %c, %c1) : (!mo.buffer<[4], f32>, !mo.tensor<[4], f32>, !mo.chain) -> !mo.chain
+  mo.output
+}

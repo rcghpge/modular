@@ -117,3 +117,49 @@ mo.graph @transformedRead(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32
   %s = mo.slice(%r, %start, %stop, %step) : (!mo.tensor<[8, 1], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[8, 1], f32>
   mo.output %s : !mo.tensor<[8, 1], f32>
 }
+
+// A `mo.mutable.store` of a per-row result stores into its buffer from the
+// rowwise, which then writes memory no result names.
+// CHECK-LABEL: mo.graph @mutableStore(
+// CHECK:       map.iter.rowwise<[8, 128], axis = 1>
+// CHECK-NEXT:  inputs (%{{.*}}: !mo.tensor<[8, 128], f32>, %[[BUF:.*]]: !mo.buffer<[8, 1], f32>)
+// CHECK-NEXT:  outputs ()
+// CHECK-NEXT:  row (%[[ROW:.*]]: !map.index<2>) -> () {
+// CHECK:       %[[V:.*]] = map.call.elementwise @{{.*}}MutableStore(%[[ROW]], %{{.*}})
+// CHECK-NEXT:  map.store %[[BUF]][%[[ROW]]] = %[[V]] : !mo.buffer<[8, 1], f32>
+// CHECK-NEXT:  } {{{.*}}hasWriteEffect = true}
+// CHECK-NOT:   map.iter.elementwise
+// CHECK:       mo.output
+mo.graph @mutableStore(%x: !mo.tensor<[8, 128], f32>, %buf: !mo.buffer<[8, 1], f32>) {
+  %chain = mo.chain.create()
+  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %c = mo.mutable.store(%buf, %r, %chain) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
+  mo.output
+}
+
+// A store whose chain is used stays its own kernel: the rowwise holds no
+// chain to carry the ordering.
+// CHECK-LABEL: mo.graph @mutableStoreChainUsed
+// CHECK:       map.iter.rowwise
+// CHECK:       map.iter.elementwise
+// CHECK:       map.call.elementwise @{{.*}}MutableStore
+mo.graph @mutableStoreChainUsed(%x: !mo.tensor<[8, 128], f32>, %buf: !mo.buffer<[8, 1], f32>) -> !mo.chain {
+  %chain = mo.chain.create()
+  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %c = mo.mutable.store(%buf, %r, %chain) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
+  mo.output %c : !mo.chain
+}
+
+// A store ordered after another store keeps its own kernel: the rowwise
+// holds no chain to order it after the first store.
+// CHECK-LABEL: mo.graph @mutableStoreAfterStore
+// CHECK:       map.iter.rowwise
+// CHECK:       map.iter.elementwise
+// CHECK:       map.call.elementwise @{{.*}}MutableStore
+mo.graph @mutableStoreAfterStore(%x: !mo.tensor<[8, 128], f32>, %a: !mo.tensor<[8, 1], f32>, %buf: !mo.buffer<[8, 1], f32>) {
+  %c0 = mo.chain.create()
+  %c1 = mo.mutable.store(%buf, %a, %c0) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
+  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %c2 = mo.mutable.store(%buf, %r, %c1) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
+  mo.output
+}

@@ -61,3 +61,23 @@ mo.graph @sharedProducer(%x: !mo.tensor<[8, 128], f32>) -> (!mo.tensor<[8, 1], f
   mo.output %r, %sq : !mo.tensor<[8, 1], f32>, !mo.tensor<[8, 128], f32>
 }
 
+// Reshape barrier, as in input fusion: once the reshape fuses, the fold's
+// load crosses it, so the slice above it stays its own kernel and writes a
+// contiguous tensor.
+// CHECK-LABEL: mo.graph @sliceThenReshape
+// CHECK:       %[[S:.*]] = map.iter.elementwise<[16, 32]>
+// CHECK:       map.index.slice
+// CHECK:       map.iter.rowwise<[4, 4, 32], axis = 1>
+// CHECK-NEXT:  inputs  (%[[S]]: !mo.tensor<[16, 32], f32>)
+// CHECK:       map.index.reshape
+// CHECK-NOT:   map.index.slice
+// CHECK:       mo.output
+mo.graph @sliceThenReshape(%x: !mo.tensor<[16, 64], f32>) -> !mo.tensor<[4, 1, 32], f32> {
+  %start = mo.constant <#M.dense_array<0, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %stop = mo.constant <#M.dense_array<16, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  %s = mo.slice(%x, %start, %stop, %step) : (!mo.tensor<[16, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[16, 32], f32>
+  %g = mo.static.reshape(%s) : !mo.tensor<[16, 32], f32> -> !mo.tensor<[4, 4, 32], f32>
+  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%g) : (!mo.tensor<[4, 4, 32], f32>) -> !mo.tensor<[4, 1, 32], f32>
+  mo.output %r : !mo.tensor<[4, 1, 32], f32>
+}

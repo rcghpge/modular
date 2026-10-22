@@ -163,22 +163,11 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     if (llvm::count(src.getInputs(), res) != 1)
       continue;
 
-    // A chain-returning consumer is `mo.mutable.store`: its buffer INPUT is the
-    // store target (see `lowerMutableStoreToForeach`), so the epilogue's store
-    // is pointed at that buffer instead of `dst`'s own output.
-    if (isa<MO::ChainType>(src.getResult(0).getType())) {
-      // A fused kernel must not write a buffer it also reads.
-      if (llvm::any_of(src->getOperands(), [&](Value srcOperand) {
-            return isa<MO::BufferType>(srcOperand.getType()) &&
-                   llvm::is_contained(dst->getOperands(), srcOperand);
-          }))
-        continue;
-      // `dst` holds no chain, so a used output chain would lose its ordering.
-      // TODO(GEX-3964): give `dst` a chain in/out the way
-      // `FuseMutableLoads::fuseLoadBufferAndChains` does, and fuse either way.
-      if (!src.getResult(0).use_empty())
-        continue;
-    }
+    // A chain-returning consumer is `mo.mutable.store`, so the epilogue's
+    // store is pointed at its buffer instead of `dst`'s own output.
+    if (isa<MO::ChainType>(src.getResult(0).getType()) &&
+        !isFusibleMutableStore(src, dst))
+      continue;
 
     Block &srcBody = src.getBody().front();
     BlockArgument fusionArg = fusedInputArg(src, res);
@@ -393,6 +382,26 @@ IterOpaqueOp fuseOutputOnce(const OutputFusionEdge &edge,
 }
 
 } // namespace
+
+bool isFusibleMutableStore(IterElementwiseOp consumer, Operation *dst) {
+  if (consumer.getNumResults() != 1 ||
+      !isa<MO::ChainType>(consumer.getResult(0).getType()))
+    return false;
+  // A fused kernel must not write a buffer it also reads.
+  if (llvm::any_of(consumer->getOperands(), [&](Value operand) {
+        return isa<MO::BufferType>(operand.getType()) &&
+               llvm::is_contained(dst->getOperands(), operand);
+      }))
+    return false;
+  // `dst` holds no chain, so the store's chains must carry no ordering: its
+  // input chain is fresh and nothing uses its output chain.
+  // TODO(GEX-3964): give `dst` a chain in/out the way
+  // `FuseMutableLoads::fuseLoadBufferAndChains` does, and fuse either way.
+  Value inputChain = consumer.getInputChain();
+  return (!inputChain ||
+          isa_and_nonnull<MO::ChainCreateOp>(inputChain.getDefiningOp())) &&
+         consumer.getResult(0).use_empty();
+}
 
 unsigned fuseOutput(MO::GraphOp graphOp, const OutputFusionConfig &config) {
   PatternRewriter rewriter(graphOp.getContext());

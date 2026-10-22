@@ -2,7 +2,7 @@
 
 // A dynamic axis reads its length from the shape. The fused square is part of
 // the fold; the bias load and add run per row, at the emit's width.
-// CHECK-LABEL: def __add_mul_reduce_add_tmp(
+// CHECK-LABEL: def __mul_reduce_add_tmp_add(
 // CHECK:       var [[ROW2:.*]] = algorithm.rowwise.Row[params, DType.float32, DType.float32, 1, {{.*}}](row_coords, Int({{.*}}[1].value()), row_ctx, {{.*}})
 // CHECK-NEXT:  def {{contribute_+[0-9]+}}[w : Int](tile: SIMD[DType.float32, w], {{.*}}) {var} -> SIMD[DType.float32, w]:
 // CHECK-NEXT:    var [[SQ:.*]] = builtin_kernels.elementwise.Mul.elementwise[{{.*}}](tile, tile)

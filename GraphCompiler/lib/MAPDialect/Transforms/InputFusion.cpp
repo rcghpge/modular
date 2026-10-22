@@ -74,21 +74,25 @@ bool isCheapToDuplicate(IterElementwiseOp op) {
   return true;
 }
 
+bool loadIndexCrossesReshape(LoadOp load) {
+  return dataflowGraphContains<WalkDirection::Producers>(
+      load.getIndex().getDefiningOp(),
+      [](Operation *o) { return isa<ReshapeIndexOp>(o); });
+}
+
+bool anyLoadCrossesReshape(Value tensor) {
+  return llvm::any_of(tensor.getUsers(), [](Operation *user) {
+    auto load = dyn_cast<LoadOp>(user);
+    return load && loadIndexCrossesReshape(load);
+  });
+}
+
 namespace {
 
 // TODO(GEX-4184): support multiple stores/outputs, which only arise via
 // sibling fusion.
 StoreOp producerStoreOf(IterElementwiseOp src) {
   return getUniqueStore(src.getBody().front());
-}
-
-// Whether `load`'s index runs through a `map.index.reshape`. A reshape changes
-// rank, so `LoopInvariantViewMotion` can't hoist a view fused above it; nothing
-// may fuse into such a load.
-bool loadIndexCrossesReshape(LoadOp load) {
-  return dataflowGraphContains<WalkDirection::Producers>(
-      load.getIndex().getDefiningOp(),
-      [](Operation *o) { return isa<ReshapeIndexOp>(o); });
 }
 
 // Guards against fusing across a chain-carrying kernel (e.g. mo.mutable.store)
@@ -331,20 +335,10 @@ IterElementwiseOp findEligibleProducer(Operation *dstOp,
                                      dst.getInputChain(), dst.getOutputChain()))
         continue;
       // Reshape barrier: a view cannot fuse into a load already past a reshape.
-      bool blocked = false;
-      for (auto [i, in] : llvm::enumerate(dst.getInputs())) {
-        if (in != src.getResult(0))
-          continue;
-        for (Operation *user : body.getArgument(i).getUsers())
-          if (auto load = dyn_cast<LoadOp>(user))
-            if (loadIndexCrossesReshape(load)) {
-              blocked = true;
-              break;
-            }
-        if (blocked)
-          break;
-      }
-      if (blocked)
+      if (llvm::any_of(llvm::enumerate(dst.getInputs()), [&](auto input) {
+            return input.value() == src.getResult(0) &&
+                   anyLoadCrossesReshape(body.getArgument(input.index()));
+          }))
         continue;
       LoadOp load = firstConsumerLoad(dst, src);
       if (!load || !config.shouldFuse(producerStoreOf(src), load))
