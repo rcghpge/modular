@@ -125,7 +125,9 @@ trait MaxPluginHooks:
 
         This is the one shuffle a GPU plugin has to provide: the up, down and
         XOR hooks default to reading their source lane through it. A target
-        that doesn't override it rejects every shuffle at compile time.
+        that doesn't override it rejects every shuffle at compile time. A
+        plugin whose hardware only shuffles 32-bit words implements it with
+        `_shuffle.shuffle_words`, which legalizes every other width onto that.
 
         Parameters:
             dtype: The element type of `val`.

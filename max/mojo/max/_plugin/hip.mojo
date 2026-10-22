@@ -14,8 +14,7 @@
 from std.atomic import Ordering, fence
 from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
-from std.memory import bitcast
-from std.sys import bit_width_of, llvm_intrinsic, size_of
+from std.sys import bit_width_of, llvm_intrinsic
 from std.sys.defines import get_defined_bool
 from std.sys.info import CompilationTarget
 
@@ -25,6 +24,7 @@ from max.gpu.sync.sync import (
     _SyncwarpPluginHookFnType,
 )
 
+from ._shuffle import shuffle_words
 from ._trait import MaxPlugin, MaxPluginHooks
 
 comptime _USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM = get_defined_bool[
@@ -49,34 +49,9 @@ def _syncwarp(mask: Int):
 
 
 @inline(.always)
-def _shuffle_amd_helper[
-    dtype: DType, simd_width: SIMDLength
-](dst_lane: UInt32, val: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
-    comptime if size_of[SIMD[dtype, simd_width]]() == 4:
-        # Handle int32, float32, float16x2, etc.
-        var result_packed = llvm_intrinsic["llvm.amdgcn.ds.bpermute", Int32](
-            dst_lane * 4, bitcast[.int32, 1](val)
-        )
-        return bitcast[dtype, simd_width](result_packed)
-    else:
-        comptime assert simd_width == 1, "Unsupported simd width"
-
-        comptime if dtype == .bool:
-            return _shuffle_amd_helper(dst_lane, val.cast[.int32]()).cast[
-                dtype
-            ]()
-        elif bit_width_of[dtype]() == 16:
-            var val_splatted = SIMD[dtype, 2](val._refine[new_size=1]())
-            return _shuffle_amd_helper(dst_lane, val_splatted)[0]
-        elif bit_width_of[dtype]() == 64:
-            var val_bitcast = bitcast[.uint32, simd_width * 2](val)
-            var val_half1, val_half2 = val_bitcast.deinterleave()
-            var shuffle1 = _shuffle_amd_helper(dst_lane, val_half1)
-            var shuffle2 = _shuffle_amd_helper(dst_lane, val_half2)
-            var result = shuffle1.interleave(shuffle2)
-            return bitcast[dtype, simd_width](result)
-        else:
-            comptime assert False, "unhandled shuffle dtype"
+def _shuffle_word(mask: UInt, word: UInt32, offset: UInt32) -> UInt32:
+    # FIXME: Set the EXECute mask register to the mask
+    return llvm_intrinsic["llvm.amdgcn.ds.bpermute", UInt32](offset * 4, word)
 
 
 struct HipMaxPlugin(MaxPlugin):
@@ -97,8 +72,7 @@ struct HipMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
         dtype, simd_width
     ]:
-        # FIXME: Set the EXECute mask register to the mask
-        return _shuffle_amd_helper(offset, val)
+        return shuffle_words[_shuffle_word](mask, val, offset)
 
     @inline(.always)
     @staticmethod

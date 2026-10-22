@@ -88,6 +88,30 @@ def test_amd() raises:
     assert_equal(llvm.count("call i32 @llvm.amdgcn.ds.bpermute("), 4)
 
 
+def _count_amd_word_shuffles[dtype: DType, width: SIMDLength]() raises -> Int:
+    def kernel(data: Pointer[SIMD[dtype, width], MutAnyOrigin]):
+        data[] = shuffle_idx(data[], 1)
+
+    var llvm = String(
+        compile_info[
+            kernel, emission_kind="llvm", target=get_gpu_target["mi300x"]()
+        ]()
+    )
+    return llvm.count("call i32 @llvm.amdgcn.ds.bpermute(")
+
+
+def test_amd_legalizes_every_width() raises:
+    # `ds.bpermute` moves one 32-bit word, so narrower values are widened or
+    # packed into one and wider ones are split into several.
+    assert_equal(_count_amd_word_shuffles[.bool, 1](), 1)
+    assert_equal(_count_amd_word_shuffles[.int8, 1](), 1)
+    assert_equal(_count_amd_word_shuffles[.int8, 2](), 1)
+    assert_equal(_count_amd_word_shuffles[.float16, 1](), 1)
+    assert_equal(_count_amd_word_shuffles[.float16, 4](), 2)
+    assert_equal(_count_amd_word_shuffles[.float64, 1](), 2)
+    assert_equal(_count_amd_word_shuffles[.float64, 2](), 4)
+
+
 def test_apple() raises:
     var llvm = _compile_shuffle_kernel[get_gpu_target["apple-m4"]()]()
     assert_true("call float @air.simd_shuffle.f32.i16(float" in llvm)
