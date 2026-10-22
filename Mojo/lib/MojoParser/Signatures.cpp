@@ -797,6 +797,17 @@ static PValue emitDefault(ArrayRef<ParsedArgument> args, unsigned argIdx,
   return PValue();
 }
 
+/// Returns true if `type` is spelled with an alias that signatures keep.
+/// `Scalar` is excluded since keeping it would rebind every scalar argument at
+/// every method call and its sugar is special cased in the printer.
+static bool isKeptAlias(ASTType type, LIT::StructType structType) {
+  auto paramType = dyn_cast<ParamType>(type.mlirType);
+  auto aliasSugar = dyn_cast_if_present<SugarAttr>(
+      paramType ? paramType.getParam() : nullptr);
+  return aliasSugar && aliasSugar.getAliasDeclRef() &&
+         !isScalarSIMDType(structType);
+}
+
 /// Given a type that potentially has all of its parameters unbound, implicitly
 /// add the parameter declarations to the function parameters. For example, a
 /// struct type can be partially bound. This function implicitly adds a
@@ -1068,6 +1079,10 @@ static ASTType addImplicitTypeParams(StringAttr argName, ASTType type,
 
   if (auto metatype =
           sugarDynCastIfPresent<StructMetaType>(type.extractMetaType())) {
+    // Binding nothing would only drop the alias the type is spelled with.
+    if (metatype.getSignature().getParamTypes().empty() &&
+        isKeptAlias(type, metatype.getType()))
+      return type;
     auto mt = getBoundStructMetaType(metatype);
     return mt ? mt.getType() : ASTType();
   }

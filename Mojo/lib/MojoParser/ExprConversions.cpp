@@ -769,7 +769,7 @@ static CValue convertFunctionGeneratorValue(CValue value, const ExprNode *expr,
     //
     // then we leave them unbound (see TARIPNBITM).
     evaluator.appendIndexBinding(
-        UnboundAttr::get(evaluator.getReboundType(type)));
+        UnboundAttr::get(evaluator.getReboundType(getCanonicalType(type))));
   }
   // Bind the user kernel as the conversion thunk's `callee` input parameter.
   // Both the position (last param) and the explicit

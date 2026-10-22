@@ -430,8 +430,15 @@ MojoInflightDiag::~MojoInflightDiag() {
   for (auto [loc, attrValue, ctxDecl] : emitted) {
     // See if anything has alias sugar on it, and if so, unpack it so the user
     // has a better chance of understanding what is going on.  We don't want to
-    // look into opaque sugar kinds (AlwaysInlineBuiltin, Preserved) though!
-    TypedAttr desugared = SugarAttr::strip(attrValue, /*keepOpaque=*/true);
+    // look into opaque sugar kinds (AlwaysInlineBuiltin, Preserved) though,
+    // except for preserved type aliases. If we looked into all preserved kinds,
+    // we'd get unhelpful notes like "'not a' is aka '(xor a, True)'".
+    TypedAttr desugared = attrValue;
+    while (auto sugar = dyn_cast<SugarAttr>(desugared)) {
+      if (sugar.getKind() <= SugarKind::Preserved && !sugar.getAliasDeclRef())
+        break;
+      desugared = sugar.getExpanded();
+    }
     if (desugared == attrValue || !unpackedAttr.insert(attrValue).second)
       continue;
 

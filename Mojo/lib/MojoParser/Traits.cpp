@@ -1485,7 +1485,7 @@ createRequirementSignature(FnTypeGeneratorType signature, ASTType newSelfType,
   // Use UnboundAttr for any other parameters so they remain in the result.
   for (Type type : signature.getInputParamTypes().drop_front())
     evaluator.appendIndexBinding(
-        UnboundAttr::get(evaluator.getReboundType(type)));
+        UnboundAttr::get(evaluator.getReboundType(getCanonicalType(type))));
   signature = signature.getSpecializedGenerator(
       evaluator.getIndexBindings(),
       &declResolver.shared.getEvaluationContext());

@@ -1335,7 +1335,8 @@ LogicalResult ParamInf::finalizeWithUnbound() {
     }();
 
     if (installUnbound) {
-      Type targetType = evaluator.getReboundType(declaredParamTypes[idx]);
+      Type targetType =
+          evaluator.getReboundType(getCanonicalType(declaredParamTypes[idx]));
       evaluator.overwriteIndexBinding(idx, UnboundAttr::get(targetType));
       continue;
     }

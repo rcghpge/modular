@@ -3380,6 +3380,10 @@ def KGEN_SugarAttr : KGENAttr<"Sugar", "sugar",
     /// For a MemberAlias sugar, return the base type.
     Type getMemberAliasType() const;
 
+    /// Return the alias declaration for this sugar. Handles both `MyAlias`
+    /// and `MyAlias[T]` syntaxes.
+    ParamDeclRefAttr getAliasDeclRef() const;
+
     static TypedAttr getAlwaysInlineBuiltin(TypedAttr sugared,
                                             TypedAttr expanded) {
       return get(sugared.getContext(), SugarKind::AlwaysInlineBuiltin, {},

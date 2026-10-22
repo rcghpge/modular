@@ -326,7 +326,7 @@ def badPackCalls(value: Int):
   first_and_rest(value)
 
 struct TestPackErrorMessage[*Ts: AnyType](Movable where False):
-    # expected-error @+3 {{'self' argument must have type 'TestPackErrorMessage[Ts]', but actually has type 'VariadicPack[False, Ts]'}}
+    # expected-error @+3 {{'self' argument must have type 'TestPackErrorMessage[*Ts]', but actually has type 'VariadicPack[False, *Ts]'}}
     # expected-error @+2 {{__init__ method must return Self type with 'out' argument}}
     @__allow_legacy_custom_self_type
     def __init__(*args: *Self.Ts):
@@ -1071,7 +1071,8 @@ struct ShapeContainer(Movable where False):
 
 # MSTDL-2267: Structs with "AnyOrigin" fields stop keeping things alive when passed to a function
 struct SwallowAnyOrigin(Movable where False):
-    # expected-error @below {{struct fields cannot expose AnyOrigin in their type; foo has type 'Pointer[Int, MutAnyOrigin]'}}
+    # expected-error @below {{struct fields cannot expose AnyOrigin in their type; foo has type 'UnsafePointer[Int, MutAnyOrigin]'}}
+    # expected-note @below {{'UnsafePointer[Int, MutAnyOrigin]' is aka 'Pointer[Int, MutAnyOrigin]'}}
     # expected-note @below {{consider parameterizing enclosing struct with an Origin}}
     # expected-note @below {{alternatively, use UntrackedOrigin if lifetime is managed explicitly}}
     var foo: UnsafePointer[Int, MutAnyOrigin]

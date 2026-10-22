@@ -5418,9 +5418,9 @@ TypedAttr SugarAttr::get(MLIRContext *context, SugarKind kind,
     if ((int)*shouldElide >= (int)kind)
       return canonical;
 
-  // We will /never/ use the type sugar in the expanded form of opaque
-  // sugar kinds, so we can strip it all away to simplify things.
-  if (kind <= SugarKind::Preserved)
+  // We want nested aliases in types to survive, but all other opaque
+  // sugar kinds can be stripped to simplify things.
+  if (kind <= SugarKind::Preserved && !isa<TypeParamAttr>(expanded))
     expanded = ParamOperatorAttr::getRebind(canonical, sugared.getType());
 
   return Base::get(sugared.getContext(), kind, memberName, sugared, expanded,
@@ -5429,6 +5429,21 @@ TypedAttr SugarAttr::get(MLIRContext *context, SugarKind kind,
 
 Type SugarAttr::getMemberAliasType() const {
   return ParamType::get(getSugared());
+}
+
+ParamDeclRefAttr SugarAttr::getAliasDeclRef() const {
+  switch (getKind()) {
+  case SugarKind::Alias:
+    return dyn_cast<ParamDeclRefAttr>(getSugared());
+  case SugarKind::Preserved:
+    // `BindParamsAttr::get` may rebind the application to the requested type.
+    if (auto bindParams = dyn_cast<BindParamsAttr>(
+            ParamOperatorAttr::stripRebind(getSugared())))
+      return dyn_cast<ParamDeclRefAttr>(bindParams.getGenerator());
+    return {};
+  default:
+    return {};
+  }
 }
 
 TypedAttr SugarAttr::getMemberAlias(Type type, StringAttr memberName,

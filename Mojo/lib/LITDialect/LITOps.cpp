@@ -1289,7 +1289,8 @@ LIT::StructType StructDeclOp::bindReference(ArrayRef<TypedAttr> paramValues) {
     SmallVector<TypedAttr> unbound;
     ParameterEvaluator evaluator;
     for (Type type : sig.getParamTypes()) {
-      unbound.push_back(UnboundAttr::get(evaluator.getReboundType(type)));
+      auto canonical = getCanonicalType(type);
+      unbound.push_back(UnboundAttr::get(evaluator.getReboundType(canonical)));
       evaluator.appendIndexBinding(unbound.back());
     }
     return LIT::StructType::get(symbol, unbound, sig);

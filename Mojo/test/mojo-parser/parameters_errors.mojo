@@ -683,7 +683,7 @@ def bad_unpack():
     # expected-error @+1 {{invalid unpack in non-variadic parameter binding}}
     depends_on_a[*42]()
 
-# expected-error @+1 {{value passed to 'shape' cannot be converted from 'IntLiteral[23456]' to 'AutoParamVA[$1]', it depends on an unresolved parameter '$0'}}
+# expected-error @+1 {{value passed to 'shape' cannot be converted from 'IntLiteral[23456]' to 'AutoParamVA[*$1]', it depends on an unresolved parameter '$0'}}
 comptime bad = TakeAutoParamVA[23456]
 
 # TODO: we could potentially support this.

@@ -1862,7 +1862,28 @@ bindToGeneratorValue(PValue callable, GeneratorType sig, const ExprNode *expr,
   if (!newBindings)
     return {};
 
-  return newBindings.specializeGenerator(callable);
+  PValue result = newBindings.specializeGenerator(callable);
+
+  // Keep sugar after binding instantiates the alias body.
+  auto aliasSugar = dyn_cast<SugarAttr>(callable.get());
+  if (!result || !aliasSugar || aliasSugar.getKind() != SugarKind::Alias)
+    return result;
+
+  auto aliasRef = dyn_cast<ParamDeclRefAttr>(aliasSugar.getSugared());
+  auto expansion = sugarDynCast<TypeParamAttr>(result.get());
+  if (!aliasRef || !expansion)
+    return result;
+
+  // Non-struct aliases are usually simpler to expand & simplify and the Scalar
+  // alias is already special-cased in the printer.
+  auto structType = sugarDynCast<LIT::StructType>(expansion.getTypeValue());
+  if (!structType || LIT::isScalarSIMDType(structType))
+    return result;
+
+  // Track the application as Preserved sugar over `bind_params` on the alias
+  // declaration reference.
+  return PValue(SugarAttr::getPreserved(
+      newBindings.specializeGenerator(aliasRef), result.get()));
 }
 
 /// Given a base value, emit access to a base value element using either a

@@ -289,6 +289,7 @@ static void printParamList(raw_ostream &os, PogListAttr paramInfo,
     for (auto [idx, pog, paramValue] :
          llvm::enumerate(paramInfo.getPogs(), params)) {
 
+      VariadicKind variadicKind = VariadicKind::None;
       // Inline variadic parameter values if they are known.
       if (pog.isPosVarArg()) {
         auto info = ASTType(paramValue.getType()).getParameterListInfo();
@@ -305,7 +306,7 @@ static void printParamList(raw_ostream &os, PogListAttr paramInfo,
               {StringAttr(), info.valueList, VariadicKind::PosVarArg});
           continue;
         }
-        // TODO: Should add "*" ahead of splatted lists.
+        variadicKind = VariadicKind::PosVarArg;
       }
 
       auto passingKind = pog.getPassingKind();
@@ -343,7 +344,7 @@ static void printParamList(raw_ostream &os, PogListAttr paramInfo,
         name = paramInfo.getName(idx);
         break;
       }
-      paramsToPrint.push_back({name, paramValue, VariadicKind::None});
+      paramsToPrint.push_back({name, paramValue, variadicKind});
     }
 
   } else {
@@ -710,6 +711,17 @@ void ASTType::printParam(raw_ostream &os, TypedAttr param,
 
   if (auto bindParams = dyn_cast<BindParamsAttr>(param)) {
     printParam(os, bindParams.getGenerator(), ctx);
+    // Ensure keyword-only args are named and defaulted and infer-only ones are
+    // elided.
+    PogListAttr paramList =
+        sugarCast<GeneratorType>(bindParams.getGenerator().getType())
+            .getParamListAttrs();
+    if (ctx.shared && paramList &&
+        paramList.size() == bindParams.getParamValues().size()) {
+      printParamList(os, paramList, bindParams.getParamValues(), ctx,
+                     /*typesImplied=*/true);
+      return;
+    }
     printOperands(bindParams.getParamValues(), ", ", "[", "]");
     return;
   }
@@ -1715,6 +1727,59 @@ static bool tryPrintParamClosureSourceName(ASTTypePrinterContext ctx,
   return false;
 }
 
+static std::optional<StringRef>
+getScalarTypeName(ArrayRef<TypedAttr> simdParams) {
+  assert(simdParams.size() == 2 && "SIMD takes a dtype and a size");
+  // DType and Int look like #lit.struct<{value: index = 42}>
+  auto dtype = getSingleElementStructAttr<DTypeConstantAttr>(simdParams[0]);
+  auto size = getSingleElementStructAttr<IntegerAttr>(simdParams[1]);
+  if (!dtype || !size || size.getInt() != 1)
+    return std::nullopt;
+
+  // This list should be kept in sync with the aliases in simd.mojo.
+  static std::pair<KGENDType, const char *> dtypeAliases[] = {
+      {KGENDType::index, "Int"},
+      {KGENDType::uindex, "UInt"},
+      {KGENDType::si8, "Int8"},
+      {KGENDType::ui8, "UInt8"},
+      {KGENDType::si16, "Int16"},
+      {KGENDType::ui16, "UInt16"},
+      {KGENDType::si32, "Int32"},
+      {KGENDType::ui32, "UInt32"},
+      {KGENDType::si64, "Int64"},
+      {KGENDType::ui64, "UInt64"},
+      {KGENDType::si128, "Int128"},
+      {KGENDType::ui128, "UInt128"},
+      {KGENDType::si256, "Int256"},
+      {KGENDType::ui256, "UInt256"},
+      {KGENDType::f4e2m1fn, "Float4_e2m1fn"},
+      {KGENDType::f6e2m3fn, "Float6_e2m3fn"},
+      {KGENDType::f6e3m2fn, "Float6_e3m2fn"},
+      {KGENDType::f8e8m0fnu, "Float8_e8m0fnu"},
+      {KGENDType::f8e5m2, "Float8_e5m2"},
+      {KGENDType::f8e5m2fnuz, "Float8_e5m2fnuz"},
+      {KGENDType::f8e4m3fn, "Float8_e4m3fn"},
+      {KGENDType::f8e4m3fnuz, "Float8_e4m3fnuz"},
+      {KGENDType::f8e3m4, "Float8_e3m4"},
+      {KGENDType::bf16, "BFloat16"},
+      {KGENDType::f16, "Float16"},
+      {KGENDType::f32, "Float32"},
+      {KGENDType::f64, "Float64"},
+  };
+  for (auto [dtypeValue, dtypeName] : dtypeAliases)
+    if (dtype.getDType() == dtypeValue)
+      return StringRef(dtypeName);
+  return std::nullopt;
+}
+
+bool KGEN::LIT::isScalarSIMDType(StructType type) {
+  ArrayRef<TypedAttr> params = type.getParamValues();
+  if (type.getName() != "SIMD" || params.size() != 2)
+    return false;
+  auto size = getSingleElementStructAttr<IntegerAttr>(params[1]);
+  return size && size.getInt() == 1;
+}
+
 void ASTType::print(raw_ostream &os, ASTTypePrinterContext ctx) const {
   SharedState *diagShared = ctx.shared;
   if (!mlirType) {
@@ -1758,52 +1823,15 @@ void ASTType::print(raw_ostream &os, ASTTypePrinterContext ctx) const {
       // Handle SIMD[dt, 1] with various aliases. Note that the dtype and size
       // may be parametric.
       if (params.size() == 2 && structDecl.getDeclName().strref() == "SIMD") {
-        // DType and Int looks like #lit.struct<{value: index = 42}>, dig.
-        DTypeConstantAttr dtype =
-            getSingleElementStructAttr<DTypeConstantAttr>(params[0]);
+        if (auto name = getScalarTypeName(params)) {
+          os << *name;
+          return;
+        }
+
         IntegerAttr size = getSingleElementStructAttr<IntegerAttr>(params[1]);
         if (size && size.getInt() == 1) {
-          // This list should be kept in sync with the aliases in simd.mojo.
-          static std::pair<KGENDType, const char *> dtypeAliases[] = {
-              {KGENDType::index, "Int"},
-              {KGENDType::uindex, "UInt"},
-              {KGENDType::si8, "Int8"},
-              {KGENDType::ui8, "UInt8"},
-              {KGENDType::si16, "Int16"},
-              {KGENDType::ui16, "UInt16"},
-              {KGENDType::si32, "Int32"},
-              {KGENDType::ui32, "UInt32"},
-              {KGENDType::si64, "Int64"},
-              {KGENDType::ui64, "UInt64"},
-              {KGENDType::si128, "Int128"},
-              {KGENDType::ui128, "UInt128"},
-              {KGENDType::si256, "Int256"},
-              {KGENDType::ui256, "UInt256"},
-              {KGENDType::f4e2m1fn, "Float4_e2m1fn"},
-              {KGENDType::f6e2m3fn, "Float6_e2m3fn"},
-              {KGENDType::f6e3m2fn, "Float6_e3m2fn"},
-              {KGENDType::f8e8m0fnu, "Float8_e8m0fnu"},
-              {KGENDType::f8e5m2, "Float8_e5m2"},
-              {KGENDType::f8e5m2fnuz, "Float8_e5m2fnuz"},
-              {KGENDType::f8e4m3fn, "Float8_e4m3fn"},
-              {KGENDType::f8e4m3fnuz, "Float8_e4m3fnuz"},
-              {KGENDType::f8e3m4, "Float8_e3m4"},
-              {KGENDType::bf16, "BFloat16"},
-              {KGENDType::f16, "Float16"},
-              {KGENDType::f32, "Float32"},
-              {KGENDType::f64, "Float64"},
-          };
-          if (dtype) {
-            for (auto [dtypeValue, dtypeName] : dtypeAliases) {
-              if (dtype.getDType() == dtypeValue) {
-                os << dtypeName;
-                return;
-              }
-            }
-          }
-
-          // Otherwise if we know the size is 1, we can use Scalar[] alias,
-          // even if the dtype is parametric.
+          // If we know the size is 1, we can use Scalar[] alias, even if the
+          // dtype is parametric.
           os << "Scalar[";
           printParam(os, params[0], ctx);
           os << "]";

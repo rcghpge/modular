@@ -257,7 +257,8 @@ def initialize_in_addrspace(
 ):
 
     # Get !lit.ref in addr space #1
-    # CHECK-NEXT: [[PTRREF:%.*]] = lit.call{{.*}}@Pointer::@"__getitem__{{.*}}(%ptr)
+    # CHECK-NEXT: [[PTR:%[0-9]+]] = kgen.rebind %ptr
+    # CHECK-NEXT: [[PTRREF:%.*]] = lit.call{{.*}}@Pointer::@"__getitem__{{.*}}([[PTR]])
 
     # CHECK-NEXT: [[REGVAL:%.*]] = lit.call {{.*}}@ExampleRegPassable::@"__init__{{.*}}()
 
@@ -284,7 +285,8 @@ def mutate_in_addrspace(
     ptr: UnsafePointer[ExampleRegPassable, AnyOrigin[mut=True], address_space=AddressSpace(1)],
 ):
     # Get !lit.ref in addr space #1
-    # CHECK-NEXT: [[PTRREF:%.*]] = lit.call {{.*}}@Pointer::@"__getitem__{{.*}}(%ptr)
+    # CHECK-NEXT: [[PTR:%[0-9]+]] = kgen.rebind %ptr
+    # CHECK-NEXT: [[PTRREF:%.*]] = lit.call {{.*}}@Pointer::@"__getitem__{{.*}}([[PTR]])
 
     # Use a temporary to get an MLValue in the default address space.
     # CHECK-NEXT: [[REGVAL:%.*]] = lit.ref.load [[PTRREF]] : <!ExampleRegPassable, mut #lit.any.origin, 1>

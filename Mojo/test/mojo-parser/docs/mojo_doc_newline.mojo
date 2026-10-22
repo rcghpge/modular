@@ -14,7 +14,7 @@
 # RUN: %mojo-docs-isolated %s | FileCheck %s
 
 
-# CHECK: "default": "StringSpan(\"\\n\")",
+# CHECK: "default": "\"\\n\"",
 def testFn(stringArgument: StaticString = "\n"):
     """Function description text.
 
