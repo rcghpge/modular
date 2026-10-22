@@ -1298,6 +1298,10 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
     contexts explicitly: one for a single-device kernel, or one per device for
     a `DeviceContextArray`, which `ConformCallOperands` packs into a tuple.
     `$hasEpilogueFusion` spares emit from inspecting output producers.
+
+    A kernel with `execute_device` is launched rather than called: emit calls
+    its `execute_configuration`, then enqueues `execute_device` on the device
+    context itself.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,

@@ -438,9 +438,13 @@ ErrorOr<InferredParameters> inferKernelParameters(
   if (adaptor.structParams)
     structParams = adaptor.structParams.getValue();
 
-  // Defaults are declared on the execute signature.
-  mlir::DictionaryAttr defaultParams = computeDefaultParamsDict(
-      adaptor.executeFunction ? &*adaptor.executeFunction : nullptr);
+  // Defaults are declared on the execute signature (`execute_device`'s, for a
+  // declarative kernel), except that `execute_configuration` declares its own.
+  KernelDeclFunctionAdaptor *defaultsFn =
+      funcLabel == kMoggExecuteConfigurationFunctionLabel
+          ? fnAdaptor
+          : (adaptor.executeFunction ? &*adaptor.executeFunction : nullptr);
+  mlir::DictionaryAttr defaultParams = computeDefaultParamsDict(defaultsFn);
   return inferParameters(fnParams, structParams, fnAdaptor->attr.getArgParams(),
                          defaultParams, fnAdaptor->attr.getSignature(),
                          inferCallback);

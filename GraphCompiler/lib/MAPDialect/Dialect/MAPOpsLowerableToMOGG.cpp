@@ -660,14 +660,16 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   });
 
   // Emit appends the contexts verbatim, so pass them only when execute
-  // declares one (a host-only kernel takes none).
+  // declares one (a host-only kernel takes none). A declarative call always
+  // takes one: `execute_device` declares none, but the launch needs it.
   MOGG::KernelDeclOp decl = state.registry.lookupKernelBySymName(getCallee());
   MOGG::KernelDeclAdaptor adaptor(decl);
   ValueRange contexts;
   if (const auto &fn = adaptor.executeFunction;
-      fn && !fn->inputArguments.empty() &&
-      (fn->inputArguments.back().isContextType() ||
-       fn->inputArguments.back().isVariadicContextType()))
+      adaptor.isDeclarative() ||
+      (fn && !fn->inputArguments.empty() &&
+       (fn->inputArguments.back().isContextType() ||
+        fn->inputArguments.back().isVariadicContextType())))
     contexts = state.contextArgs;
 
   auto call = MOGG::CallOpaqueOp::create(
