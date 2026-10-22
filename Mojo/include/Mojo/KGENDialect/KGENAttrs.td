@@ -557,6 +557,14 @@ def KGEN_TypeParamAttr : KGEN_ExprAttr<"TypeParam", "type"> {
 
     // MlirType is omitted if same as typeValue.
     #kgen.type<!myTypeValue> : !kgen.type
+
+    // A type value that holds the same value in both the value and layout
+    // domains:
+    #kgen.type<!kgen.struct<[index] value>, !kgen.struct<(index)>>
+
+    // A type value that holds more than its layout is kept.
+    #kgen.type<!kgen.struct<[[typevalue<#kgen.genref<@Foo>>, struct<(f32)>]] value>,
+               !kgen.struct<(struct<(f32)>)>>
     ```
   }];
 

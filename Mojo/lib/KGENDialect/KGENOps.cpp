@@ -1343,9 +1343,10 @@ LogicalResult StructLoadIndirectOp::inferReturnTypes(
   // `kgen.pack.load`).
   auto mappedTypes = ParamOperatorAttr::get(
       POC::VariadicPtrRemoveMap, structType.getElementTypesVariadic());
+  assert(structType.getDomain() != StructDomain::Value && "Unexpected domain");
   types.push_back(StructType::get(ctx, mappedTypes, /*memOnly*/ {},
-                                  /*minAlign*/ {},
-                                  structType.getIsParamPack()));
+                                  /*minAlign*/ {}, structType.getIsParamPack(),
+                                  structType.getDomain()));
   return success();
 }
 

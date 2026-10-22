@@ -74,7 +74,8 @@ static StructType lowerPackStructType(StructType type) {
     return type;
   // Strip off the isParamPack bit.
   return StructType::get(type.getContext(), type.getElementTypesVariadic(),
-                         type.getIsMemoryOnly(), type.getMinAlignment(), false);
+                         type.getIsMemoryOnly(), type.getMinAlignment(), false,
+                         type.getDomain());
 }
 
 /// Lower `!kgen.variant` to a pair of `!pop.union` and a `!kgen.scalar`.

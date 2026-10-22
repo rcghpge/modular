@@ -1623,6 +1623,27 @@ static void populateTypeDomainRules(StructDecls &decls,
         return TypeParamAttr::get(*typeValueOr, *mlirTypeOr, *typeOr);
       });
 
+  // A KGEN struct with no domain yet is in a type-domain position. One the
+  // value domain already claimed keeps its domain.
+  // FIXME(MOCO-5118): See `StructDomain::Unset`.
+  replacer.asType.addRule([&replacer](
+                              KGEN::StructType type) -> FailureOr<Type> {
+    auto variadicOr =
+        replacer.asType.replaceParameter(type.getElementTypesVariadic());
+    auto isMemoryOnlyOr =
+        replacer.asType.replaceParameter(type.getIsMemoryOnly());
+    auto minAlignmentOr =
+        replacer.asType.replaceParameter(type.getMinAlignment());
+    if (failed(variadicOr) || failed(isMemoryOnlyOr) || failed(minAlignmentOr))
+      return failure();
+    StructDomain domain = type.getDomain() == StructDomain::Unset
+                              ? StructDomain::Layout
+                              : type.getDomain();
+    return KGEN::StructType::get(type.getContext(), *variadicOr,
+                                 *isMemoryOnlyOr, *minAlignmentOr,
+                                 type.getIsParamPack(), domain);
+  });
+
   // NOTE: Downcast becomes an no-op after lower-lit. However, we should
   // probably keep the attr till elaboration time after we preserve traits
   // properly in KGEN for a better error message.
@@ -1684,9 +1705,10 @@ static void populateTypeDomainRules(StructDecls &decls,
       return failure();
     auto mapped =
         ParamOperatorAttr::get(POC::VariadicPtrMap, *variadicOr, *addrSpaceOr);
-    return KGEN::StructType::get(ref.getContext(), mapped,
-                                 /*memOnly=*/false, /*minAlign*/ {},
-                                 /*isParamPack=*/true);
+    return KGEN::StructType::getLayoutDomain(ref.getContext(), mapped,
+                                             /*isMemoryOnly=*/{},
+                                             /*minAlignment=*/{},
+                                             /*isParamPack=*/true);
   });
 
   // !lit.ref -> !kgen.pointer
@@ -1864,6 +1886,17 @@ static void populateValueDomainRules(StructDecls &decls,
   replacer.asValue.addRule([=](TraitType traitType) -> FailureOr<Type> {
     return TypeValueType::get(
         TraitInstanceRefAttr::get(ctx, traitType.getSymbols(), typeType));
+  });
+
+  // A KGEN struct with no domain yet is in a value-domain position. Its
+  // elements are lowered when the type domain descends into this result.
+  // FIXME(MOCO-5118): See `StructDomain::Unset`.
+  replacer.asValue.addRule([](KGEN::StructType type) -> FailureOr<Type> {
+    if (type.getDomain() != StructDomain::Unset)
+      return type;
+    return KGEN::StructType::getValueDomain(
+        type.getContext(), type.getElementTypesVariadic(),
+        type.getIsMemoryOnly(), type.getMinAlignment(), type.getIsParamPack());
   });
 
   // A struct reference becomes a generator reference over the same parameter

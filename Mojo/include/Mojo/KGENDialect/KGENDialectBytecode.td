@@ -76,7 +76,8 @@ def StructType : DialectType<(type
   TypedAttr:$elementTypesVariadic,
   TypedAttr:$isMemoryOnly,
   TypedAttr:$minAlignment,
-  Bool:$isParamPack
+  Bool:$isParamPack,
+  EnumAttr<"::M::KGEN::StructDomain">:$domain
 )>;
 
 def StructInstanceType : DialectType<(type
