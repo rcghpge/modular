@@ -13,6 +13,7 @@
 
 from std._gpu.primitives.id import _GPUIdPluginHookFnType
 from std._plugin._trait import (
+    TargetDeviceKind,
     PluginHooks,
     StdPlugin,
     _GlobalPerfCounterNsPluginHookFnType,
@@ -214,6 +215,8 @@ struct HIPPlugin(StdPlugin):
 
 
 struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
+    comptime device_kind = TargetDeviceKind.gpu
+
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType
     ] = _print_emit

@@ -14,6 +14,7 @@
 from std._gpu.primitives.id import _GPUIdPluginHookFnType, _is_cluster_id
 from std.math.uutils import ufloordiv
 from std._plugin._trait import (
+    TargetDeviceKind,
     PluginHooks,
     StdPlugin,
     _BinaryMathPluginHookFnType,
@@ -189,6 +190,8 @@ struct MetalPlugin(StdPlugin):
 
 
 struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
+    comptime device_kind = TargetDeviceKind.gpu
+
     comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
         _GPUIdPluginHookFnType
     ] = _air_gpu_id_fn[name, dim]()

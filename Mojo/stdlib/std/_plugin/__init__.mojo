@@ -26,4 +26,10 @@ runtime or in code size.
 """
 
 from ._impl import CurrentPlugin
-from ._trait import StdPlugin, DefaultPlugin, DefaultPluginHooks, PluginHooks
+from ._trait import (
+    StdPlugin,
+    DefaultPlugin,
+    DefaultPluginHooks,
+    PluginHooks,
+    TargetDeviceKind,
+)

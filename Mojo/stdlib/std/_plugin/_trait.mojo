@@ -70,6 +70,24 @@ comptime _ReduceGeneratorPluginHookFnType = (
 """Plugin-hook signature for `PluginHooks.reduce_generator_fn`; keep in sync with `_reduce_generator`."""
 
 
+__enum TargetDeviceKind(ImplicitlyCopyable):
+    """The kind of device a compilation target is.
+
+    `CompilationTarget.is_gpu()` and `is_accelerator()` are derived from it.
+    Generic code should keep asking those questions rather than match on the
+    kind, and should not branch on an `other` kind's name, which is for
+    diagnostics.
+    """
+
+    case cpu
+    """A host CPU."""
+    case gpu
+    """A SIMT GPU, where the thread, block and warp primitives apply."""
+    case other(StaticString, Bool)
+    """Any other device, such as an NPU: its name, then whether it is an
+    accelerator rather than a host."""
+
+
 trait StdPlugin(Plugin):
     comptime HookFor[target: CompilationTarget]: PluginHooks
 
@@ -91,6 +109,16 @@ trait PluginHooks:
     binds it in its `PluginHooks` struct, either as a `comptime` field or as a
     static method that forwards to it, so the struct reads as a list of the
     hooks the plugin overrides.
+    """
+
+    comptime device_kind: TargetDeviceKind
+    """The kind of device the target is.
+
+    `CompilationTarget.is_gpu()`, `is_accelerator()` and `device_kind()` read
+    this. It has no default: most plugins are for accelerators, and a missing
+    kind would otherwise make their targets silently count as host CPUs. It is
+    a hook rather than a property of the plugin, so one plugin can serve
+    targets of different kinds.
     """
 
     # ===------------------------------------------------------------------=== #
@@ -455,4 +483,4 @@ struct DefaultPlugin(StdPlugin):
 
 
 struct DefaultPluginHooks[target: CompilationTarget](PluginHooks):
-    pass
+    comptime device_kind = TargetDeviceKind.cpu

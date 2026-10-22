@@ -13,12 +13,19 @@
 
 from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
+from std.collections.string.string_span import _get_kgen_string
 from std.sys.info import CompilationTarget
 from std.sys.intrinsics import PrefetchOptions
 
 from std.builtin.variadics import TypeList
 
-from std._plugin import DefaultPlugin, DefaultPluginHooks
+from std._plugin import (
+    DefaultPlugin,
+    DefaultPluginHooks,
+    PluginHooks,
+    StdPlugin,
+    TargetDeviceKind,
+)
 from std._plugin.metal import MetalPlugin, MetalPluginHooks
 from std._plugin.cuda import CUDAPlugin, CUDAPluginHooks
 from std._plugin.hip import HIPPlugin, HIPPluginHooks
@@ -67,6 +74,47 @@ comptime _nvptx_default_payload_target = CompilationTarget[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", opaque_plugin = `,
         TypeList.of[DefaultPlugin]().values,
         `, arch = "sm_90"> : !kgen.target`,
+    ]
+]()
+
+
+struct _GPUHooks[target: CompilationTarget](PluginHooks):
+    comptime device_kind = TargetDeviceKind.gpu
+
+
+struct _NPUHooks[target: CompilationTarget](PluginHooks):
+    comptime device_kind = TargetDeviceKind.other("npu", True)
+
+
+struct _FourthGPUPlugin(StdPlugin):
+    """A GPU plugin for a vendor the stdlib doesn't name."""
+
+    comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["fourth"]()
+    comptime HookFor[target: CompilationTarget] = _GPUHooks[target]
+
+
+# A triple the stdlib doesn't recognize as a GPU, carrying a GPU plugin.
+comptime _fourth_gpu_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "x86_64-unknown-linux-gnu", opaque_plugin = `,
+        TypeList.of[_FourthGPUPlugin]().values,
+        `, arch = "x86-64"> : !kgen.target`,
+    ]
+]()
+
+
+struct _NonGPUAcceleratorPlugin(StdPlugin):
+    """A plugin for an accelerator that is not a SIMT GPU."""
+
+    comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["npu"]()
+    comptime HookFor[target: CompilationTarget] = _NPUHooks[target]
+
+
+comptime _npu_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "x86_64-unknown-linux-gnu", opaque_plugin = `,
+        TypeList.of[_NonGPUAcceleratorPlugin]().values,
+        `, arch = "x86-64"> : !kgen.target`,
     ]
 ]()
 
@@ -185,6 +233,34 @@ def test_registry_follows_stdlib_plugin() raises:
     comptime assert selector.for_target[_bare_air_target._mlir_value] == MetalPlugin
     comptime assert selector.for_target[_nvptx_default_payload_target._mlir_value] == DefaultPlugin
     # fmt: on
+
+
+def test_plugin_classifies_target() raises:
+    # The plugin decides, so a GPU the stdlib doesn't know by triple is still
+    # a GPU, and a payload naming `DefaultPlugin` makes a GPU triple a plain
+    # target.
+    comptime assert _fourth_gpu_target.is_gpu()
+    comptime assert _fourth_gpu_target.is_accelerator()
+    comptime assert not _npu_target.is_gpu()
+    comptime assert _npu_target.is_accelerator()
+    comptime assert not _nvptx_default_payload_target.is_gpu()
+    comptime assert not _nvptx_default_payload_target.is_accelerator()
+
+    comptime assert not _host_target.is_gpu()
+    comptime assert not _host_target.is_accelerator()
+    comptime assert not CompilationTarget().is_gpu()
+
+    comptime assert _h100_target.is_gpu()
+    comptime assert _mi300x_target.is_gpu()
+    comptime assert _metal_m1_target.is_gpu()
+    comptime assert _h100_target.is_accelerator()
+    comptime assert _mi300x_target.is_accelerator()
+    comptime assert _metal_m1_target.is_accelerator()
+
+    comptime assert _bare_nvptx_target.is_gpu()
+    comptime assert _bare_amdgcn_target.is_gpu()
+    comptime assert _bare_air_target.is_gpu()
+    comptime assert _bare_air_target.is_accelerator()
 
 
 def test_plugin_for_target_specializes_on_target() raises:

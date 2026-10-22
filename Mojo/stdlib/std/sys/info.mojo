@@ -27,7 +27,7 @@ from std.collections.string.string_span import _get_kgen_string
 from std.ffi import _external_call_const, external_call
 
 from std._plugin.selector import TargetPluginSelector
-from std._plugin import StdPlugin, PluginHooks
+from std._plugin import StdPlugin, PluginHooks, TargetDeviceKind
 from std._plugin._triple_default import _default_std_plugin
 
 comptime _TargetType = __mlir_type.`!kgen.target`
@@ -693,27 +693,56 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
 
     # TODO(MOCO-5022): Make these @staticmethod's once side effect bug is fixed
     @inline(.nodebug)
-    def is_accelerator(self) -> Bool:
-        """Returns True if the target triple is an accelerator, and False
-        otherwise.
+    def device_kind(self) -> TargetDeviceKind:
+        """Returns the kind of device the target is, as its stdlib plugin's
+        hooks declare it.
+
+        Prefer `is_gpu()` and `is_accelerator()` for branching; this is for
+        code that needs the kind itself, such as a diagnostic.
 
         Returns:
-            True if the triple target is an accelerator and False otherwise.
+            The target's device kind.
         """
-        # FIXME(MSTDL-3256):
-        #   What about non-GPU accelerators? Non-builtin targets? Support
-        #   extending this via plugin hooks.
-        return self.is_gpu()
+        return Self.stdlib_plugin.device_kind
+
+    # TODO(MOCO-5022): Make these @staticmethod's once side effect bug is fixed
+    @inline(.nodebug)
+    def is_accelerator(self) -> Bool:
+        """Returns True if the target is an accelerator, and False otherwise.
+
+        The target's stdlib plugin decides: a GPU is an accelerator, and an
+        `other` device kind says whether it is one.
+
+        Returns:
+            True if the target is an accelerator and False otherwise.
+        """
+        comptime match Self.stdlib_plugin.device_kind:
+            case .cpu:
+                return False
+            case .gpu:
+                return True
+            case .other(other):
+                # The payload is the device's name and whether it accelerates.
+                return other[1]
 
     # TODO(MOCO-5022): Make these @staticmethod's once side effect bug is fixed
     @inline(.nodebug)
     def is_gpu(self) -> Bool:
-        """Returns True if the target triple is a GPU and False otherwise.
+        """Returns True if the target is a SIMT GPU and False otherwise.
+
+        The target's stdlib plugin decides, so a GPU from a vendor the stdlib
+        doesn't name is still a GPU once its plugin says so.
 
         Returns:
-            True if the triple target is a GPU and False otherwise.
+            True if the target is a GPU and False otherwise.
         """
-        return self.is_nvidia_gpu() or self.is_amd_gpu() or self.is_apple_gpu()
+        comptime match Self.stdlib_plugin.device_kind:
+            case .cpu:
+                return False
+            case .gpu:
+                return True
+            case .other(_):
+                return False
 
     # NOTE: Uses a sentinel instead of Optional to avoid recursive elaboration.
     # TODO(MOCO-5022): Make these @staticmethod's once side effect bug is fixed
@@ -1051,7 +1080,7 @@ def _is_apple_m5_or_newer() -> Bool:
 
 @inline(.nodebug)
 def is_gpu() -> Bool:
-    """Returns True if the target triple is GPU and False otherwise.
+    """Returns True if the current target is a GPU and False otherwise.
 
     Equivalent to `CompilationTarget.current().is_gpu()`.
 
