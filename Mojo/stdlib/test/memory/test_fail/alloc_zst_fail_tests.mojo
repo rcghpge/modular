@@ -26,7 +26,7 @@ def test_alloc_zst_count_negative_fails() raises:
         size_of[ZST]() == 0
     ), "Please find a ZST to use for this test."
 
-    # CHECK_1: alloc: `len(layout)` must be >= 0
+    # CHECK_1: Layout: `length` must be >= 0
     var layout = Layout[ZST](length=-1)
     var ptr = alloc(layout).unsafe_leak()
 

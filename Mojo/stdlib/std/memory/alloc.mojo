@@ -132,6 +132,12 @@ from std.os import abort
 from std.sys import align_of, size_of
 from std.sys.intrinsics import unlikely
 from std.traits import IsTriviallyDeinitable
+from std.utils._nicheable import (
+    NicheIndex,
+    UnsafeNicheable,
+    _FieldNiche,
+    _NonNegativeScalarNiche,
+)
 
 
 struct Alignment(TrivialRegisterPassable, Writable):
@@ -199,6 +205,7 @@ struct Allocation[T: AnyType, *, alignment: Alignment = .of[T]()](
     ),
     RegisterPassable,
     Sized,
+    UnsafeNicheable,
     Writable,
 ):
     """An owning handle to a heap allocation of `T` together with its `Layout`.
@@ -464,9 +471,29 @@ struct Allocation[T: AnyType, *, alignment: Alignment = .of[T]()](
         """
         self.write_to(writer)
 
+    comptime _Niche = _FieldNiche[Self, "_layout"]
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def niche_count() -> Int:
+        return Self._Niche.niche_count()
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def write_niche[index: Int](memory: MutPointer[MaybeUninit[Self], _]):
+        Self._Niche.write_niche[index](memory)
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def classify_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> NicheIndex:
+        return Self._Niche.classify_niche(memory)
+
 
 struct ManagedAllocation[T: AnyType, *, alignment: Alignment = .of[T]()](
-    RegisterPassable, Sized, Writable
+    RegisterPassable, Sized, UnsafeNicheable, Writable
 ):
     """An owning handle to a heap allocation of `T` that frees itself.
 
@@ -614,6 +641,26 @@ struct ManagedAllocation[T: AnyType, *, alignment: Alignment = .of[T]()](
         """
         return len(self._alloc)
 
+    comptime _Niche = _FieldNiche[Self, "_alloc"]
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def niche_count() -> Int:
+        return Self._Niche.niche_count()
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def write_niche[index: Int](memory: MutPointer[MaybeUninit[Self], _]):
+        Self._Niche.write_niche[index](memory)
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def classify_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> NicheIndex:
+        return Self._Niche.classify_niche(memory)
+
 
 struct ThinAllocation[T: AnyType](
     not Deinitable else (
@@ -624,6 +671,7 @@ struct ThinAllocation[T: AnyType](
         " `unsafe_leak()` to take ownership of the underlying pointer."
     ),
     RegisterPassable,
+    UnsafeNicheable,
     Writable,
 ):
     """An owning handle to a heap allocation of `T`, without its `Layout`.
@@ -764,6 +812,26 @@ struct ThinAllocation[T: AnyType](
         """
         self.write_to(writer)
 
+    comptime _Niche = _FieldNiche[Self, "_ptr"]
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def niche_count() -> Int:
+        return Self._Niche.niche_count()
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def write_niche[index: Int](memory: MutPointer[MaybeUninit[Self], _]):
+        Self._Niche.write_niche[index](memory)
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def classify_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> NicheIndex:
+        return Self._Niche.classify_niche(memory)
+
 
 def _alloc_bytes(
     layout: Layout[Byte, alignment=_]
@@ -879,9 +947,6 @@ def alloc[
     Returns:
         An `Allocation` owning the newly allocated, uninitialized storage.
 
-    Constraints:
-        `len(layout)` must be `>= 0`.
-
     Example:
 
     ```mojo
@@ -895,9 +960,6 @@ def alloc[
     ```
     """
     comptime size_of_t = size_of[T]()
-
-    if unlikely(len(layout) < 0):
-        abort("alloc: `len(layout)` must be >= 0")
 
     comptime if size_of_t == 0:
         return ThinAllocation[T](
@@ -942,7 +1004,7 @@ def dealloc[T: AnyType, /](var allocation: Allocation[T, alignment=_], /):
 
 
 struct Layout[T: AnyType, *, alignment: Alignment = .of[T]()](
-    Sized, TrivialRegisterPassable, Writable
+    Sized, TrivialRegisterPassable, UnsafeNicheable, Writable
 ):
     """Describes the shape of a memory allocation for elements of type `T`.
 
@@ -981,6 +1043,8 @@ struct Layout[T: AnyType, *, alignment: Alignment = .of[T]()](
     def __init__(out self, *, length: Int):
         """Initializes a `Layout` describing `length` elements of type `T`.
 
+        Aborts if `length` is negative.
+
         Args:
             length: Number of elements of type `T` to describe.
 
@@ -988,10 +1052,28 @@ struct Layout[T: AnyType, *, alignment: Alignment = .of[T]()](
             `alignment` must be no smaller than `align_of[T]()`. `Alignment`
             itself enforces the power-of-two requirement.
         """
+        if length < 0:
+            abort("Layout: `length` must be >= 0")
+        self = Self(_unsafe_unchecked_length=length)
+
+    @inline(.always)
+    @doc_hidden
+    def __init__(out self, *, _unsafe_unchecked_length: Int):
+        """Initializes a `Layout` describing `_unsafe_unchecked_length` elements
+        of type `T`, without checking that the length is non-negative.
+
+        Args:
+            _unsafe_unchecked_length: Number of elements of type `T` to
+                describe.
+
+        Safety:
+
+        `unsafe_unchecked_length` must be non-negative.
+        """
         comptime assert (
             Self.alignment.bytes() >= align_of[Self.T]()
         ), "`Layout` alignment must be at least `align_of[T]()`"
-        self._length = length
+        self._length = _unsafe_unchecked_length
 
     @deprecated("use `Layout(length=...)` instead")
     @inline(.always)
@@ -1073,3 +1155,23 @@ struct Layout[T: AnyType, *, alignment: Alignment = .of[T]()](
             writer: The writer to write to.
         """
         self.write_to(writer)
+
+    comptime _Niche = _NonNegativeScalarNiche[Self, "_length"]
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def niche_count() -> Int:
+        return Self._Niche.niche_count()
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def write_niche[index: Int](memory: MutPointer[MaybeUninit[Self], _]):
+        Self._Niche.write_niche[index](memory)
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def classify_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> NicheIndex:
+        return Self._Niche.classify_niche(memory)

@@ -12,12 +12,14 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.testing import TestSuite
-from std.testing import assert_equal, assert_raises, assert_true
+from std.sys import size_of
+from std.testing import assert_equal, assert_false, assert_raises, assert_true
 from test_utils import (
     CopyCounter,
     DelCounter,
     MoveCounter,
     MoveOnly,
+    check_niches,
     check_write_to,
 )
 from std.memory import MaybeUninit, forget_deinit
@@ -776,6 +778,25 @@ def test_unsafe_init_move_from_non_trivial() raises:
     # Every element of `source` was moved out of, so its deinitializer must
     # not run over the uninitialized storage left behind.
     forget_deinit(source^)
+
+
+def test_span_niche() raises:
+    var list: List = [1, 2, 3]
+    comptime SpanType = Span[Int, origin_of(list)]
+    assert_equal(SpanType.niche_count(), Int.MAX)
+    assert_equal(size_of[Optional[SpanType]](), size_of[SpanType]())
+    check_niches[SpanType]()
+
+    var some = Optional(Span(list))
+    assert_true(some)
+    assert_equal(some.value()[2], 3)
+
+    var empty = Optional(SpanType())
+    assert_true(empty)
+    assert_equal(len(empty.value()), 0)
+
+    var none = Optional[SpanType](None)
+    assert_false(none)
 
 
 def main() raises:

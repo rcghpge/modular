@@ -22,7 +22,7 @@ from std.memory.alloc import (
 )
 from std.sys import align_of, size_of
 
-from test_utils import ObservableDel, check_write_to
+from test_utils import ObservableDel, check_niches, check_write_to
 from std.testing import (
     assert_equal,
     assert_false,
@@ -292,6 +292,89 @@ def test_many_zst_lifecycle() raises:
     ptr.unsafe_bitcast[Array[ZST, Int.MAX]]().unsafe_deinit_pointee()
 
     dealloc(ThinAllocation(unsafe_owned_ptr=ptr).unsafe_with_layout(layout))
+
+
+def test_layout_niche() raises:
+    comptime LayoutType = Layout[Int64]
+    assert_equal(LayoutType.niche_count(), Int.MAX)
+    assert_equal(size_of[Optional[LayoutType]](), size_of[LayoutType]())
+    check_niches[LayoutType]()
+
+    var some = Optional(LayoutType(length=4))
+    assert_true(some)
+    assert_equal(len(some.value()), 4)
+
+    var empty = Optional(LayoutType(length=0))
+    assert_true(empty)
+    assert_equal(len(empty.value()), 0)
+
+    var none = Optional[LayoutType](None)
+    assert_false(none)
+
+
+def test_allocation_niche() raises:
+    comptime AllocationType = Allocation[Int64]
+    assert_equal(AllocationType.niche_count(), Int.MAX)
+    assert_equal(size_of[Optional[AllocationType]](), size_of[AllocationType]())
+    check_niches[AllocationType]()
+
+    def _dealloc(var allocation: AllocationType):
+        dealloc(allocation^)
+
+    # `Optional[Allocation]` can't be abandoned by a raising assert, so read
+    # each one and destroy it before asserting.
+    var some = Optional(alloc(Layout[Int64](length=4)))
+    var some_engaged = Bool(some)
+    var some_length = len(some.value())
+    some^.deinit_with(_dealloc)
+    assert_true(some_engaged)
+    assert_equal(some_length, 4)
+
+    var empty = Optional(alloc(Layout[Int64](length=0)))
+    var empty_engaged = Bool(empty)
+    empty^.deinit_with(_dealloc)
+    assert_true(empty_engaged)
+
+    var none = Optional[AllocationType](None)
+    var none_engaged = Bool(none)
+    none^.deinit_assert_empty()
+    assert_false(none_engaged)
+
+
+def test_managed_allocation_niche() raises:
+    comptime ManagedType = ManagedAllocation[Int64]
+    assert_equal(ManagedType.niche_count(), Int.MAX)
+    assert_equal(size_of[Optional[ManagedType]](), size_of[ManagedType]())
+    check_niches[ManagedType]()
+
+    var some = Optional(alloc(Layout[Int64](length=4)).into_managed())
+    assert_true(some)
+    assert_equal(len(some.value()), 4)
+
+    var none = Optional[ManagedType](None)
+    assert_false(none)
+
+
+def test_thin_allocation_niche() raises:
+    comptime ThinType = ThinAllocation[Int64]
+    assert_equal(ThinType.niche_count(), 1)
+    assert_equal(size_of[Optional[ThinType]](), size_of[ThinType]())
+    check_niches[ThinType]()
+
+    var layout = Layout[Int64](length=4)
+
+    def _dealloc(var thin: ThinType) {layout}:
+        dealloc(thin^.unsafe_with_layout(layout))
+
+    var some = Optional(alloc(layout).into_thin())
+    var some_engaged = Bool(some)
+    some^.deinit_with(_dealloc)
+    assert_true(some_engaged)
+
+    var none = Optional[ThinType](None)
+    var none_engaged = Bool(none)
+    none^.deinit_assert_empty()
+    assert_false(none_engaged)
 
 
 def main() raises:

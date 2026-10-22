@@ -66,6 +66,21 @@ This version is still a work in progress.
 
 ## Library performance improvements
 
+- Reduced the size of `Optional[T]` to the size of `T` when `T` is one of the
+  following types, so code that stores them in an `Optional` uses less memory:
+
+  - `Allocation`
+  - `Layout`
+  - `List`
+  - `ManagedAllocation`
+  - `Span`
+  - `StringSpan`
+  - `ThinAllocation`
+
+  Don't depend on this size. It relies on bit patterns that each type's current
+  representation never uses, and that representation could change in the
+  future.
+
 ## Library changes
 
 - `Tuple` element types no longer need to be `Movable`. A `Tuple` is now

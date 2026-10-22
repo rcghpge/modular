@@ -35,6 +35,11 @@ from std.traits import (
 from std.algorithm import vectorize
 from std.hash import Hasher
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
+from std.utils._nicheable import (
+    NicheIndex,
+    UnsafeNicheable,
+    _NonNegativeScalarNiche,
+)
 import std.format._utils as fmt
 
 
@@ -174,6 +179,7 @@ struct Span[
     IterableOwned where conforms_to(T, Copyable) and address_space == .GENERIC,
     Sized,
     TrivialRegisterPassable,
+    UnsafeNicheable,
     Writable where conforms_to(T, Writable) and address_space == .GENERIC,
 ):
     """A non-owning view of contiguous data.
@@ -287,7 +293,7 @@ struct Span[
 
         Args:
             unsafe_ptr: The underlying pointer of the span.
-            length: The length of the view.
+            length: The length of the view, must be non-negative.
         """
         self._data = unsafe_ptr
         self._len = length
@@ -599,6 +605,26 @@ struct Span[
         hasher._update_with_simd(Int64(len(this)))
         for i in range(len(this)):
             this[i].__hash__(hasher)
+
+    comptime _Niche = _NonNegativeScalarNiche[Self, "_len"]
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def niche_count() -> Int:
+        return Self._Niche.niche_count()
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def write_niche[index: Int](memory: MutPointer[MaybeUninit[Self], _]):
+        Self._Niche.write_niche[index](memory)
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def classify_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> NicheIndex:
+        return Self._Niche.classify_niche(memory)
 
     # ===------------------------------------------------------------------===#
     # Methods

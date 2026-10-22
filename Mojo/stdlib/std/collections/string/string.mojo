@@ -722,7 +722,8 @@ struct String(
                 dealloc(
                     ThinAllocation(unsafe_owned_ptr=ptr).unsafe_with_layout(
                         Layout[Byte](
-                            length=self.capacity_bytes() + Self.REF_COUNT_SIZE
+                            _unsafe_unchecked_length=self.capacity_bytes()
+                            + Self.REF_COUNT_SIZE
                         )
                     )
                 )
