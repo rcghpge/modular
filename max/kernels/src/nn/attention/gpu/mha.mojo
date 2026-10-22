@@ -4788,12 +4788,23 @@ def mha_decoding_single_batch[
             assert Bool(
                 sink_weights
             ), "expect sink_weights to be non-null when sink=true"
-            if thread_idx.x < 4 * group:
+            # Warps tile the depth columns and each lane divides its fragment by
+            # its own rowsum, so every warp seeds the sink.
+            comptime m_mma = i // 2
+            var frag_row = (
+                m_mma * MMA_M
+                + (i % 2) * (MMA_M // 2)
+                + ufloordiv(umod(thread_idx.x, WARP_SIZE), 4)
+            )
+            if frag_row < group:
                 var sink_logit_log2 = (
-                    sink_weights.value()[q_head_idx].cast[accum_type]() * log2e
+                    sink_weights.value()[kv_head_idx * group + frag_row].cast[
+                        accum_type
+                    ]()
+                    * log2e
                 )
                 rowmax[i] = sink_logit_log2
-                if partition_idx == 0 and umod(thread_idx.x, 4) == 0:
+                if partition_idx == 0:
                     rowsum[i] = 1.0
                 else:
                     rowsum[i] = 0.0
@@ -5201,10 +5212,18 @@ def mha_decoding_single_batch[
 
     if num_partitions > 1:
         if umod(thread_idx.x, 4) == 0 and thread_idx.x < 4 * group:
-            var row_sum = rowsum[0]
-            var row_max = rowmax[0]
-            exp_sum_ptr[q_head_idx] = row_sum
-            qk_max_ptr[q_head_idx] = row_max
+            # Band 0 of the accumulator is `rowsum[2 * m_mma]` and band 1 is
+            # `[2 * m_mma + 1]`; a quad holds `lane // 4` in both, so the head
+            # decides the index. Reading `[0]` gave the upper band the lower
+            # band's totals.
+            var lane_row = umod(ufloordiv(thread_idx.x, 4), MMA_M // 2)
+            comptime for m_mma in range(num_m_mmas):
+                comptime for band in range(2):
+                    if ufloordiv(thread_idx.x, 4) == (
+                        m_mma * MMA_M + band * (MMA_M // 2) + lane_row
+                    ):
+                        exp_sum_ptr[q_head_idx] = rowsum[2 * m_mma + band]
+                        qk_max_ptr[q_head_idx] = rowmax[2 * m_mma + band]
 
     # Pack results in shared memory for wider simd width.
     var accum_smem_warp_ptr = q_smem.unsafe_bitcast[
@@ -5445,12 +5464,23 @@ def mha_decoding_single_batch_pipelined[
             assert Bool(
                 sink_weights
             ), "expect sink_weights to be non-null when sink=true"
-            if thread_idx.x < 4 * group:
+            # Warps tile the depth columns and each lane divides its fragment by
+            # its own rowsum, so every warp seeds the sink.
+            comptime m_mma = i // 2
+            var frag_row = (
+                m_mma * MMA_M
+                + (i % 2) * (MMA_M // 2)
+                + ufloordiv(umod(thread_idx.x, WARP_SIZE), 4)
+            )
+            if frag_row < group:
                 var sink_logit_log2 = (
-                    sink_weights.value()[q_head_idx].cast[accum_type]() * log2e
+                    sink_weights.value()[kv_head_idx * group + frag_row].cast[
+                        accum_type
+                    ]()
+                    * log2e
                 )
                 rowmax[i] = sink_logit_log2
-                if partition_idx == 0 and umod(thread_idx.x, 4) == 0:
+                if partition_idx == 0:
                     rowsum[i] = 1.0
                 else:
                     rowsum[i] = 0.0
@@ -5696,11 +5726,19 @@ def mha_decoding_single_batch_pipelined[
 
     if num_partitions > 1:
         if umod(thread_idx.x, 4) == 0 and thread_idx.x < 4 * group:
-            var row_sum = rowsum[0]
-            var row_max = rowmax[0]
-            var q_head_idx = kv_head_idx * group + ufloordiv(thread_idx.x, 4)
-            exp_sum_ptr[q_head_idx] = row_sum
-            qk_max_ptr[q_head_idx] = row_max
+            # Same band split as `mha_decoding_single_batch`: the head, not the
+            # thread, selects which accumulator total is its own.
+            var lane_row = umod(ufloordiv(thread_idx.x, 4), MMA_M // 2)
+            comptime for m_mma in range(num_m_mmas):
+                comptime for band in range(2):
+                    if ufloordiv(thread_idx.x, 4) == (
+                        m_mma * MMA_M + band * (MMA_M // 2) + lane_row
+                    ):
+                        var q_head_idx = kv_head_idx * group + ufloordiv(
+                            thread_idx.x, 4
+                        )
+                        exp_sum_ptr[q_head_idx] = rowsum[2 * m_mma + band]
+                        qk_max_ptr[q_head_idx] = rowmax[2 * m_mma + band]
 
     # Pack results in shared memory for wider simd width.
     comptime accum_smem_layout = row_major[WM, WN]()

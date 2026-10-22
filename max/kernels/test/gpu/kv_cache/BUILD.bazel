@@ -12,6 +12,7 @@ _GPU_MEMORY = {
     "test_kv_cache_radd.mojo": "3",
     "test_kv_cache_ragged_matmul_scale.mojo": "3",
     "test_kv_cache_store_ragged.mojo": "3",
+    "test_mha_decode_sink_seed.mojo": "2",
     "test_mha_decoding_vs_naive.mojo": "2",
     "test_mha_mixed_ce_tg.mojo": "2",
     "test_paged_sparse_kv_index_remap.mojo": "2",
