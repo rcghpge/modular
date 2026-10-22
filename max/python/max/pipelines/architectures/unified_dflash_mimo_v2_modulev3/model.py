@@ -116,6 +116,16 @@ class UnifiedDflashMiMoV2ModuleV3Model(  # type: ignore[misc]
     ) -> None:
         del return_logits
         assert pipeline_config.speculative is not None
+        if pipeline_config.runtime.ep_size > 1:
+            # The target's EP wiring lives in the non-spec MiMo model's
+            # distributed runtime; this fused graph compiles through its own
+            # _load_decoder and batch processor, which do not thread the EP
+            # input tail. The EP spec variant is its own work item.
+            raise NotImplementedError(
+                "Expert parallelism for the fused DFlash spec graph is not "
+                "built yet; the EP transformer MEF and the spec MEF must be "
+                "exported without --ep-size for now."
+            )
         self.resolved_num_speculative_tokens = (
             pipeline_config.speculative.draft_width
         )

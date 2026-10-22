@@ -23,6 +23,7 @@ from typing import ClassVar
 
 from max.dtype import DType
 from max.graph import DeviceRef
+from max.nn.comm.ep import EPConfig
 from max.nn.kv_cache import KVCacheParamInterface, MultiKVCacheParams
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.architectures.gpt_oss.hybrid_kv_params_util import (
@@ -113,6 +114,15 @@ class MiMoV2Config(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
     target_layer_ids: list[int] | None = None
     """For ``ReturnHiddenStates.SELECTED_LAYERS``, the layers whose outputs
     (post-residual, before the final norm) are returned."""
+
+    ep_config: EPConfig | None = None
+    """Expert-parallel communication config, set by the pipeline model when
+    ``runtime.ep_size > 1``. ``None`` leaves the routed experts channel-
+    sharded (tensor parallel)."""
+
+    data_parallel_degree: int = 1
+    """Attention data-parallel replicas. Reserved for the DP coupling; a
+    degree above 1 is refused until the DP-attn mode is built."""
 
     @property
     def attention_scale(self) -> float:

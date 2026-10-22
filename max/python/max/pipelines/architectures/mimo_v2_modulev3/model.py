@@ -18,23 +18,40 @@ from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from max import tree
-from max.driver import Buffer
+from max.driver import Buffer, Device, is_virtual_device_mode
+from max.dtype import DType
+from max.engine import InferenceSession
 from max.experimental.sharding import DeviceMesh
 from max.experimental.tensor import default_device
+from max.graph.weights import Weights, WeightsAdapter
+from max.nn.comm.ep import (
+    EPBatchManager,
+    EPCommInitializer,
+    EPConfig,
+    calculate_ep_max_tokens_per_rank,
+)
 from max.nn.kv_cache import KVCacheInputs
+from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import TextContext
 from max.pipelines.lib import (
+    KVCacheConfig,
+    MemoryPlan,
     ModelInputs,
     ModuleV3PipelineModelWithKVCache,
+    PipelineConfig,
 )
+from max.pipelines.lib.interfaces.arch_config import ArchConfig
 from max.pipelines.lib.interfaces.batch_processor import (
     BatchProcessor,
+    BatchProcessorRuntime,
     ModuleV3SingleReplicaBatchProcessor,
 )
+from typing_extensions import override
 
 from ..mimo_v2.model import text_model_weights
 from .mimo_v2 import MiMoV2
 from .model_config import MiMoV2Config
+from .quant import MXFP8_DISPATCH_QUANT_CONFIG
 
 
 @dataclass
@@ -44,6 +61,9 @@ class MiMoV2Inputs(ModelInputs):
     tokens: Buffer
     input_row_offsets: Buffer
     return_n_logits: Buffer
+    ep_inputs: tuple[Buffer, ...] = ()
+    """The EP atomic counters and buffer-pointer tables, after the KV
+    leaves. Empty without expert parallelism."""
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
@@ -51,7 +71,7 @@ class MiMoV2Inputs(ModelInputs):
 
         ModuleV3's ABI is ``(tokens, return_n_logits, input_row_offsets,
         *kv)``; the KV leaves follow in the same order the symbolic inputs
-        declare them.
+        declare them, then the EP tail.
         """
         return (
             self.tokens,
@@ -62,6 +82,7 @@ class MiMoV2Inputs(ModelInputs):
                 if self.kv_cache_inputs is not None
                 else ()
             ),
+            *self.ep_inputs,
             *self.lora_buffers,
         )
 
@@ -71,6 +92,23 @@ class MiMoV2ModuleV3BatchProcessor(
 ):
     """Ragged batching for MiMo-V2 ModuleV3 models (single replica, no
     signals)."""
+
+    def __init__(
+        self, config: ArchConfig, runtime: BatchProcessorRuntime
+    ) -> None:
+        super().__init__(config, runtime)
+        self._ep_comm_initializer: EPCommInitializer | None = None
+
+    def bind_ep_comm_initializer(
+        self, initializer: EPCommInitializer | None
+    ) -> None:
+        """Wires the EP buffers the model's load created."""
+        self._ep_comm_initializer = initializer
+
+    def _ep_inputs(self) -> tuple[Buffer, ...]:
+        if self._ep_comm_initializer is None:
+            return ()
+        return tuple(self._ep_comm_initializer.model_inputs())
 
     def _make_inputs(
         self,
@@ -85,6 +123,7 @@ class MiMoV2ModuleV3BatchProcessor(
             input_row_offsets=input_row_offsets,
             return_n_logits=return_n_logits,
             kv_cache_inputs=kv_cache_inputs,
+            ep_inputs=self._ep_inputs(),
         )
 
 
@@ -95,7 +134,11 @@ class MiMoV2ModuleV3Model(
 
     The graph takes ModuleV3's inputs: tokens, the logit count and row
     offsets on the first device, then the ``{sliding_attention,
-    full_attention}`` KV tree, one collection per device.
+    full_attention}`` KV tree, one collection per device. With
+    ``runtime.ep_size > 1`` the EP communication buffers follow the KV
+    leaves as an extra input tail (atomic counters plus the buffer-pointer
+    tensors), the routed experts shard whole across the devices, and the
+    one-time ``ep_init`` graph is compiled alongside the forward.
     """
 
     model_config_cls: ClassVar[type[Any]] = MiMoV2Config
@@ -106,12 +149,141 @@ class MiMoV2ModuleV3Model(
         MiMoV2ModuleV3BatchProcessor
     )
 
+    def __init__(
+        self,
+        pipeline_config: PipelineConfig,
+        session: InferenceSession,
+        devices: list[Device],
+        kv_cache_config: KVCacheConfig,
+        weights: Weights,
+        *,
+        memory_plan: MemoryPlan,
+        adapter: WeightsAdapter | None = None,
+        return_logits: ReturnLogits = ReturnLogits.LAST_TOKEN,
+        return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
+        max_batch_size: int = 1,
+    ) -> None:
+        # Captured so _init_distributed_runtime can initialize the EP
+        # communication buffers, which the forward then reads as inputs.
+        self.session = session
+        super().__init__(
+            pipeline_config,
+            session,
+            devices,
+            kv_cache_config,
+            weights,
+            memory_plan=memory_plan,
+            adapter=adapter,
+            return_logits=return_logits,
+            return_hidden_states=return_hidden_states,
+            max_batch_size=max_batch_size,
+        )
+
     def _create_model_config(self, state_dict: dict[str, Any]) -> MiMoV2Config:
         del state_dict
         config = self.arch_config_as(MiMoV2Config)
         config.return_logits = self.return_logits
         config.return_hidden_states = self.return_hidden_states
+        config.data_parallel_degree = (
+            self.pipeline_config.model.data_parallel_degree
+        )
         return config
+
+    def _build_ep_config(
+        self, ep_size: int, n_devices: int, model_config: MiMoV2Config
+    ) -> EPConfig:
+        """Builds the expert-parallel config from the pipeline ``ep_size``.
+
+        MiMo serves EP on one node with the allreduce backend: its residual
+        stream stays replicated (TP attention, one allreduce per block), so
+        the P2P dispatch -- which assumes each token lives on one device --
+        would dispatch and combine every replica of a token. The allreduce
+        backend instead routes each device's own tokens to its local
+        experts and lets the residual allreduce sum the partial combines.
+        """
+        if ep_size != n_devices:
+            raise ValueError(
+                f"MiMo-V2 serves expert parallelism on one node only: "
+                f"ep_size ({ep_size}) must equal the device count "
+                f"({n_devices})."
+            )
+        if not self.pipeline_config.runtime.ep_use_allreduce:
+            raise NotImplementedError(
+                "MiMo-V2 expert parallelism needs the allreduce backend "
+                "(--ep-use-allreduce); the P2P backend requires a "
+                "sequence-sharded residual stream."
+            )
+        if not self.pipeline_config.runtime.enable_chunked_prefill:
+            # The dispatch/combine buffers are sized to max_tokens_per_rank
+            # (max_batch_input_tokens on the allreduce backend), which the
+            # batch constructor treats as a soft limit: with chunking off
+            # it admits an oversized prompt whole, and the dispatch
+            # overflows the fixed buffers.
+            raise ValueError(
+                "MiMo-V2 expert parallelism requires chunked prefill: the "
+                "EP dispatch buffers are sized to max_batch_input_tokens, "
+                "which without chunking is a soft limit a longer prompt "
+                "exceeds."
+            )
+        if model_config.n_routed_experts % ep_size:
+            raise ValueError(
+                f"MiMo-V2: {ep_size} devices do not divide the "
+                f"{model_config.n_routed_experts} routed experts."
+            )
+        return EPConfig(
+            # The dispatch quantizes tokens to the experts' MXFP8 activation
+            # format in transit, so the receiving grouped matmuls consume
+            # them unchanged (see MXFP8_DISPATCH_QUANT_CONFIG).
+            dispatch_dtype=DType.float8_e4m3fn,
+            dispatch_quant_config=MXFP8_DISPATCH_QUANT_CONFIG,
+            combine_dtype=DType.bfloat16,
+            hidden_size=model_config.hidden_size,
+            top_k=model_config.num_experts_per_tok,
+            n_experts=model_config.n_routed_experts,
+            max_tokens_per_rank=calculate_ep_max_tokens_per_rank(
+                max_batch_input_tokens=(
+                    self.pipeline_config.runtime.max_batch_input_tokens
+                ),
+                ep_size=ep_size,
+                data_parallel_degree=(
+                    self.pipeline_config.model.data_parallel_degree
+                ),
+                use_allreduce=True,
+            ),
+            n_gpus_per_node=n_devices,
+            n_nodes=1,
+            use_allreduce=True,
+        )
+
+    @override
+    def _init_distributed_runtime(self, model_config: Any) -> None:
+        # The base no-op defaults the EP input tail to empty, which the
+        # plain (no-EP) compile path reads; call it first so an early
+        # return below cannot leave the attribute unset.
+        super()._init_distributed_runtime(model_config)
+        self._ep_batch_manager: EPBatchManager | None = None
+        dp_degree = self.pipeline_config.model.data_parallel_degree
+        ep_size = self.pipeline_config.runtime.ep_size
+        if dp_degree > 1:
+            raise NotImplementedError(
+                "Data-parallel attention for MiMo-V2 on ModuleV3 is not "
+                "built yet; it couples to expert parallelism."
+            )
+        if ep_size <= 1:
+            return
+
+        # Expert parallelism: ep_size > 1 shards whole routed experts across
+        # the devices. The communication buffers are allocated once here
+        # and threaded through the graph as the EP input tail.
+        n_devices = len(self.devices)
+        ep_config = self._build_ep_config(ep_size, n_devices, model_config)
+        model_config.ep_config = ep_config
+        self._ep_batch_manager = EPBatchManager(ep_config)
+        self._modulev3_extra_input_types = self._ep_batch_manager.input_types()
+        if not is_virtual_device_mode():
+            self.ep_comm_initializer = EPCommInitializer(ep_config)
+            self.ep_comm_initializer.ep_init(self.session)
+            ep_config.node_id = self.ep_comm_initializer.config.node_id
 
     def _load_state_dict(self) -> dict[str, Any]:
         """Adapts the text model's tensors, :func:`text_model_weights`.
@@ -134,4 +306,4 @@ class MiMoV2ModuleV3Model(
         n_devices = len(self.devices)
         mesh = DeviceMesh(tuple(self.devices), (n_devices,), ("tp",))
         with default_device(mesh):
-            return MiMoV2(model_config)
+            return MiMoV2(model_config, self._ep_batch_manager)

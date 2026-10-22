@@ -17,6 +17,11 @@ The routed experts run the same W4A8 chain as the graph-API architecture
 :class:`max.nn.moe.NvMxf4f8Strategy`; the modulev3 MoE layers have no
 MXFP4/e8m0 path of their own. Each device holds its share of every expert's
 channels, so its chain yields a partial sum the residual add reduces.
+
+The expert-parallel variant (:class:`MiMoV2ExpertParallelMoE`) holds whole
+experts per device instead and moves the tokens through the EP
+dispatch/combine kernels, quantized to the same MXFP8 activations in
+transit.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from max.experimental.sharding import (
 from max.experimental.tensor import Tensor
 from max.graph import TensorValue, ops
 from max.nn.activation import GatedActivation
+from max.nn.comm.ep import EPBatchManager, EPCommBuffers
 from max.nn.comm.ep.ep_kernels import fused_silu
 from max.nn.kernels import moe_create_indices, moe_finalize
 from max.nn.moe import NvMxf4f8Strategy
@@ -188,7 +194,7 @@ class MiMoV2Expert(Module[[], None]):
         self.down_proj = _MxWeights(hidden_dim, moe_dim)
 
 
-class MiMoV2MoE(Module[[Tensor], Tensor]):
+class MiMoV2MoE(Module[..., Tensor]):
     """MiMo-V2's sigmoid-routed MoE, with no shared expert.
 
     On NVIDIA, the experts run W4A8: each projection's input is quantized to
@@ -383,4 +389,270 @@ class MiMoV2MoE(Module[[Tensor], Tensor]):
             return Tensor.from_shard_values(shards, x.mapping)
         return Tensor.from_shard_values(
             shards, DeviceMapping(mesh, (Partial(),))
+        )
+
+
+class MiMoV2ExpertParallelMoE(MiMoV2MoE):
+    """MiMo-V2's MoE with whole experts sharded across the devices.
+
+    Each device owns one contiguous block of ``num_experts // n_devices``
+    whole experts -- full ``moe_dim`` width, no channel split -- and the EP
+    dispatch/combine kernels move the tokens between router and experts.
+    MiMo keeps its residual stream replicated (tensor-parallel attention,
+    one allreduce per block), so the EP communication runs on the allreduce
+    backend: every device routes its own token replica to its local experts,
+    and the combine returns that device's share of the top-8 sum, which the
+    residual add's allreduce completes. The per-block collectives keep the
+    exact placement the tensor-parallel build has.
+
+    The W4A8 chain is the same one :class:`MiMoV2MoE` runs: the dispatch
+    kernel quantizes the tokens to MXFP8 (E4M3 data, E8M0 32-block scales,
+    the NVIDIA block-scaled layout) as it sends them, so the local grouped
+    matmuls consume the dispatched activations directly -- no separate
+    activation quantize on the receiving device.
+
+    Hand-rolled rather than the stock ModuleV3
+    :class:`~max.experimental.nn.common_layers.quant_moe.ExpertParallelMoE`,
+    which a W4A8 model cannot use: its experts must be ``QuantizedMLP`` s
+    backed by ``FP8BlockTensor``/``NVFP4Tensor`` (no MXFP4 quant tensor
+    exists), and ``EPDispatchPayload.from_dispatch`` keys its column
+    parsing on the routed-expert *weight* format, so an MXFP4 config takes
+    the plain-FP8 arm and misreads the 6-column block-scaled dispatch.
+    TODO(DISTINF-675): key ``EPDispatchPayload`` on the *dispatch* format
+    and add an MXFP4 quant tensor when a second W4A8 architecture needs
+    ModuleV3 EP, then fold this class back into the shared one.
+    """
+
+    def __init__(
+        self,
+        *,
+        hidden_dim: int,
+        num_experts: int,
+        num_experts_per_tok: int,
+        moe_dim: int,
+        norm_topk_prob: bool,
+        quant_config: QuantConfig,
+        ep_batch_manager: EPBatchManager,
+    ) -> None:
+        super().__init__(
+            hidden_dim=hidden_dim,
+            num_experts=num_experts,
+            num_experts_per_tok=num_experts_per_tok,
+            moe_dim=moe_dim,
+            norm_topk_prob=norm_topk_prob,
+            quant_config=quant_config,
+        )
+        self.ep_batch_manager = ep_batch_manager
+
+    def _stacked_weights(
+        self, mesh: DeviceMesh
+    ) -> list[tuple[TensorValue, ...]]:
+        """Each device's whole local experts' gate/up and down stacks.
+
+        Device ``d`` owns experts ``[d * local, (d + 1) * local)`` at their
+        full width. Like the tensor-parallel stacks this reads only weights,
+        so the graph compiler runs it once, at model init.
+        """
+        n = mesh.num_devices
+        if self.num_experts % n:
+            raise ValueError(
+                f"MiMo-V2: {n} devices do not divide the "
+                f"{self.num_experts} routed experts."
+            )
+        local = self.num_experts // n
+        md, hidden = self.moe_dim, self.hidden_dim
+        block = list(self.experts)
+        per_device: list[tuple[TensorValue, ...]] = []
+        for d in range(n):
+            experts = block[d * local : (d + 1) * local]
+            device = mesh.devices[d]
+            gate = F.stack([x.gate_proj.weight for x in experts], axis=0).to(
+                device
+            )
+            up = F.stack([x.up_proj.weight for x in experts], axis=0).to(device)
+            gate_scale = F.stack(
+                [x.gate_proj.weight_scale for x in experts], axis=0
+            ).to(device)
+            up_scale = F.stack(
+                [x.up_proj.weight_scale for x in experts], axis=0
+            ).to(device)
+            # One [gate; up] block per expert, the layout fused_silu's
+            # split mode reads.
+            gate_up = ops.stack(
+                [TensorValue(gate), TensorValue(up)], axis=1
+            ).reshape([local, 2 * md, hidden // 2])
+            gate_up_scales = ops.stack(
+                [TensorValue(gate_scale), TensorValue(up_scale)], axis=1
+            ).reshape([local, 2 * md, hidden // 32])
+            down_w = TensorValue(
+                F.stack([x.down_proj.weight for x in experts], axis=0).to(
+                    device
+                )
+            )
+            down_scale = F.stack(
+                [x.down_proj.weight_scale for x in experts], axis=0
+            ).to(device)
+            gate_up_interleaved, down_interleaved = (
+                self.strategy.prepare_weight_scales(
+                    gate_up_scales,
+                    TensorValue(down_scale),
+                    down_w.device,
+                )
+            )
+            per_device.append(
+                (gate_up, gate_up_interleaved, down_w, down_interleaved)
+            )
+        return per_device
+
+    def _local_experts(
+        self,
+        dispatched: tuple[TensorValue, ...],
+        stacked: tuple[TensorValue, ...],
+        estimated_total_m: TensorValue,
+    ) -> TensorValue:
+        """Runs the W4A8 expert chain on one device's dispatched tokens.
+
+        The dispatch hands back the received rows already grouped by local
+        expert, in the NVIDIA block-scaled layout: MXFP8 data with E8M0
+        scales in per-expert padded tiles, plus the grouped-matmul metadata.
+        """
+        gate_up, gate_up_scales, down, down_scales = stacked
+        (
+            tokens,
+            token_scales,
+            expert_start,
+            scales_offset,
+            expert_ids,
+            usage_stats,
+        ) = dispatched
+        strategy = self.strategy
+        group = self.quant_config.input_scale.block_size
+        assert group is not None
+        gate_up_out = strategy.grouped_matmul(
+            gate_up,
+            gate_up_scales,
+            expert_inputs=(
+                tokens,
+                token_scales,
+                expert_start,
+                scales_offset,
+                expert_ids,
+                usage_stats,
+            ),
+            estimated_total_m=estimated_total_m,
+        )
+        gate_up_out = fused_silu(
+            gate_up_out,
+            expert_start,
+            activation=self.activation,
+            interleaved=False,
+        )
+        gate_up_quant, gate_up_scales = strategy.grouped_quantize(
+            gate_up_out, group[1], None, expert_start, scales_offset, expert_ids
+        )
+        return strategy.grouped_matmul(
+            down,
+            down_scales,
+            expert_inputs=(
+                gate_up_quant,
+                gate_up_scales,
+                expert_start,
+                scales_offset,
+                expert_ids,
+                usage_stats,
+            ),
+            estimated_total_m=estimated_total_m,
+        )
+
+    def forward(self, x: Tensor, comm: EPCommBuffers | None = None) -> Tensor:
+        """Expert-parallel forward: gate -> dispatch -> local experts ->
+        combine.
+
+        Args:
+            x: The replicated residual stream, ``[tokens, hidden]``.
+            comm: The graph's EP communication buffers. Optional only to
+                keep the base ``forward(self, x)`` signature compatible; the
+                EP path always supplies it.
+
+        Returns:
+            The layer's partial MoE output, one shard per device, which the
+            residual add's allreduce reduces -- the same placement the
+            tensor-parallel MoE's partial sums have.
+        """
+        batch_mgr = self.ep_batch_manager
+        config = batch_mgr.config
+        if not config.use_allreduce:
+            # The P2P dispatch assumes each token lives on one device
+            # (``tp_sharded`` residual); MiMo's is replicated, so every
+            # replica of a token would be dispatched and the combine would
+            # double-count it. Serving that needs the reduce-scatter /
+            # allgather residual restructure.
+            raise NotImplementedError(
+                "MiMo-V2 expert parallelism runs on the allreduce backend"
+                " only; the P2P backend needs a sequence-sharded residual"
+                " stream."
+            )
+        assert comm is not None, (
+            "MiMoV2ExpertParallelMoE.forward requires comm buffers"
+        )
+        batch_mgr.bind_comm_buffers(comm)
+        mesh = x.mesh
+        n = mesh.num_devices
+        device_ids = [d.id for d in mesh.devices]
+        experts, weights = self.gate(x)
+        stacked = self._stacked_weights(mesh)
+        # Replicated: every device holds the same rows and routes them the
+        # same way (the router broadcasts its decisions).
+        x_shards = [x.local_shards[d] for d in range(n)]
+        # The cast runs at the graph level: the router's output placement is
+        # unknown inside the shared subgraph, which the functional cast's
+        # planner refuses.
+        idx_shards = [
+            TensorValue(shard).cast(DType.int32)
+            for shard in experts.local_shards
+        ]
+        w_shards = [weights.local_shards[d] for d in range(n)]
+        # The allreduce backend routes each device's own replica to its
+        # local experts; no token crosses devices. `ep_dispatch`/`ep_combine`
+        # take one constrained type for every tensor argument, so each tensor
+        # crosses the boundary as its graph value, like the TP path's calls.
+        dispatched: list[tuple[TensorValue, ...]] = [
+            tuple(
+                TensorValue(value)
+                for value in batch_mgr.ep_dispatch(
+                    TensorValue(x_shards[d]), idx_shards[d], device_ids[d]
+                )
+            )
+            for d in range(n)
+        ]
+        # One replica's token count: the residual is replicated, so summing
+        # the shards would count every token n times. Each device receives
+        # about tokens * top_k / n_gpus rows for its local experts, and the
+        # grouped matmuls use this estimate to pick a kernel band.
+        tokens = F.shape_to_tensor(x_shards[0].shape)[0]
+        estimated_total_m = TensorValue(
+            (tokens * self.num_experts_per_tok // config.n_gpus_per_node).cast(
+                DType.uint32
+            )
+        )
+        with ensure_context():
+            downs = [
+                Tensor.from_graph_value(
+                    self._local_experts(
+                        dispatched[d], stacked[d], estimated_total_m
+                    )
+                )
+                for d in range(n)
+            ]
+        combines = [
+            batch_mgr.ep_combine(
+                TensorValue(downs[d]),
+                TensorValue(w_shards[d]),
+                device_ids[d],
+                idx_shards[d],
+            )
+            for d in range(n)
+        ]
+        return Tensor.from_shard_values(
+            combines, DeviceMapping(mesh, (Partial(),))
         )

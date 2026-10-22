@@ -45,6 +45,36 @@ modular_py_test(
     ],
 )
 
+# The expert-parallel half of the no-GPU gates: mode selection, whole-expert
+# weight placement under global indices, and the EP2 graph staged on virtual
+# B200s. Same host constraints as the TP harness above.
+modular_py_test(
+    name = "mimo_v2_modulev3_ep",
+    size = "medium",
+    srcs = ["test_ep_construction_cpu.py"],
+    ignore_extra_deps = [
+        "//max/python/max/_interpreter_ops",
+    ],
+    imports = ["."],
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":mimo_v3_runner",
+        "//max/python/max/_interpreter_ops",
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/experimental",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines/architectures/mimo_v2_modulev3",
+        "//max/python/max/pipelines/lib",
+        "//max/tests/integration/architectures/mimo_v2:tiny_fixture",
+        requirement("transformers"),
+    ],
+)
+
 modular_py_library(
     name = "mimo_v3_runner",
     testonly = True,

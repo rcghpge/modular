@@ -24,6 +24,9 @@ modular_py_library(
         "//max/python/max:tree",
         "//max/python/max/driver",
         "//max/python/max/dtype",
+        "//max/python/max/engine",
+        # The EP memory planner formats its reservation estimate.
+        "//max/python/max/support",
         "//max/python/max/experimental/nn",
         "//max/python/max/graph",
         # KV cache parameter types stay in max.nn; the module itself is V3.
