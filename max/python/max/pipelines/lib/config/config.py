@@ -1250,7 +1250,10 @@ class PipelineConfig(ConfigFileModel):
         25 MiB workspace with a legacy-stream ``hipMemset`` and calls
         ``exit(1)`` when that fails. Inside a capture region that memset
         returns ``hipErrorStreamCaptureImplicit``, so the model worker dies
-        instead of raising. MAX's own kernels cover the same shapes.
+        instead of raising. The shapes MAX's own kernels do not take run a
+        far slower naive kernel: fp16, an N that is not a multiple of 4, and a
+        K that is not a multiple of the K tile or is below 128, except bf16
+        with a transposed B and an even K.
         """
         return self.runtime.disable_vendor_blas_fallback or bool(
             self.runtime.device_graph_capture and accelerator_api() == "hip"

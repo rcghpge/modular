@@ -21,6 +21,7 @@ Entry point: AMDMatmul.run()
 
 from std.bit import log2_floor
 from std.collections import Optional
+from std.math import iota
 from std.sys import align_of, simd_width_of
 
 from .._multistage_gemm_gpu import (
@@ -32,6 +33,7 @@ from max.gpu import (
     WARP_SIZE,
     block_idx,
     lane_id,
+    thread_idx,
     warp_id,
 )
 from max.gpu.sync import barrier
@@ -70,6 +72,17 @@ comptime SCHED_MASK_DS_READ = 0
 comptime SCHED_MASK_DS_WRITE = 1
 comptime SCHED_MASK_VMEM_READ = 2
 comptime SCHED_MASK_MFMA = 3
+
+
+@inline(.always)
+def _zero_from[
+    width: Int
+](reg: TileTensor[mut=True, _, _, _, address_space=.LOCAL, ...], n_valid: Int):
+    """Zeroes all but the first `n_valid` lanes of every `width`-wide vector."""
+    var keep = iota[DType.int, width]().lt(Scalar[DType.int](n_valid))
+    comptime for v in range(type_of(reg).static_shape[1] // width):
+        var coord = Coord(0, v * width)
+        reg.store(coord, keep.select(reg.load[width=width](coord), 0))
 
 
 struct AMDMatmul[
@@ -413,12 +426,23 @@ struct AMDMatmul[
         # === Helpers ===
         var k_counter = 0
 
+        # Every vector a thread loads shares one tile column, so the K tail is
+        # masked with a single per-thread count of valid leading elements.
+        var tile_col = (thread_idx.x % load_thread_cols) * simd_width
+
+        # The DRAM loads read whole 16-byte vectors along a row, so columns
+        # past K in the last tile hold the next row's data, not zeros. They
+        # must be zeroed in both operands before they reach the MMA.
         @inline(.always)
-        def load_tiles_from_dram() {mut k_counter, imm}:
+        def load_tiles_from_dram[masked: Bool]() {mut k_counter, imm}:
             var a_block = a_blockrow.tile[BM, BK](0, k_counter)
             var b_block = b_blockrow.tile[BN, BK](0, k_counter)
             a_loader.load(a_load_reg, a_block.vectorize[1, simd_width]())
             b_loader.load(b_load_reg, b_block.vectorize[1, simd_width]())
+            comptime if masked:
+                var n_valid = K - k_counter * BK - tile_col
+                _zero_from[simd_width](a_load_reg, n_valid)
+                _zero_from[simd_width](b_load_reg, n_valid)
             k_counter += 1
 
         @inline(.always)
@@ -461,11 +485,11 @@ struct AMDMatmul[
         ]()
 
         @inline(.always)
-        def _bind[entry: ScheduleEntry]() {imm}:
+        def _bind[entry: ScheduleEntry, masked: Bool = False]() {imm}:
             comptime op = DefaultMatmulOps(entry.op.tag)
             comptime match op:
                 case .LOAD_DRAM:
-                    load_tiles_from_dram()
+                    load_tiles_from_dram[masked]()
                 case .STORE_SMEM:
                     copy_tiles_to_smem()
                 case .LOAD_FRAG:
@@ -516,14 +540,25 @@ struct AMDMatmul[
                                 AMDScheduleBarrierMask.MFMA, Int32(wait), 0
                             )
 
+        # The pipeline always consumes at least two K tiles. When K is shorter
+        # than that, or ends in a partial tile, the loads of those tiles zero
+        # the columns past K. Only the iterations that touch such a tile pay
+        # for it, so the main loop stays unmasked.
+        comptime masked_prologue = K < 2 * BK
+
         # Prologue.
         comptime for i in range(len(schedule.prologue)):
-            _bind[schedule.prologue[i]]()
+            _bind[schedule.prologue[i], masked_prologue]()
 
         # Main K-loop.
         for _ in range(2, K // BK):
             comptime for i in range(len(schedule.kernel)):
                 _bind[schedule.kernel[i]]()
+
+        # The iteration that prefetches the partial last tile.
+        comptime if K % BK != 0 and K // BK >= 2:
+            comptime for i in range(len(schedule.kernel)):
+                _bind[schedule.kernel[i], True]()
 
         # Epilogue.
         comptime for i in range(len(schedule.epilogue)):

@@ -908,10 +908,16 @@ def _matmul_gpu_impl[
         and a_type == .bfloat16
     )
     var amdgpu_matmul_cond = ctx.target.is_amd_gpu() and n % 4 == 0
-    # AMD matmul kernels require K % BK == 0 and K >= 2*BK due to the
-    # 2-deep software pipeline prologue. BK = _bk_base (128 for FP8,
-    # 64 for BF16 on AMD). Use that as the minimum alignment/size gate
-    # so unsupported K values fall through to vendor BLAS.
+    # `AMDMatmul` (bf16 with transpose_b on CDNA) zero-fills the columns past
+    # K, so it takes any even K. An odd K would read the last element of the
+    # last row as zero, because the buffer resource bound is dword-granular.
+    # Every other AMD path still needs K % BK == 0 and K >= 2 * BK.
+    var amd_k_ragged = (
+        ctx.target.is_amd_gpu()
+        and transpose_b
+        and a_type == .bfloat16
+        and k % 2 == 0
+    )
     comptime amd_bk = _bk_base[a_type, True]() if ctx.target.is_amd_gpu() else 1
     var amd_k_cond = (
         k % amd_bk == 0 and k >= 2 * amd_bk
@@ -920,9 +926,7 @@ def _matmul_gpu_impl[
     var multi_gemm_cond = (
         (m > 1 or ctx.target.is_amd_gpu())
         and (n % 128 == 0 or h100_matmul_cond or amdgpu_matmul_cond)
-        and k % 32 == 0
-        and k >= 128
-        and amd_k_cond
+        and (amd_k_ragged or (k % 32 == 0 and k >= 128 and amd_k_cond))
     )
 
     # Static shape queries from TileTensor. -1 means dynamic.
