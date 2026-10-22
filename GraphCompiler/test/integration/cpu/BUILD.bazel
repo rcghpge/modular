@@ -56,7 +56,10 @@ lit_tests(
     size = "enormous",
     srcs = glob(
         ["**/*.mlir"],
-        exclude = ["**/*-gpu.mlir"],
+        exclude = [
+            "**/*-gpu.mlir",
+            "OptimizationPatterns/matmul_packb.mlir",
+        ],
     ),
     custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
     data = _COMMON_DATA,
@@ -71,4 +74,18 @@ lit_tests(
     mojo_deps = _COMMON_MOJO_DEPS,
     tools = _COMMON_TOOLS,
     deps = _COMMON_DEPS + [requirement("psutil")],
+)
+
+# Intermittently returns wrong results on AVX2-only x86 (the public CI's AMD
+# EPYC 7763); SDLC-4781. Still runs internally.
+lit_tests(
+    name = "matmul_packb_tests",
+    size = "large",
+    srcs = ["OptimizationPatterns/matmul_packb.mlir"],
+    custom_substitutions = _COMMON_CUSTOM_SUBSTITUTIONS,
+    data = _COMMON_DATA,
+    mojo_deps = _COMMON_MOJO_DEPS,
+    tags = ["skip-external-ci"],
+    tools = _COMMON_TOOLS,
+    deps = _COMMON_DEPS,
 )

@@ -244,7 +244,9 @@ def get_default_test_env(exec_properties):
         "//conditions:default": {},
     })
 
-_TOOLS = {}
+_TOOLS = {
+    Label("@llvm-project//llvm:llvm-symbolizer"): "LLVM_SYMBOLIZER_PATH",
+}
 
 def env_for_available_tools(
         *,

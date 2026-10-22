@@ -1,3 +1,6 @@
+// The leak checker reports nothing in production builds (SDLC-4780).
+// UNSUPPORTED: production
+
 // Check all the allocators:
 
 // Default allocator will notice the crash.

@@ -32,6 +32,8 @@ build --compilation_mode=dbg
 build --//:modular_config=default
 
 build:ci --mojoprecompilecopt=-Werror
+# Match internal CI, which tests optimized builds.
+build:ci --compilation_mode=opt
 
 build:public-cache --bes_backend=grpcs://modular-public.buildbuddy.io
 build:public-cache --bes_results_url=https://modular-public.buildbuddy.io/invocation/
