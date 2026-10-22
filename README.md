@@ -78,11 +78,13 @@ here](https://github.com/modular/modular/issues/new/choose).
 
 ## License
 
-This repository and its contributions are licensed under the Apache License v2.0
+Mojo and its contributions are licensed under the Apache License v2.0
 with LLVM Exceptions. See [LICENSE](LICENSE).
 
-MAX usage and distribution are licensed under the
-[Modular Community License](https://www.modular.com/legal/community).
+Portions of the MAX source code and its binary distribution are licensed
+under the [MAX License](https://modular.com/legal/max-license), with the
+remainder of the source under the Apache License v2.0 with LLVM
+Exceptions. See [LICENSE](LICENSE).
 
 ### Third party licenses
 
