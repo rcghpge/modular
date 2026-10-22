@@ -69,8 +69,11 @@ modular_py_test(
         "//max/python/max/graph",
         "//max/python/max/nn",
         "//max/python/max/pipelines/architectures/mimo_v2_modulev3",
+        "//max/python/max/pipelines/context",
         "//max/python/max/pipelines/lib",
+        "//max/python/max/pipelines/request",
         "//max/tests/integration/architectures/mimo_v2:tiny_fixture",
+        requirement("numpy"),
         requirement("transformers"),
     ],
 )

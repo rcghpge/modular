@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from max.driver import CPU
 from max.dtype import DType
 from max.experimental import functional as F
-from max.experimental.nn import Module
+from max.experimental.nn import Linear, Module
 from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.functional_kernels import (
     flash_attention_ragged,
@@ -88,11 +88,13 @@ class ChunkedQkvProj(Module[[], None]):
             device=CPU(),
         )
 
-    def matmul(self, x: Tensor) -> Tensor:
-        """Returns ``[tokens, chunks * padded_rows]``, sharded over TP.
+    def matmul(self, x: Tensor, *, shard_over_mesh: bool = True) -> Tensor:
+        """Returns ``[tokens, chunks * padded_rows]``.
 
-        The pad columns' outputs are zero. Each device holds whole chunks,
-        so its share of the output is its heads' rows.
+        The pad columns' outputs are zero. With ``shard_over_mesh`` each
+        device holds whole chunks, so its share of the output is its heads'
+        rows; without it the weight stays replicated and every device
+        projects its own rows with the full chunk set (DP attention).
         """
         layout = self.layout
         weight = self.weight
@@ -111,7 +113,11 @@ class ChunkedQkvProj(Module[[], None]):
             weight_scale_inv=self.weight_scale,
             block_size=(FP8_BLOCK, FP8_BLOCK),
         )
-        return quant_ops.matmul(x, quant.shard(0, x.mesh))
+        if shard_over_mesh:
+            quant = quant.shard(0, x.mesh)
+        else:
+            quant = quant.to(x.mesh)
+        return quant_ops.matmul(x, quant)
 
 
 def _split_heads(x: Tensor, head_dim: int) -> Tensor:
@@ -228,6 +234,10 @@ class MiMoV2Attention(Module[..., Tensor]):
     ``o_proj`` reduces the shards' partial sums. The layer's KV-group index
     is a constant baked into this module, so attention layers do not share a
     compiled subgraph.
+
+    With ``data_parallel`` the layer runs replicated instead: every device
+    holds all heads and attends its own rows, so nothing shards over the
+    mesh and no partial sums need reducing.
     """
 
     attention_sink_bias: Tensor | None
@@ -246,6 +256,7 @@ class MiMoV2Attention(Module[..., Tensor]):
         sliding_window: int | None,
         has_sinks: bool,
         quant_config: QuantConfig,
+        data_parallel: bool = False,
     ) -> None:
         """Initializes the layer.
 
@@ -264,6 +275,8 @@ class MiMoV2Attention(Module[..., Tensor]):
                 ``None`` for full attention.
             has_sinks: Whether the layer has a learned per-head sink logit.
             quant_config: The dense FP8 config of ``qkv_proj``.
+            data_parallel: Run replicated per data-parallel replica instead
+                of sharding the heads over tensor parallelism.
         """
         self.layout = layout
         self.head_dim = head_dim
@@ -274,17 +287,30 @@ class MiMoV2Attention(Module[..., Tensor]):
         self.scale = scale
         self.value_scale = value_scale
         self.sliding_window = sliding_window
+        self.data_parallel = data_parallel
         self.n_heads = layout.chunks * layout.q_rows // head_dim
         self.qkv_proj = ChunkedQkvProj(layout, hidden_size, quant_config)
-        self.o_proj = RowParallelLinear(
-            in_dim=self.n_heads * v_head_dim,
-            out_dim=hidden_size,
-            bias=False,
-        )
+        if data_parallel:
+            self.o_proj = Linear(
+                in_dim=self.n_heads * v_head_dim,
+                out_dim=hidden_size,
+                bias=False,
+            )
+        else:
+            self.o_proj = RowParallelLinear(
+                in_dim=self.n_heads * v_head_dim,
+                out_dim=hidden_size,
+                bias=False,
+            )
         self.attention_sink_bias = None
         if has_sinks:
             sinks = Tensor.zeros([self.n_heads], dtype=DType.bfloat16)
-            self.attention_sink_bias = sinks.to(NamedMapping(sinks.mesh, (TP,)))
+            if data_parallel:
+                self.attention_sink_bias = sinks.to(sinks.mesh)
+            else:
+                self.attention_sink_bias = sinks.to(
+                    NamedMapping(sinks.mesh, (TP,))
+                )
 
     def forward(
         self,
@@ -296,27 +322,33 @@ class MiMoV2Attention(Module[..., Tensor]):
         """Runs the layer's attention on each device's heads.
 
         Args:
-            x: The replicated ``[tokens, hidden]`` input.
+            x: The replicated ``[tokens, hidden]`` input, or the batch
+                sharded over data-parallel replicas.
             kv_collections: The layer's KV group, one per device.
             freqs_cis: The group's RoPE table, replicated, in ``x.dtype``.
             input_row_offsets: Each sequence's first row in ``x``,
-                replicated.
+                replicated or sharded like ``x``.
 
         Returns:
-            This layer's partial ``o_proj`` output, one shard per device.
+            This layer's partial ``o_proj`` output, one shard per device;
+            complete per shard under data parallelism.
         """
         mesh = x.mesh
         n = mesh.num_devices
         # Whole chunks per device, so whole heads: a plain split is aligned.
+        # Replicated (DP) attention keeps every chunk on every device.
         layout = dataclasses.replace(
-            self.layout, chunks=self.layout.chunks // n
+            self.layout,
+            chunks=self.layout.chunks // (1 if self.data_parallel else n),
         )
-        local_heads = self.n_heads // n
-        tokens = x.shape[0]
-        qkv = self.qkv_proj.matmul(x)
+        local_heads = self.n_heads // (1 if self.data_parallel else n)
+        qkv = self.qkv_proj.matmul(x, shard_over_mesh=not self.data_parallel)
         layer_idx = F.constant(self.layer_idx, DType.uint32, device=CPU())
         attns = []
         for d in range(n):
+            # Each shard's own rows: one count per device, since DP shards
+            # the batch (and its offsets) across the mesh.
+            tokens = qkv.local_shards[d].shape[0]
             local_qkv = qkv.local_shards[d].reshape(
                 [tokens, layout.chunks, layout.padded_rows]
             )
@@ -358,8 +390,9 @@ class MiMoV2Attention(Module[..., Tensor]):
             )
         # Each shard's columns are its heads' ``o_proj`` inputs, in order;
         # the row-parallel projection leaves each device a partial sum, which
-        # the residual add reduces.
-        if n == 1:
+        # the residual add reduces. Under DP each shard is a complete
+        # projection of its own rows.
+        if n == 1 or self.data_parallel:
             heads = Tensor.from_shard_values(attns, x.mapping)
         else:
             heads = Tensor.from_shard_values(

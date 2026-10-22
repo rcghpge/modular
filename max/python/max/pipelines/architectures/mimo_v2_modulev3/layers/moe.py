@@ -43,6 +43,7 @@ from max.experimental.sharding import (
     DeviceMesh,
     NamedMapping,
     Partial,
+    Sharded,
 )
 from max.experimental.tensor import Tensor
 from max.graph import TensorValue, ops
@@ -72,34 +73,48 @@ class _Fp8Weights(Module[[], None]):
             device=CPU(),
         )
 
-    def matmul(self, x: Tensor, axis: int) -> Tensor:
+    def matmul(self, x: Tensor, axis: int, *, shard: bool = True) -> Tensor:
         """Returns ``x @ weight.T``, the weight sharded on ``axis``.
 
         A split on the weight's rows (``axis == 0``) is column-parallel and
         shards the output's columns; one on its columns leaves each device a
-        partial sum of the output.
+        partial sum of the output. With ``shard`` false the weight stays
+        replicated and each device runs its own rows in full (data-parallel
+        attention).
         """
         quant = FP8BlockTensor(
             weight=self.weight,
             weight_scale_inv=self.weight_scale,
             block_size=(FP8_BLOCK, FP8_BLOCK),
         )
-        return quant_ops.matmul(x, quant.shard(axis, x.mesh))
+        if shard:
+            quant = quant.shard(axis, x.mesh)
+        else:
+            quant = quant.to(x.mesh)
+        return quant_ops.matmul(x, quant)
 
 
 class MiMoV2MLP(Module[[Tensor], Tensor]):
     """The dense FP8 SwiGLU MLP of the one non-MoE layer: ``down(silu(gate)
     * up)``."""
 
-    def __init__(self, *, hidden_dim: int, intermediate_dim: int) -> None:
+    def __init__(
+        self,
+        *,
+        hidden_dim: int,
+        intermediate_dim: int,
+        data_parallel: bool = False,
+    ) -> None:
+        self.data_parallel = data_parallel
         self.gate_proj = _Fp8Weights(intermediate_dim, hidden_dim)
         self.up_proj = _Fp8Weights(intermediate_dim, hidden_dim)
         self.down_proj = _Fp8Weights(hidden_dim, intermediate_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        gate = self.gate_proj.matmul(x, axis=0)
-        up = self.up_proj.matmul(x, axis=0)
-        return self.down_proj.matmul(F.silu(gate) * up, axis=1)
+        shard = not self.data_parallel
+        gate = self.gate_proj.matmul(x, axis=0, shard=shard)
+        up = self.up_proj.matmul(x, axis=0, shard=shard)
+        return self.down_proj.matmul(F.silu(gate) * up, axis=1, shard=shard)
 
 
 class MiMoV2Router(Module[[Tensor], tuple[Tensor, Tensor]]):
@@ -129,6 +144,13 @@ class MiMoV2Router(Module[[Tensor], tuple[Tensor, Tensor]]):
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         mesh = x.mesh
+        if isinstance(x.placements[0], Sharded):
+            # Data parallelism: each replica routes only its own rows, which
+            # no other device holds, so there is nothing to agree on and no
+            # device that could route for the others.
+            return self._route(
+                x, self.gate_score.weight, self.e_score_correction_bias
+            )
         if mesh.num_devices <= 2:
             # Every device routes its own replica of the tokens. The replicas
             # come out of an allreduce, and a two-way sum is the same in
@@ -398,12 +420,14 @@ class MiMoV2ExpertParallelMoE(MiMoV2MoE):
     Each device owns one contiguous block of ``num_experts // n_devices``
     whole experts -- full ``moe_dim`` width, no channel split -- and the EP
     dispatch/combine kernels move the tokens between router and experts.
-    MiMo keeps its residual stream replicated (tensor-parallel attention,
-    one allreduce per block), so the EP communication runs on the allreduce
-    backend: every device routes its own token replica to its local experts,
-    and the combine returns that device's share of the top-8 sum, which the
-    residual add's allreduce completes. The per-block collectives keep the
-    exact placement the tensor-parallel build has.
+    Which backend serves that depends on the residual stream's layout: with
+    the replicated stream of tensor-parallel attention the allreduce backend
+    routes every device's token replica to its local experts and the
+    combine returns that device's share of the top-8 sum, which the
+    residual add's allreduce completes. With data-parallel attention each
+    token lives on one replica, so the P2P backend moves each replica's rows
+    to the global expert set and the combine returns their complete sums,
+    with no residual collective at all.
 
     The W4A8 chain is the same one :class:`MiMoV2MoE` runs: the dispatch
     kernel quantizes the tokens to MXFP8 (E4M3 data, E8M0 32-block scales,
@@ -569,19 +593,37 @@ class MiMoV2ExpertParallelMoE(MiMoV2MoE):
         combine.
 
         Args:
-            x: The replicated residual stream, ``[tokens, hidden]``.
+            x: The residual stream, ``[tokens, hidden]`` -- replicated
+                under tensor-parallel attention, sharded per replica under
+                data-parallel attention.
             comm: The graph's EP communication buffers. Optional only to
                 keep the base ``forward(self, x)`` signature compatible; the
                 EP path always supplies it.
 
         Returns:
             The layer's partial MoE output, one shard per device, which the
-            residual add's allreduce reduces -- the same placement the
-            tensor-parallel MoE's partial sums have.
+            residual add's allreduce reduces under the allreduce backend;
+            each replica's complete output in place under data parallelism.
         """
         batch_mgr = self.ep_batch_manager
         config = batch_mgr.config
-        if not config.use_allreduce:
+        # Data-parallel attention shards the batch over the replicas, so
+        # each token lives on exactly one device -- the P2P dispatch's
+        # precondition. The replicated (TP) residual stream needs the
+        # allreduce backend instead: its dispatch routes only the local
+        # experts and the residual allreduce completes the partial
+        # combines, which cannot cross replicas holding different rows.
+        dp_attention = isinstance(x.placements[0], Sharded)
+        if config.use_allreduce and dp_attention:
+            raise NotImplementedError(
+                "MiMo-V2 data-parallel attention needs the P2P expert "
+                "backend (--ep-use-allreduce off); the allreduce backend "
+                "routes each device's tokens to its local experts only and "
+                "relies on the residual allreduce to complete the top-k "
+                "sum, which cannot cross data-parallel replicas holding "
+                "different rows."
+            )
+        if not config.use_allreduce and not dp_attention:
             # The P2P dispatch assumes each token lives on one device
             # (``tp_sharded`` residual); MiMo's is replicated, so every
             # replica of a token would be dispatched and the combine would
@@ -625,11 +667,17 @@ class MiMoV2ExpertParallelMoE(MiMoV2MoE):
             )
             for d in range(n)
         ]
-        # One replica's token count: the residual is replicated, so summing
-        # the shards would count every token n times. Each device receives
-        # about tokens * top_k / n_gpus rows for its local experts, and the
-        # grouped matmuls use this estimate to pick a kernel band.
-        tokens = F.shape_to_tensor(x_shards[0].shape)[0]
+        # The estimate wants every row a device receives for its local
+        # experts, about tokens * top_k / n_gpus. Under TP the residual is
+        # replicated, so one shard's count is the whole batch; under DP the
+        # shards hold disjoint replicas whose P2P dispatches all land on
+        # this device's experts, so they sum.
+        if dp_attention:
+            tokens = F.shape_to_tensor(x_shards[0].shape)[0]
+            for shard in x_shards[1:]:
+                tokens = tokens + F.shape_to_tensor(shard.shape)[0]
+        else:
+            tokens = F.shape_to_tensor(x_shards[0].shape)[0]
         estimated_total_m = TensorValue(
             (tokens * self.num_experts_per_tok // config.n_gpus_per_node).cast(
                 DType.uint32
@@ -653,6 +701,11 @@ class MiMoV2ExpertParallelMoE(MiMoV2MoE):
             )
             for d in range(n)
         ]
+        if dp_attention:
+            # P2P: each replica's rows come back from the experts as their
+            # complete top-k sums, in place; the plain residual add needs no
+            # collective.
+            return Tensor.from_shard_values(combines, x.mapping)
         return Tensor.from_shard_values(
             combines, DeviceMapping(mesh, (Partial(),))
         )

@@ -27,11 +27,14 @@ from max.experimental.nn import (
     as_subgraph,
 )
 from max.experimental.nn.common_layers.linear import ColumnParallelLinear
+from max.experimental.nn.common_layers.mesh_axis import DP
 from max.experimental.nn.common_layers.rotary_embedding import (
     RotaryEmbedding,
 )
 from max.experimental.nn.norm import rms_norm
+from max.experimental.sharding import DeviceMapping, Replicated, Sharded
 from max.experimental.tensor import Tensor
+from max.graph import TensorValue, ops
 from max.nn.comm.ep import EPBatchManager, EPCommBuffers, EPConfig
 from max.nn.kv_cache import (
     KVCacheParams,
@@ -41,6 +44,9 @@ from max.nn.kv_cache import (
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.lib import ModuleV3Outputs
 
+from ..deepseekV3_modulev3.deepseekV3 import (
+    split_replicated_batch,
+)
 from .layers.attention import MiMoV2Attention
 from .layers.moe import (
     MiMoV2ExpertParallelMoE,
@@ -53,9 +59,8 @@ from .model_config import FULL, SLIDING, MiMoV2Config
 class ParallelismMode(enum.Enum):
     """How one decoder block shards its attention and its MoE.
 
-    Each mode picks the MoE class and the residual collectives of a block;
-    attention stays tensor-parallel in every multi-device mode until the
-    DP-attn work lands.
+    Each mode picks the attention sharding, the MoE class and the residual
+    collectives of a block.
     """
 
     TP_TP = "tp_tp"
@@ -69,8 +74,9 @@ class ParallelismMode(enum.Enum):
     it."""
 
     DP_EP = "dp_ep"
-    """DP attention + EP MoE, no residual collectives. Not built yet; the
-    mode exists so the selection below names it."""
+    """DP attention + EP MoE, no residual collectives. Each one-device
+    replica attends its own rows and dispatches them to the global expert
+    set through the P2P EP backend."""
 
 
 def select_parallelism_mode(
@@ -95,6 +101,29 @@ def select_parallelism_mode(
     return ParallelismMode.TP_EP
 
 
+def _gather_last_rows(
+    h: Tensor, input_row_offsets: Tensor, *, per_replica: bool
+) -> Tensor:
+    """Gathers each request's last row from the ragged batch.
+
+    Under data parallelism ``input_row_offsets`` is rebased into each
+    replica's local frame, so its values address only that replica's own
+    rows; the gather runs per shard, never through the auto-sharded
+    ``F.gather``, which would reshard the offsets across replicas. With
+    replicated (TP) rows the offsets are replicated on the mesh, so the
+    plain gather places itself.
+    """
+    if not per_replica:
+        return F.gather(h, input_row_offsets[1:] - 1, axis=0)
+
+    def _body(h: TensorValue, offsets: TensorValue) -> TensorValue:
+        return ops.gather(h, offsets[1:] - 1, axis=0)
+
+    # The rule-less body runs on each device's own rows; the result keeps
+    # h's placements, so the head can gather it onto the mesh.
+    return F.functional(_body)(h, input_row_offsets).rebind_mapping(h.mapping)
+
+
 class MiMoV2RMSNorm(RMSNorm):
     """RMSNorm that scales in float32 before the cast, as the reference does.
 
@@ -108,7 +137,13 @@ class MiMoV2RMSNorm(RMSNorm):
 
 
 class MiMoV2DecoderLayer(Module[..., Tensor]):
-    """Pre-norm attention and MLP (dense or MoE), tensor parallel."""
+    """Pre-norm attention and MLP (dense or MoE), per the parallelism mode.
+
+    The residual collectives are the placement conversions: an attention or
+    MoE output that lands as a partial sum reduces through its ``.to`` cast
+    back to the residual's mapping, which is a no-op once every shard is
+    already complete (data parallelism).
+    """
 
     def __init__(
         self,
@@ -181,6 +216,12 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
     tensors the dispatch/combine kernels read. Every MoE call threads them
     through its shared subgraph.
 
+    With ``data_parallel_degree > 1`` the graph also declares the DP
+    batch-split inputs between the batch inputs and the KV leaves, and the
+    forward splits the replicated batch over the replicas: each one-device
+    replica attends its own rows while the MoE stays expert-parallel over
+    every device (DISTINF-787).
+
     Hidden states are not returned: the ModuleV3 outputs hold one copy, and
     the graph-API model's per-device taps are a speculative-decode concern.
     """
@@ -200,18 +241,41 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
             config.data_parallel_degree,
             config.ep_config,
         )
-        if self.mode is ParallelismMode.DP_EP:
+        # DP attention serves one-device replicas: the batch splits over
+        # the mesh (one axis, named "dp") and each replica runs the full
+        # attention on its own rows, as the DeepSeek ModuleV3 port's DP_EP
+        # mode does. Wider replicas (dp x tp meshes) are not built.
+        self.dp_attention = self.mode is ParallelismMode.DP_EP
+        if self.dp_attention and config.data_parallel_degree != len(
+            config.devices
+        ):
             raise NotImplementedError(
-                "Data-parallel attention for MiMo-V2 on ModuleV3 is not "
-                "built yet."
+                f"MiMo-V2 data_parallel_degree "
+                f"({config.data_parallel_degree}) must equal the device "
+                f"count ({len(config.devices)}); dp x tp meshes are not "
+                "supported yet."
             )
-        if self.mode is ParallelismMode.TP_EP and ep_batch_manager is None:
+        # Both directions of the wiring: an EP mode without its batch
+        # manager would silently build the tensor-parallel MoE, and a
+        # batch manager without an EP mode is a wiring error too. DP
+        # attention implies the EP mode, so the DP-without-EP case is
+        # covered by the first arm (the tensor-parallel MoE's stacks have
+        # no placement on a dp mesh).
+        if (
+            self.mode
+            in (
+                ParallelismMode.TP_EP,
+                ParallelismMode.DP_EP,
+            )
+            and ep_batch_manager is None
+        ):
             raise ValueError(
                 "EP parallelism is selected but no EP batch manager was "
                 f"given: mode={self.mode}, ep_config={config.ep_config}"
             )
-        if ep_batch_manager is not None and (
-            self.mode is not ParallelismMode.TP_EP
+        if ep_batch_manager is not None and self.mode not in (
+            ParallelismMode.TP_EP,
+            ParallelismMode.DP_EP,
         ):
             raise ValueError(
                 "An EP batch manager arrives without an EP parallelism "
@@ -248,8 +312,14 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
 
         self.embed_tokens = Embedding(config.vocab_size, dim=config.hidden_size)
         self.norm = MiMoV2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # Under DP attention each replica projects its own rows in full, so
+        # the head must not shard over the dp axis (as DeepSeek's ModuleV3
+        # port switches it too).
         self.lm_head = ColumnParallelLinear(
-            config.hidden_size, config.vocab_size, bias=False
+            config.hidden_size,
+            config.vocab_size,
+            bias=False,
+            tp_axis=DP if self.dp_attention else None,
         )
 
         group_layer_counts = {SLIDING: 0, FULL: 0}
@@ -269,6 +339,7 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
                 ),
                 has_sinks=config.sinks[group],
                 quant_config=config.quant.dense,
+                data_parallel=self.dp_attention,
             )
             group_layer_counts[group] += 1
             mlp: MiMoV2MLP | MiMoV2MoE
@@ -298,6 +369,7 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
                 mlp = MiMoV2MLP(
                     hidden_dim=config.hidden_size,
                     intermediate_dim=config.intermediate_size,
+                    data_parallel=self.dp_attention,
                 )
             layers.append(
                 MiMoV2DecoderLayer(
@@ -352,6 +424,15 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
             )
         del return_n_logits
         row_offsets = input_row_offsets
+        # Under DP attention the two batch-split tensors sit between the
+        # batch inputs and the KV leaves, as the symbolic inputs declare
+        # them: peel them before the KV tree.
+        data_parallel_splits: Tensor | None = None
+        host_row_offsets: Tensor | None = None
+        if self.dp_attention:
+            data_parallel_splits = kv_inputs[0]
+            host_row_offsets = kv_inputs[1]
+            kv_inputs = kv_inputs[2:]
         kv_iter = iter(x._graph_value for x in kv_inputs)
         # One entry per device, in declaration order: sliding, then full.
         sliding_kv, full_kv = self.kv_params.unflatten_basic_kv_tree(kv_iter)
@@ -364,6 +445,25 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
         kv_by_group = {SLIDING: list(sliding_kv), FULL: list(full_kv)}
 
         h = self.embed_tokens(tokens)
+        if self.dp_attention:
+            assert data_parallel_splits is not None
+            assert host_row_offsets is not None
+            # One replica per device: the batch axis is the only sharded
+            # axis, as the DeepSeek ModuleV3 port's DP forward does.
+            mesh = self.norm.weight.mesh
+            batch_placement = tuple(
+                Sharded(0) if name == "dp" else Replicated()
+                for name in mesh.axis_names
+            )
+            h, input_row_offsets = split_replicated_batch(
+                h,
+                input_row_offsets,
+                # The split helper slices bounds in int64, so the host
+                # offsets cross as int64, as MiniMax-M2's graph passes them.
+                host_row_offsets.cast(DType.int64),
+                data_parallel_splits,
+                DeviceMapping(mesh, batch_placement),
+            )
         freqs_cis = {
             group: rope.freqs_cis.cast(h.dtype).to(h.mesh)
             for group, rope in self.ropes.items()
@@ -381,21 +481,42 @@ class MiMoV2(Module[..., ModuleV3Outputs]):
         # One projection and one gather serve both outputs when ALL logits
         # are requested: the head runs once on the full hidden states and
         # the last rows are gathered for the sampler. For LAST_TOKEN the
-        # head runs once on just the rows the sampler needs.
+        # head runs once on just the rows the sampler needs. The gather
+        # runs per shard: under data parallelism each replica's row
+        # offsets are rebased into its own rows, so the auto-sharded
+        # F.gather would reshard the offsets across replicas.
         logits: Tensor | None = None
         offsets: Tensor | None = None
         last: Tensor
         if self.return_logits == ReturnLogits.ALL:
+            if self.dp_attention:
+                # The rows are sharded along the same axis the head's
+                # weight shards on, and `logits` covers every replica while
+                # `local_shards[0]` holds only replica 0's -- the echo path
+                # would read truncated rows against whole-batch offsets.
+                raise NotImplementedError(
+                    "MiMo-V2 returns ALL logits from one sharded batch only"
+                    " on a tensor-parallel build; request last-token logits"
+                    " under data parallelism"
+                )
             all_logits = self._logits(h)
-            last = F.gather(
-                all_logits, input_row_offsets[1:] - 1, axis=0
+            last = _gather_last_rows(
+                all_logits, input_row_offsets, per_replica=False
             ).local_shards[0]
             logits = all_logits.local_shards[0]
             offsets = row_offsets
         else:
-            last = self._logits(
-                F.gather(h, input_row_offsets[1:] - 1, axis=0)
-            ).local_shards[0]
+            last_rows = _gather_last_rows(
+                h, input_row_offsets, per_replica=self.dp_attention
+            )
+            if self.dp_attention:
+                # The head runs on the mesh, so the per-replica rows gather
+                # onto it first, as the DeepSeek ModuleV3 port does under
+                # data parallelism; the sampler reads one shard's logits.
+                last_rows = F.allgather(last_rows)
+                last = self._logits(last_rows).local_shards[0]
+            else:
+                last = self._logits(last_rows).local_shards[0]
         return ModuleV3Outputs(
             next_token_logits=last, logits=logits, logit_offsets=offsets
         )
