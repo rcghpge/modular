@@ -127,6 +127,7 @@ MODELS: Mapping[str, set[str]] = {
     "Qwen/Qwen3.6-27B": _1xB200,
     "Qwen/Qwen3.8-27B": NIGHTLY | _1xB200 | _1xMI355 | _2xB200 | _2xMI355,
     "RadixArk/GLM-5.3-NVFP4__mtp_tpep": NIGHTLY | VARIANT | _8xB200,
+    "RadixArk/Qwen3.8-27B-NVFP4": NIGHTLY | _1xB200,
     "RadixArk/Qwen3.8-27B-NVFP4__dflash2": NIGHTLY | VARIANT | _1xB200,
     "RadixArk/Qwen3.8-27B-NVFP4__mtp": NIGHTLY | VARIANT | _1xB200,
     "RedHatAI/gemma-3-27b-it-FP8-dynamic": _1xB200 | _1xMI355,  # TODO(MODELS-1021)
