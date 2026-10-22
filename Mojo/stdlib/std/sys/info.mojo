@@ -350,8 +350,9 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
     ]
     """The stdlib plugin selected for this target, before specialization.
 
-    Other plugin registries select their own plugin by this plugin's `name`, so
-    every registry agrees on a target's vendor.
+    A plugin registry whose plugin the target's payload doesn't name falls back
+    to matching this plugin's `name`, so every registry agrees on a target's
+    vendor.
     """
 
     comptime stdlib_plugin: PluginHooks = Self._std_plugin.HookFor[Self()]

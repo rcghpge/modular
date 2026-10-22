@@ -77,6 +77,16 @@ comptime _nvptx_default_payload_target = CompilationTarget[
     ]
 ]()
 
+# An NVIDIA triple whose payload names no stdlib plugin at all, as a target
+# that carries only another registry's plugin would.
+comptime _nvptx_foreign_payload_target = CompilationTarget[
+    _mlir_value=__mlir_attr[
+        `#kgen.target<triple = "nvptx64-nvidia-cuda", opaque_plugin = `,
+        TypeList.of[Int32]().values,
+        `, arch = "sm_90"> : !kgen.target`,
+    ]
+]()
+
 
 struct _GPUHooks[target: CompilationTarget](PluginHooks):
     comptime device_kind = TargetDeviceKind.gpu
@@ -208,6 +218,12 @@ def test_payloadless_target_gets_vendor_plugin() raises:
 def test_payload_wins_over_vendor_default() raises:
     # fmt: off
     comptime assert _nvptx_default_payload_target.stdlib_plugin == DefaultPluginHooks[_nvptx_default_payload_target]
+    # fmt: on
+
+
+def test_payload_without_stdlib_plugin_gets_vendor_default() raises:
+    # fmt: off
+    comptime assert _nvptx_foreign_payload_target.stdlib_plugin == CUDAPluginHooks[_nvptx_foreign_payload_target]
     # fmt: on
 
 

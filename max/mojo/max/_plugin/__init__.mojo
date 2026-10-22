@@ -10,7 +10,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Compile-time hooks for target-specific MAX behavior."""
+"""Compile-time hooks for target-specific MAX behavior.
+
+`CurrentMaxPlugin` is the `MaxPluginHooks` of the current compilation
+target, and `MaxPluginForTarget[target]` that of any other. A target is
+matched to its plugin by its `opaque_plugin` payload first, then by the name
+of its stdlib plugin; see `_impl.mojo` for the rule.
+"""
 
 from ._impl import CurrentMaxPlugin, MaxPluginForTarget
-from ._trait import DefaultMaxPlugin, MaxPluginHooks
+from ._trait import DefaultMaxPlugin, MaxPlugin, MaxPluginHooks

@@ -139,11 +139,12 @@ struct TargetPluginSelector[
     ]()
 
     comptime _index = Self._find[__mlir_attr.`0 : index`]()
+    """The index of the first conforming plugin, or the payload's length when
+    none conforms, which `selected` maps to `Default`."""
 
     @staticmethod
     def _find[idx: __mlir_type.index]() -> __mlir_type.index:
         comptime if not _index_lt[idx, Self.Plugins._raw_length]():
-            __mlir_op.`llvm.intr.trap`()
             return idx
         elif conforms_to(Self.Plugins._get_type_at_index[idx], Self.Trait):
             return idx

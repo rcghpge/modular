@@ -34,7 +34,16 @@ from max.gpu.sync.sync import (
 
 
 trait MaxPlugin(Plugin):
+    """Names the `MaxPluginHooks` a backend uses for each target.
+
+    A target selects its MAX plugin from its `opaque_plugin` payload: the
+    first type there that conforms to this trait. A target whose payload
+    names none falls back to the plugin in `MAX_PLUGINS` whose `name` matches
+    the stdlib plugin selected for the target.
+    """
+
     comptime HookFor[target: CompilationTarget]: MaxPluginHooks
+    """The hooks this plugin uses for `target`."""
 
 
 trait MaxPluginHooks:
