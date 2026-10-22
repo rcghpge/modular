@@ -761,7 +761,7 @@ struct MLA_SM100_Decode_QKV_FP8[
         kv_prod.commit_step()
         kv_row += UInt32(Self.config.BN_QK)
 
-        # Wait for Q TMA to complete. Q arrives as FP8, ready for MMA.
+        # Gates only this warp; mmaQK waits on mbar_q itself before reading Q.
         mbar_q[].wait(0)
 
         # Load remaining KV tiles
@@ -861,8 +861,8 @@ struct MLA_SM100_Decode_QKV_FP8[
         # Stage stride in bytes: FP8 elements (1 byte each)
         comptime stage_stride_in_bytes = Self.KVStageElems * Self.fp8_bytes_per_element
 
-        # Q FP8 is ready (load warp waited on mbar_q and Q arrived as FP8).
-        # The barrier() at the end of init ensures visibility.
+        # Q and K0 land on separate barriers; K0 arriving says nothing about Q.
+        mbar_q[].wait(0)
 
         var tile_idx: Int = 0
         while tile_idx < num_k_tiles:
