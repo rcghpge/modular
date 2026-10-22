@@ -68,7 +68,7 @@ Recurrent state
    RecurrentStateInputsPerDevice
    RecurrentStateParams
    RecurrentStateRegion
-   ScratchKVLeafRegion
+   ScratchRecurrentKVLeafRegion
 
 Attention dispatch
 ------------------

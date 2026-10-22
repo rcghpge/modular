@@ -27,9 +27,9 @@ from max.nn.kv_cache import (
     RecurrentKVLeafRegion,
     RecurrentStateParams,
     RecurrentStateRegion,
-    ScratchKVLeafRegion,
+    ScratchRecurrentKVLeafRegion,
 )
-from max.nn.kv_cache.cache_params import ScratchPagedKVLeafRegion
+from max.nn.kv_cache.cache_params import _ScratchPagedKVLeafRegion
 from max.pipelines.context import TextContext, TokenBuffer
 from max.pipelines.kv_cache import InsufficientBlocksError
 from max.pipelines.kv_cache.paged_kv_cache.jenga_block_manager import (
@@ -359,7 +359,7 @@ def test_the_region_flag_is_what_puts_the_leaf_in_the_scratch_group() -> None:
     # than reaching for a leaf class at the call site.
     leaves = STATE_PARAMS.leaves()
 
-    assert isinstance(leaves[RING], ScratchKVLeafRegion)
+    assert isinstance(leaves[RING], ScratchRecurrentKVLeafRegion)
     assert leaves[RING].group_id == KVCacheGroupId.scratch()
     assert leaves[RING].blocks_to_reserve(99, enable_prefix_caching=True) == 1
     assert isinstance(leaves[REC], RecurrentKVLeafRegion)
@@ -393,7 +393,7 @@ def test_a_paged_view_scratch_leaf_stages_its_block_in_column_zero() -> None:
             bytes_per_page=1,
             page_size=BLOCK_SIZE,
         ),
-        paged_ring: ScratchPagedKVLeafRegion(
+        paged_ring: _ScratchPagedKVLeafRegion(
             leaf_id=paged_ring,
             group_id=KVCacheGroupId.scratch(),
             bytes_per_page=1,

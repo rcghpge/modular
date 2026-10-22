@@ -579,7 +579,7 @@ fn search_bounds_default_to_the_python_environment_defaults() {
     assert_eq!(
         SearchBounds::default(),
         SearchBounds {
-            max_padding_fraction: 0.06,
+            max_padding_fraction: 0.1,
             max_huge_page_bytes: 128 * MIB,
             max_tiling_ratio: 256,
         }

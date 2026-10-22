@@ -504,7 +504,7 @@ def page_view(
     )
 
 
-def padded_page_grid(slab: Buffer, padded_page_bytes: int) -> Buffer:
+def _padded_page_view(slab: Buffer, padded_page_bytes: int) -> Buffer:
     """Views ``slab`` as contiguous ``[num_pages, padded_page_bytes]`` bytes,
     the whole padded pages that byte movers copy.
 
@@ -513,7 +513,7 @@ def padded_page_grid(slab: Buffer, padded_page_bytes: int) -> Buffer:
         padded_page_bytes: The pool's padded page size.
 
     Returns:
-        The page grid.
+        The padded page view.
     """
     total_bytes = slab.num_elements * slab.dtype.size_in_bytes
     return slab.view(
@@ -727,12 +727,12 @@ class KVCacheBuffer(KVCacheBufferInterface):
     unquantized."""
     scales_packed: list[Buffer] | None = None
     """Contiguous aliases of :attr:`scales`; see :attr:`values_packed`."""
-    values_padded_grid: list[Buffer] | None = None
-    """Contiguous ``[num_pages, page_stride]`` ``uint8`` grids under
-    :attr:`values`, pad included, for :meth:`to_memory`. ``None`` when the
-    pool did not pad this leaf."""
-    scales_padded_grid: list[Buffer] | None = None
-    """The same as :attr:`values_padded_grid`, for :attr:`scales`."""
+    values_padded: list[Buffer] | None = None
+    """Contiguous ``[num_pages, page_stride]`` ``uint8`` under :attr:`values`,
+    pad included, for :meth:`to_memory`. ``None`` when the pool did not pad
+    this leaf."""
+    scales_padded: list[Buffer] | None = None
+    """The same as :attr:`values_padded`, for :attr:`scales`."""
     values_per_layer: list[list[Buffer]] | None = None
     """Per-TP-shard, per-layer value buffers when the pool uses
     :attr:`~max.nn.kv_cache.KVCacheParams.per_layer_buffers`.
@@ -858,12 +858,12 @@ class KVCacheBuffer(KVCacheBufferInterface):
             This cache's values leaf, plus its scales leaf when quantized.
         """
         shards_by_leaf: dict[str, list[Buffer]] = {
-            self.leaf_id: self.values_padded_grid
+            self.leaf_id: self.values_padded
             or [_view_as_uint8_pages(b) for b in self.values]
         }
         if self.scales is not None:
             shards_by_leaf[_scales_leaf_id(self.leaf_id)] = (
-                self.scales_padded_grid
+                self.scales_padded
                 or [_view_as_uint8_pages(b) for b in self.scales]
             )
         return {
@@ -1155,7 +1155,7 @@ class RecurrentStateRegion:
 
 
 @dataclass(frozen=True)
-class ScratchPagedKVLeafRegion(PagedKVLeafRegion):
+class _ScratchPagedKVLeafRegion(PagedKVLeafRegion):
     """A paged leaf a request holds one block of for its whole life and never
     publishes; the kernel addresses the block's slots as a ring."""
 
@@ -1223,7 +1223,7 @@ class RecurrentKVLeafRegion(KVLeafRegion):
 
 
 @dataclass(frozen=True)
-class ScratchKVLeafRegion(RecurrentKVLeafRegion):
+class ScratchRecurrentKVLeafRegion(RecurrentKVLeafRegion):
     """A row-addressed leaf drawn once per request and never published.
 
     Addressed exactly like :class:`RecurrentKVLeafRegion`, one row per layer,
@@ -1620,8 +1620,7 @@ class KVCacheParams(KVCacheParamInterface):
     keep them packed. See :attr:`KVLeafRegion.stride_alignment`."""
     scratch: bool = False
     """Whether the cache is one block a request, kept until release and never
-    published (see :class:`ScratchPagedKVLeafRegion`). Excludes
-    :attr:`window_size`."""
+    published. Excludes :attr:`window_size`."""
 
     def __post_init__(self):
         """Validates configuration and computes derived fields after initialization.
@@ -2325,7 +2324,7 @@ class KVCacheParams(KVCacheParamInterface):
         """
         leaf_id = self.leaf_id(_prefix)
         region_cls = (
-            ScratchPagedKVLeafRegion if self.scratch else PagedKVLeafRegion
+            _ScratchPagedKVLeafRegion if self.scratch else PagedKVLeafRegion
         )
         leaves = {
             leaf_id: region_cls(
@@ -2386,7 +2385,7 @@ class KVCacheParams(KVCacheParamInterface):
         Returns:
             The buffer views for this cache.
         """
-        padded = padded_page_bytes or {}
+        padded_bytes = padded_page_bytes or {}
         quant_config = self.kvcache_quant_config
         values_id = self.leaf_id(_prefix)
         scales_id = _scales_leaf_id(values_id)
@@ -2395,7 +2394,7 @@ class KVCacheParams(KVCacheParamInterface):
         def views(
             shape: Sequence[int], dtype: DType, leaf_id: str
         ) -> tuple[list[Buffer], list[Buffer] | None, list[Buffer] | None]:
-            page_bytes = padded.get(leaf_id)
+            page_bytes = padded_bytes.get(leaf_id)
             strided = [page_view(b, shape, dtype, page_bytes) for b in buffers]
             if page_bytes is None:
                 return strided, None, None
@@ -2405,13 +2404,13 @@ class KVCacheParams(KVCacheParamInterface):
             ]
             if page_bytes == math.prod(shape) * dtype.size_in_bytes:
                 return strided, packed, None
-            grid = [padded_page_grid(b, page_bytes) for b in buffers]
-            return strided, packed, grid
+            padded = [_padded_page_view(b, page_bytes) for b in buffers]
+            return strided, packed, padded
 
-        values, values_packed, values_grid = views(
+        values, values_packed, values_padded = views(
             self.shape_per_block, self.dtype, values_id
         )
-        scales, scales_packed, scales_grid = (
+        scales, scales_packed, scales_padded = (
             views(
                 self.shape_per_scale_block,
                 quant_config.scale_dtype,
@@ -2427,8 +2426,8 @@ class KVCacheParams(KVCacheParamInterface):
             values_packed=values_packed,
             scales=scales,
             scales_packed=scales_packed,
-            values_padded_grid=values_grid,
-            scales_padded_grid=scales_grid,
+            values_padded=values_padded,
+            scales_padded=scales_padded,
         )
 
 
@@ -3236,7 +3235,9 @@ class RecurrentStateParams(CacheLeafParamInterface):
 
         def leaf(region: RecurrentStateRegion) -> KVLeafRegion:
             cls = (
-                ScratchKVLeafRegion if region.scratch else RecurrentKVLeafRegion
+                ScratchRecurrentKVLeafRegion
+                if region.scratch
+                else RecurrentKVLeafRegion
             )
             group_id = (
                 KVCacheGroupId.scratch()

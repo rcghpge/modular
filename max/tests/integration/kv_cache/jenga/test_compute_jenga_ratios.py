@@ -547,7 +547,7 @@ def reloaded_with_env(
 def test_env_vars_override_the_search_bounds(
     reloaded_with_env: Callable[..., ModuleType],
 ) -> None:
-    assert jenga_block_pool._MAX_PADDING_FRACTION == 0.06
+    assert jenga_block_pool._MAX_PADDING_FRACTION == 0.1
     module = reloaded_with_env(
         MODULAR_KV_JENGA_MAX_PADDING_FRACTION="0.25",
         MODULAR_KV_JENGA_MAX_HUGE_PAGE_BYTES=str(64 * MIB),

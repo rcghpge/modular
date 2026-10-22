@@ -50,7 +50,7 @@ pub struct SearchBounds {
     /// The most of a page any one cache with a stride alignment may spend on
     /// bytes the kernel never reads. It caps the search rather than the
     /// result: a geometry needing more is not considered.
-    /// `MODULAR_KV_JENGA_MAX_PADDING_FRACTION`, 6% by default.
+    /// `MODULAR_KV_JENGA_MAX_PADDING_FRACTION`, 10% by default.
     pub max_padding_fraction: f64,
     /// The largest huge block the search considers. Past it the allocation
     /// quantum is coarse enough that stranding beats any padding it saves.
@@ -66,7 +66,7 @@ pub struct SearchBounds {
 impl Default for SearchBounds {
     fn default() -> Self {
         SearchBounds {
-            max_padding_fraction: 0.06,
+            max_padding_fraction: 0.1,
             max_huge_page_bytes: 128 * MIB,
             max_tiling_ratio: 256,
         }

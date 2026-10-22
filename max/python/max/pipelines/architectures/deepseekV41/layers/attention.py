@@ -59,7 +59,7 @@ from max.nn.quant_ops import _matmul_float8_mxfp8
 from ...deepseekV4.layers.rope import apply_rope_tail
 from ..layer_resolver import LayerInfo
 from ..model_config import DeepseekV41Config, woa_mxfp8_enabled
-from .compressor import DeepseekV41Compressor, ring_slots
+from .compressor import DeepseekV41Compressor, ring_save_slots, ring_slots
 from .csa2 import (
     HEAD_DIM,
     MAX_COMPRESSED,
@@ -863,12 +863,19 @@ class CSA2Attention(Module):
         """
         assert self.compressor is not None
         positions = rows.positions
+        slots = None if state is None else ring_slots(state, rows)
+        save_slots = (
+            None
+            if state is None or slots is None
+            else ring_save_slots(state, rows, slots)
+        )
         latent = self.compressor(
             raw,
             positions,
             rows.offsets,
             state,
-            None if state is None else ring_slots(state, rows),
+            slots,
+            save_slots,
             layer_idx,
         )
         # Group ``p // ratio`` closes on the row where ``(p + 1) % ratio`` is

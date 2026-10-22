@@ -358,18 +358,18 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="blocks",
         description="Total number of KV cache blocks.",
     ),  # type: ignore
-    "maxserve.cache.jenga_leaf_pages": _meter.create_gauge(
-        "maxserve.cache.jenga_leaf_pages",
-        unit="pages",
+    "maxserve.cache.jenga_small_blocks": _meter.create_gauge(
+        "maxserve.cache.jenga_small_blocks",
+        unit="blocks",
         description=(
-            "A Jenga KV leaf's pages on one replica, by `state`: `referenced` by a request, `cached` (unreferenced but still in the prefix cache, so evictable), or `free` to allocate without evicting. The leaf's remaining pages are bytes other leaves hold. Sampled at the scheduler's log interval."
+            "A Jenga KV leaf's small blocks on one replica, by `state`: `used` by a request, `evictable` (unreferenced but still in the prefix cache), or `empty` to allocate without evicting. The leaf's remaining small blocks are bytes other leaves hold. Sampled at the scheduler's log interval."
         ),
     ),  # type: ignore
     "maxserve.cache.jenga_huge_blocks": _meter.create_gauge(
         "maxserve.cache.jenga_huge_blocks",
         unit="blocks",
         description=(
-            "Jenga huge blocks on one replica, by `leaf` and `state`: `claimed` (a request holds pages in it) or `parked` (idle but still typed to the leaf), plus `leaf=none, state=pristine` for those no leaf has claimed. Sums to the replica's allocatable huge blocks."
+            "Jenga huge blocks on one replica, by `leaf` and `state`: `used` (a request holds small blocks in it) or `evictable` (no request holds it, but it is still typed to the leaf), plus `leaf=none, state=empty` for those no leaf has claimed. Sums to the replica's allocatable huge blocks. Sampled at the scheduler's log interval."
         ),
     ),  # type: ignore
     "maxserve.cache.request_prefix_coverage": _meter.create_histogram(
@@ -1600,13 +1600,13 @@ class _AsyncMetrics:
             ),
         )
 
-    def cache_jenga_leaf_pages(
-        self, pages: int, *, replica: str, leaf: str, state: str
+    def cache_jenga_small_blocks(
+        self, blocks: int, *, replica: str, leaf: str, state: str
     ) -> None:
         self.client.send_measurement(
             MaxMeasurement(
-                "maxserve.cache.jenga_leaf_pages",
-                pages,
+                "maxserve.cache.jenga_small_blocks",
+                blocks,
                 {
                     **self.extra_attributes,
                     "replica": replica,

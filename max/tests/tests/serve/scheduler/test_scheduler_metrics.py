@@ -25,8 +25,8 @@ from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.kv_cache import JengaKVCacheManager
 from max.pipelines.kv_cache.kv_connector import BlockCount, ByteCount
 from max.pipelines.kv_cache.paged_kv_cache.jenga_block_manager import (
-    JengaOccupancy,
-    LeafOccupancy,
+    _LeafOccupancy,
+    _PoolOccupancy,
 )
 from max.pipelines.lib.vision_encoder_cache import (
     VideoEncoderMetrics,
@@ -2307,14 +2307,50 @@ def test_connector_loads_refused_are_silent_without_a_connector() -> None:
     assert "connector_loads_refused" not in metrics.to_log_extra()
 
 
-def _leaf(referenced: int, cached: int, free: int) -> LeafOccupancy:
-    return LeafOccupancy(referenced, cached, free, 100, referenced // 10, 1)
+def _leaf(used: int, evictable: int, empty: int) -> _LeafOccupancy:
+    return _LeafOccupancy(used, evictable, empty, 100, used // 10, 1)
 
 
 _OCCUPANCY = [
-    JengaOccupancy({"mla": _leaf(90, 2, 3), "idx": _leaf(10, 0, 50)}, 0),
-    JengaOccupancy({"mla": _leaf(40, 0, 60), "idx": _leaf(80, 5, 10)}, 4),
+    _PoolOccupancy({"mla": _leaf(90, 2, 3), "idx": _leaf(10, 0, 50)}, 0),
+    _PoolOccupancy({"mla": _leaf(40, 0, 60), "idx": _leaf(80, 5, 10)}, 4),
 ]
+
+
+def _occupancy_kv_cache(jenga: bool) -> MagicMock:
+    kv_cache = MagicMock(spec=JengaKVCacheManager) if jenga else MagicMock()
+    kv_cache.block_count.return_value = BlockCount(free=60, total=100)
+    kv_cache.pressure_pct.return_value = 40.0
+    kv_cache.host_byte_count.return_value = ByteCount(free=0, total=0)
+    kv_cache.disk_byte_count.return_value = ByteCount(free=0, total=0)
+    kv_cache.take_metrics_aggregated.return_value = KVCacheMetrics()
+    kv_cache.occupancy.side_effect = _OCCUPANCY.__getitem__
+    return kv_cache
+
+
+def test_batch_log_sums_every_jenga_leaf_across_replicas(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with (
+        patch("max.serve.scheduler.utils.METRICS"),
+        caplog.at_level(logging.INFO, logger="max.serve"),
+    ):
+        SchedulerLogger(log_interval_s=0).log_metrics(
+            sch_config=_mock_sch_config(dp=2),
+            inputs=_mock_inputs(batch_size=2, batch_type=BatchType.TG),
+            kv_cache=_occupancy_kv_cache(jenga=True),
+            batch_creation_time_s=0.001,
+            batch_execution_time_s=0.1,
+            num_pending_reqs=0,
+            num_terminated_reqs=0,
+            total_preemption_count=0,
+        )
+
+    assert (
+        "KV leaves: mla 67.5% (130 used, 2 evictable, 63 empty of 200; "
+        "13 huge used, 2 evictable), idx 67.5% (90 used, 5 evictable, "
+        "60 empty of 200; 9 huge used, 2 evictable) | "
+    ) in caplog.text
 
 
 @pytest.mark.parametrize("jenga", [True, False])
@@ -2323,13 +2359,7 @@ def test_jenga_occupancy_samples_busy_and_idle_on_one_dump_clock(
 ) -> None:
     """Every logged batch publishes the gauges; the per-leaf dump, busy or
     idle, fires at most once per interval. Other caches publish nothing."""
-    kv_cache = MagicMock(spec=JengaKVCacheManager) if jenga else MagicMock()
-    kv_cache.block_count.return_value = BlockCount(free=60, total=100)
-    kv_cache.pressure_pct.return_value = 40.0
-    kv_cache.host_byte_count.return_value = ByteCount(free=0, total=0)
-    kv_cache.disk_byte_count.return_value = ByteCount(free=0, total=0)
-    kv_cache.take_metrics_aggregated.return_value = KVCacheMetrics()
-    kv_cache.occupancy.side_effect = _OCCUPANCY.__getitem__
+    kv_cache = _occupancy_kv_cache(jenga)
     scheduler_logger = SchedulerLogger(
         log_interval_s=1, leaf_dump_interval_s=60
     )
@@ -2367,12 +2397,12 @@ def test_jenga_occupancy_samples_busy_and_idle_on_one_dump_clock(
     assert dumps_per_step == ([dump, [], [], dump, []] if jenga else [[]] * 5)
     # Sampled at 100, 102 and 170, for two replicas of two leaves each.
     samples = 3 if jenga else 0
-    pages = mock_metrics.cache_jenga_leaf_pages.call_args_list
+    small = mock_metrics.cache_jenga_small_blocks.call_args_list
     huge = mock_metrics.cache_jenga_huge_blocks.call_args_list
-    assert len(pages) == samples * 2 * 2 * 3
+    assert len(small) == samples * 2 * 2 * 3
     assert len(huge) == samples * 2 * (2 * 2 + 1)
     if jenga:
-        assert call(5, replica="1", leaf="idx", state="cached") in pages
-        assert call(9, replica="0", leaf="mla", state="claimed") in huge
-        assert call(0, replica="0", leaf="none", state="pristine") in huge
-        assert call(4, replica="1", leaf="none", state="pristine") in huge
+        assert call(5, replica="1", leaf="idx", state="evictable") in small
+        assert call(9, replica="0", leaf="mla", state="used") in huge
+        assert call(0, replica="0", leaf="none", state="empty") in huge
+        assert call(4, replica="1", leaf="none", state="empty") in huge

@@ -28,9 +28,10 @@ from max.support.human_readable_formatter import to_human_readable_bytes
 from max.support.math import ceildiv
 
 # A padded page may spend at most this share of itself on bytes the kernel
-# never reads. 6% fits DeepSeek-V4.1's index keys, which pad 5.88%.
+# never reads. A round allowance, not tuned to any model: enough for an awkward
+# page to tile a far smaller huge block, while adding at most a tenth to it.
 _MAX_PADDING_FRACTION = float(
-    os.getenv("MODULAR_KV_JENGA_MAX_PADDING_FRACTION") or 0.06
+    os.getenv("MODULAR_KV_JENGA_MAX_PADDING_FRACTION") or 0.1
 )
 
 # The search will not consider a huge block larger than this. Past it the
@@ -43,6 +44,9 @@ _MAX_HUGE_PAGE_BYTES = int(
 # the candidate search; ratios above this imply a page so much smaller than the
 # block that padding it tightly is free anyway.
 _MAX_TILING_RATIO = int(os.getenv("MODULAR_KV_JENGA_MAX_TILING_RATIO") or 256)
+
+# The share of the budget whole huge blocks may strand before planning warns.
+_STRANDING_WARN_FRACTION = 0.05
 
 
 def compute_jenga_ratios(
@@ -272,7 +276,7 @@ def plan_jenga_geometry(
         max_padding_fraction: The most of a page any one cache may spend on
             padding. Caps the search rather than the result: a geometry needing
             more is simply not considered. Defaults to
-            ``MODULAR_KV_JENGA_MAX_PADDING_FRACTION``, itself 6%.
+            ``MODULAR_KV_JENGA_MAX_PADDING_FRACTION``, itself 10%.
 
     Returns:
         The geometry to allocate.
@@ -355,13 +359,10 @@ def plan_jenga_geometry(
     )
 
 
-_STRANDING_WARN_FRACTION = 0.05
-
-
 def stranding_warning(
     geometry: JengaGeometry, num_leaves: int, available_bytes: int
 ) -> str | None:
-    """Returns a warning when the huge block can strand over 5% of the budget.
+    """Returns a warning when the huge block can strand more than a threshold of the budget.
 
     In the worst case each leaf holds one nearly empty huge block, plus the
     null block.

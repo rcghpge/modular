@@ -18,7 +18,7 @@ import os
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import TypeVar
 
 from max.nn.kv_cache.metrics import dkv_tier_degraded
@@ -28,7 +28,8 @@ from max.pipelines.kv_cache import (
     PagedKVCacheManagerInterface,
 )
 from max.pipelines.kv_cache.paged_kv_cache.jenga_block_manager import (
-    JengaOccupancy,
+    _LeafOccupancy,
+    _PoolOccupancy,
 )
 from max.pipelines.lib.vision_encoder_cache import (
     VideoEncoderMetrics,
@@ -170,70 +171,66 @@ def _format_spec_decode_clause(
     )
 
 
-def _format_fullest_leaves(
-    occupancy: Sequence[JengaOccupancy], limit: int = 3
-) -> str:
-    """Formats the fullest Jenga leaves across replicas, which admission
-    pressure follows."""
-    ranked = sorted(
-        (
-            (replica_idx, leaf_id, leaf)
-            for replica_idx, snapshot in enumerate(occupancy)
-            for leaf_id, leaf in snapshot.leaves.items()
-        ),
-        key=lambda entry: entry[2].used_pct,
-        reverse=True,
+def _format_kv_leaves(occupancy: Sequence[_PoolOccupancy]) -> str:
+    """Formats every Jenga leaf, summed across replicas."""
+    leaves = {
+        leaf_id: _LeafOccupancy(
+            *(
+                sum(getattr(s.leaves[leaf_id], f.name) for s in occupancy)
+                for f in fields(_LeafOccupancy)
+            )
+        )
+        for leaf_id in occupancy[0].leaves
+    }
+    clauses = ", ".join(
+        f"{leaf_id} {leaf.pressure_pct:.1f}% ({leaf.used} used, "
+        f"{leaf.evictable} evictable, {leaf.empty} empty of {leaf.total}; "
+        f"{leaf.used_huge_blocks} huge used, {leaf.evictable_huge_blocks} "
+        f"evictable)"
+        for leaf_id, leaf in leaves.items()
     )
-    replica_prefix = len(occupancy) > 1
-    leaves = ", ".join(
-        f"{f'r{replica_idx}/' if replica_prefix else ''}{leaf_id} "
-        f"{leaf.used_pct:.1f}% ({leaf.referenced} ref, {leaf.cached} cached, "
-        f"{leaf.free} free of {leaf.total}; {leaf.claimed_huge_blocks} huge "
-        f"claimed, {leaf.parked_huge_blocks} parked)"
-        for replica_idx, leaf_id, leaf in ranked[:limit]
-    )
-    return f"Fullest KV leaves: {leaves} | "
+    return f"KV leaves: {clauses} | "
 
 
-def _format_leaf_dump(replica_idx: int, snapshot: JengaOccupancy) -> str:
+def _format_leaf_dump(replica_idx: int, snapshot: _PoolOccupancy) -> str:
     leaves = " | ".join(
-        f"{leaf_id}: {leaf.used_pct:.1f}% used, {leaf.referenced} referenced"
-        f" / {leaf.cached} cached / {leaf.free} free of {leaf.total} pages,"
-        f" {leaf.claimed_huge_blocks} huge blocks claimed /"
-        f" {leaf.parked_huge_blocks} parked"
+        f"{leaf_id}: {leaf.pressure_pct:.1f}% full, {leaf.used} used"
+        f" / {leaf.evictable} evictable / {leaf.empty} empty of {leaf.total}"
+        f" small blocks, {leaf.used_huge_blocks} huge blocks used /"
+        f" {leaf.evictable_huge_blocks} evictable"
         for leaf_id, leaf in snapshot.leaves.items()
     )
     return (
         f"KV leaf occupancy, replica {replica_idx}: "
-        f"{snapshot.pristine_huge_blocks} pristine huge blocks | {leaves}"
+        f"{snapshot.empty_huge_blocks} empty huge blocks | {leaves}"
     )
 
 
-def _publish_jenga_occupancy(occupancy: Sequence[JengaOccupancy]) -> None:
+def _publish_jenga_occupancy(occupancy: Sequence[_PoolOccupancy]) -> None:
     with METRICS.transaction():
         for replica_idx, snapshot in enumerate(occupancy):
             replica = str(replica_idx)
             for leaf_id, leaf in snapshot.leaves.items():
-                for state, pages in (
-                    ("referenced", leaf.referenced),
-                    ("cached", leaf.cached),
-                    ("free", leaf.free),
+                for state, blocks in (
+                    ("used", leaf.used),
+                    ("evictable", leaf.evictable),
+                    ("empty", leaf.empty),
                 ):
-                    METRICS.cache_jenga_leaf_pages(
-                        pages, replica=replica, leaf=leaf_id, state=state
+                    METRICS.cache_jenga_small_blocks(
+                        blocks, replica=replica, leaf=leaf_id, state=state
                     )
                 for state, blocks in (
-                    ("claimed", leaf.claimed_huge_blocks),
-                    ("parked", leaf.parked_huge_blocks),
+                    ("used", leaf.used_huge_blocks),
+                    ("evictable", leaf.evictable_huge_blocks),
                 ):
                     METRICS.cache_jenga_huge_blocks(
                         blocks, replica=replica, leaf=leaf_id, state=state
                     )
             METRICS.cache_jenga_huge_blocks(
-                snapshot.pristine_huge_blocks,
+                snapshot.empty_huge_blocks,
                 replica=replica,
                 leaf="none",
-                state="pristine",
+                state="empty",
             )
 
 
@@ -442,7 +439,7 @@ class BatchMetrics:
 
     # Per-replica Jenga pool snapshots. Each scans its pool, so they are
     # taken only for batches that log. None otherwise, and for other caches.
-    jenga_occupancy: list[JengaOccupancy] | None = None
+    jenga_occupancy: list[_PoolOccupancy] | None = None
 
     @classmethod
     def create(
@@ -872,7 +869,7 @@ class BatchMetrics:
             else:
                 kv_str = f"{usage_str} | "
         if self.jenga_occupancy:
-            kv_str += _format_fullest_leaves(self.jenga_occupancy)
+            kv_str += _format_kv_leaves(self.jenga_occupancy)
 
         host_kv_str = ""
         if self.total_host_kv_bytes != 0:
@@ -1607,12 +1604,12 @@ class SchedulerLogger:
         self.leaf_dump_interval_s = leaf_dump_interval_s
         self.time_of_last_leaf_dump = 0.0
 
-    def _sample_jenga(
+    def _sample_cache_occupancy(
         self,
         kv_cache: PagedKVCacheManagerInterface | None,
         num_replicas: int,
         now: float,
-    ) -> list[JengaOccupancy] | None:
+    ) -> list[_PoolOccupancy] | None:
         """Publishes the per-leaf gauges, logging every leaf when due."""
         if not isinstance(kv_cache, JengaKVCacheManager):
             return None
@@ -1634,7 +1631,7 @@ class SchedulerLogger:
         """
         now = time.monotonic()
         if self.leaf_dump_interval_s < now - self.time_of_last_leaf_dump:
-            self._sample_jenga(kv_cache, num_replicas, now)
+            self._sample_cache_occupancy(kv_cache, num_replicas, now)
 
     def log_metrics(
         self,
@@ -1724,7 +1721,7 @@ class SchedulerLogger:
         if self.log_interval_s < time_since_last_log:
             # Reset the time of the last log.
             self.time_of_last_log = now
-            metrics.jenga_occupancy = self._sample_jenga(
+            metrics.jenga_occupancy = self._sample_cache_occupancy(
                 kv_cache, sch_config.data_parallel_degree, now
             )
             if batch_id is not None:

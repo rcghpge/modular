@@ -58,6 +58,19 @@ def ring_slots(state: PagedCacheValues, rows: RaggedRows) -> TensorValue:
     )
 
 
+def ring_save_slots(
+    state: PagedCacheValues, rows: RaggedRows, slots: TensorValue
+) -> TensorValue:
+    """Returns ``slots`` with ``-1`` on rows outside their request's last
+    ``ring_rows`` rows, so the ring save copies only the rows that survive a
+    wrap."""
+    ring_rows = int(state.kv_blocks.shape[3])
+    assert rows.lengths is not None
+    length = ops.gather(rows.lengths, rows.bid, axis=0)
+    keep = rows.local >= length - ring_rows
+    return ops.where(keep, slots, -1)
+
+
 class DeepseekV41Compressor(Module):
     """Pools packed token rows and returns pre-RoPE BF16 latents.
 
@@ -143,6 +156,7 @@ class DeepseekV41Compressor(Module):
         offsets: TensorValue,
         state: PagedCacheValues | None = None,
         slots: TensorValue | None = None,
+        save_slots: TensorValue | None = None,
         layer_idx: TensorValue | None = None,
     ) -> TensorValue:
         """Normalizes raw rows, pooling complete pairs when the ratio is two.
@@ -163,6 +177,8 @@ class DeepseekV41Compressor(Module):
                 ``2 * head_dim`` row per ring slot.
             slots: Ratio two only: ``[T]`` int32 ring slot of each row
                 (:func:`ring_slots`).
+            save_slots: Ratio two only: ``slots`` with ``-1`` on the rows that
+                are not saved to the ring (:func:`ring_save_slots`).
             layer_idx: Ratio two only: host uint32 index of this layer in
                 ``state``.
 
@@ -183,13 +199,13 @@ class DeepseekV41Compressor(Module):
             )
         if offsets.dtype != DType.uint32:
             raise ValueError("CSA2 offsets must be uint32")
-        given = [x is not None for x in (state, slots, layer_idx)]
+        given = [x is not None for x in (state, slots, save_slots, layer_idx)]
         if any(given) != (self.compress_ratio == 2) or (
             any(given) and not all(given)
         ):
             raise ValueError(
-                "Ratio two requires the state leaf, slots and layer index;"
-                " ratio one takes none"
+                "Ratio two requires the state leaf, slots, save slots and"
+                " layer index; ratio one takes none"
             )
         device = raw.device
         rows = raw.shape[0]
@@ -216,13 +232,14 @@ class DeepseekV41Compressor(Module):
                 parameters={"epsilon": self.eps},
             )[0].tensor
         assert state is not None and slots is not None
-        assert layer_idx is not None
+        assert save_slots is not None and layer_idx is not None
         return ops.inplace_custom(
             "mo.csa.compress.paged",
             device=device,
             values=[
                 *values,
                 ops.cast(slots, DType.int32),
+                ops.cast(save_slots, DType.int32),
                 weight,
                 state.kv_blocks,
                 state.page_stride,

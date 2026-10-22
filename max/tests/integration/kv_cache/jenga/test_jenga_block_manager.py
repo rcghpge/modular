@@ -2319,17 +2319,17 @@ def test_occupancy_adds_up_to_the_pool_counts() -> None:
     little = bm.little_block_count()
     pool = bm.pools[0]
     for leaf_id, leaf in occupancy.leaves.items():
-        assert leaf.referenced == len(held[leaf_id])
-        assert leaf.cached == len(pool.prefix_caches[leaf_id]) > 0
-        assert leaf.cached + leaf.free == little[leaf_id].free
+        assert leaf.used == len(held[leaf_id])
+        assert leaf.evictable == len(pool.prefix_caches[leaf_id]) > 0
+        assert leaf.evictable + leaf.empty == little[leaf_id].free
         assert leaf.total == little[leaf_id].total
-        assert leaf.used_pct == little[leaf_id].used_pct
+        assert leaf.pressure_pct == little[leaf_id].used_pct
 
     huge = bm.huge_block_count()
-    parked = sum(leaf.parked_huge_blocks for leaf in occupancy.leaves.values())
-    claimed = sum(
-        leaf.claimed_huge_blocks for leaf in occupancy.leaves.values()
+    evictable = sum(
+        leaf.evictable_huge_blocks for leaf in occupancy.leaves.values()
     )
-    assert claimed > 0 and parked > 0
-    assert parked + occupancy.pristine_huge_blocks == huge.free
-    assert claimed + parked + occupancy.pristine_huge_blocks == huge.total
+    used = sum(leaf.used_huge_blocks for leaf in occupancy.leaves.values())
+    assert used > 0 and evictable > 0
+    assert evictable + occupancy.empty_huge_blocks == huge.free
+    assert used + evictable + occupancy.empty_huge_blocks == huge.total
