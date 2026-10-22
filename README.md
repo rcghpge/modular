@@ -37,6 +37,9 @@ The main components for which source is available today include:
   (GPU programming in Mojo, since May 2025)
 - MAX accelerator library: [/max/kernels](/max/kernels) (Mojo compute kernels,
   since May 2025)
+- MAX graph compiler: [/GraphCompiler](/GraphCompiler)
+- MAX runtime: [/MLRT](/MLRT)
+- MAX driver: [/max/driver](/max/driver)
 - MAX AI framework: [/max/python/max](/max/python/max) (model authoring in
   Python, since November 2025)
 - MAX model pipelines: [/max/python/max/pipelines](/max/python/max/pipelines)
