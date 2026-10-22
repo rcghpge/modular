@@ -507,6 +507,8 @@ struct DriverMetalPluginEventTest : DriverPluginQueueTest {
   void TearDown() override {
     for (M_driver_memory_t memory : allocations)
       memory_free_sync(owner[memory], memory);
+    for (M_driver_memory_t memory : pinnedAllocations)
+      memory_free_pinned(owner[memory], memory);
     for (size_t i = 0; i < libraries.size(); i++) {
       EXPECT_SUCCESS(function_unload(contexts[i], functions[i]));
       EXPECT_SUCCESS(bundle_unload(contexts[i], libraries[i]));
@@ -527,6 +529,18 @@ struct DriverMetalPluginEventTest : DriverPluginQueueTest {
     ASSERT_SUCCESS(memory_property(*outMemory, "host_address", &host));
     ASSERT_NE(nullptr, host);
     *outHost = static_cast<volatile uint32_t *>(host);
+  }
+
+  void allocPinnedWords(M_driver_context_t context,
+                        M_driver_memory_t *outMemory, uint32_t **outHost) {
+    ASSERT_SUCCESS(
+        memory_alloc_pinned(context, kLength * sizeof(uint32_t), outMemory));
+    pinnedAllocations.push_back(*outMemory);
+    owner[*outMemory] = context;
+    void *host = nullptr;
+    ASSERT_SUCCESS(memory_property(*outMemory, "host_address", &host));
+    ASSERT_NE(nullptr, host);
+    *outHost = static_cast<uint32_t *>(host);
   }
 
   // Launches controlled_store: every lane spins `iters` then stores `marker`
@@ -583,6 +597,7 @@ struct DriverMetalPluginEventTest : DriverPluginQueueTest {
   std::vector<M_driver_runtime_bundle_t> libraries;
   std::vector<M_driver_function_t> functions;
   std::vector<M_driver_memory_t> allocations;
+  std::vector<M_driver_memory_t> pinnedAllocations;
   std::map<M_driver_memory_t, M_driver_context_t> owner;
 };
 
@@ -770,5 +785,131 @@ TEST_F(DriverMetalPluginEventTest, WaitForEventsGatesSecondQueue) {
     ASSERT_SUCCESS(event_synchronize(context, probeB));
     EXPECT_EQ(outLongHost[0], 1u);
     EXPECT_EQ(outLongHost[kLength - 1], 1u);
+  }
+}
+
+// A pinned-host copy is enqueued like cuMemcpyHtoDAsync: the call returns while
+// earlier work still runs, and the data lands once the queue drains.
+TEST_F(DriverMetalPluginEventTest, PinnedCopyToDeviceDoesNotBlock) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t outLong, itersLong, dst, src;
+    volatile uint32_t *outLongHost, *itersLongHost, *dstHost;
+    uint32_t *srcHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocWords(context, &dst, &dstHost);
+    allocPinnedWords(context, &src, &srcHost);
+    fillIters(itersLongHost, kLongIters);
+    for (uint32_t j = 0; j < kLength; ++j)
+      srcHost[j] = 100 + j;
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/1);
+    M_driver_memory_view dstView{dst, /*offset=*/0, kLength * sizeof(uint32_t)};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &dstView, srcHost));
+    EXPECT_NE(outLongHost[kLength - 1], 1u)
+        << "copy_to_device from pinned memory waited for prior work";
+
+    ASSERT_SUCCESS(queue_synchronize(queue));
+    for (uint32_t j = 0; j < kLength; ++j)
+      ASSERT_EQ(dstHost[j], 100 + j) << "index " << j;
+  }
+}
+
+// A pinned-host readback is enqueued like cuMemcpyDtoHAsync, ordered after the
+// kernel that produces its source.
+TEST_F(DriverMetalPluginEventTest, PinnedCopyFromDeviceDoesNotBlock) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t outLong, itersLong, dst;
+    volatile uint32_t *outLongHost, *itersLongHost;
+    uint32_t *dstHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocPinnedWords(context, &dst, &dstHost);
+    fillIters(itersLongHost, kLongIters);
+    for (uint32_t j = 0; j < kLength; ++j)
+      dstHost[j] = 0;
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/7);
+    M_driver_memory_view srcView{outLong, /*offset=*/0,
+                                 kLength * sizeof(uint32_t)};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, dstHost, &srcView));
+    EXPECT_NE(outLongHost[kLength - 1], 7u)
+        << "copy_from_device into pinned memory waited for prior work";
+
+    ASSERT_SUCCESS(queue_synchronize(queue));
+    for (uint32_t j = 0; j < kLength; ++j)
+      ASSERT_EQ(dstHost[j], 7u) << "index " << j;
+  }
+}
+
+// An interior pointer into a pinned allocation resolves to that allocation, not
+// to the pageable fallback.
+TEST_F(DriverMetalPluginEventTest, PinnedSubRangeCopyDoesNotBlock) {
+  static constexpr uint32_t kSkip = 16;
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t outLong, itersLong, dst, src;
+    volatile uint32_t *outLongHost, *itersLongHost, *dstHost;
+    uint32_t *srcHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocWords(context, &dst, &dstHost);
+    allocPinnedWords(context, &src, &srcHost);
+    fillIters(itersLongHost, kLongIters);
+    for (uint32_t j = 0; j < kLength; ++j) {
+      srcHost[j] = 100 + j;
+      dstHost[j] = 0;
+    }
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/1);
+    M_driver_memory_view dstView{dst, /*offset=*/kSkip * sizeof(uint32_t),
+                                 (kLength - kSkip) * sizeof(uint32_t)};
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &dstView, srcHost + kSkip));
+    EXPECT_NE(outLongHost[kLength - 1], 1u)
+        << "copy_to_device from a pinned sub-range waited for prior work";
+
+    ASSERT_SUCCESS(queue_synchronize(queue));
+    for (uint32_t j = 0; j < kSkip; ++j)
+      ASSERT_EQ(dstHost[j], 0u) << "index " << j;
+    for (uint32_t j = kSkip; j < kLength; ++j)
+      ASSERT_EQ(dstHost[j], 100 + j) << "index " << j;
+  }
+}
+
+// Pageable copies stay synchronous, as cuMemcpyHtoDAsync / cuMemcpyDtoHAsync
+// are for pageable memory: each waits for prior work before returning.
+TEST_F(DriverMetalPluginEventTest, PageableCopiesWaitForPriorWork) {
+  for (size_t i = 0; i < contexts.size(); i++) {
+    M_driver_context_t context = contexts[i];
+    M_driver_queue_t queue = queues[i];
+
+    M_driver_memory_t outLong, itersLong, dst;
+    volatile uint32_t *outLongHost, *itersLongHost, *dstHost;
+    allocWords(context, &outLong, &outLongHost);
+    allocWords(context, &itersLong, &itersLongHost);
+    allocWords(context, &dst, &dstHost);
+    fillIters(itersLongHost, kLongIters);
+    std::vector<uint32_t> pageable(kLength, 5);
+    M_driver_memory_view dstView{dst, /*offset=*/0, kLength * sizeof(uint32_t)};
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/1);
+    ASSERT_SUCCESS(queue_copy_to_device(queue, &dstView, pageable.data()));
+    EXPECT_EQ(outLongHost[kLength - 1], 1u);
+    EXPECT_EQ(dstHost[kLength - 1], 5u);
+
+    launchStore(queue, functions[i], outLong, itersLong, /*marker=*/2);
+    M_driver_memory_view srcView{outLong, /*offset=*/0,
+                                 kLength * sizeof(uint32_t)};
+    ASSERT_SUCCESS(queue_copy_from_device(queue, pageable.data(), &srcView));
+    EXPECT_EQ(pageable[0], 2u);
+    EXPECT_EQ(pageable[kLength - 1], 2u);
   }
 }

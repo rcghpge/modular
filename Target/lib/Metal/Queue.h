@@ -50,6 +50,12 @@ struct M_driver_queue {
   // Host-blocks until everything committed before this call has completed.
   M_driver_status_t drainPriorWork();
 
+  // Commits a blit without waiting. Offsets are absolute within each buffer
+  // and must already be bounds-checked.
+  M_driver_status_t enqueueBlit(MTL::Buffer *dst, uint64_t dstOffset,
+                                MTL::Buffer *src, uint64_t srcOffset,
+                                uint64_t size);
+
   M_driver_context_t context;
   NS::SharedPtr<MTL::CommandQueue> mCommandQueue;
 

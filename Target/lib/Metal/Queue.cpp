@@ -138,6 +138,16 @@ M_driver_status_t M_driver_queue::copyToDevice(M_driver_memory_t dst,
     return context->device->driver->status.create(
         "Copy size exceeds Metal buffer length");
 
+  // Pinned host memory is one of this context's MTLBuffers, so it blits without
+  // waiting, like cuMemcpyHtoDAsync. Pageable memory stays synchronous below.
+  if (auto pinned = context->getBufferWithOffset(src); pinned.isValid()) {
+    if (pinned.offset + size > pinned.buffer->length())
+      return context->device->driver->status.create(
+          "Copy size exceeds pinned source buffer length");
+    return enqueueBlit(dst->mBuffer, dstOffset, pinned.buffer, pinned.offset,
+                       size);
+  }
+
   void *dstContents = dst->mBuffer->contents();
   if (dstContents == nullptr)
     return context->device->driver->status.create(
@@ -171,6 +181,14 @@ M_driver_status_t M_driver_queue::copyFromDevice(void *dst,
   if (srcOffset + size > src->mBuffer->length())
     return context->device->driver->status.create(
         "Copy size exceeds Metal source buffer length");
+
+  if (auto pinned = context->getBufferWithOffset(dst); pinned.isValid()) {
+    if (pinned.offset + size > pinned.buffer->length())
+      return context->device->driver->status.create(
+          "Copy size exceeds pinned destination buffer length");
+    return enqueueBlit(pinned.buffer, pinned.offset, src->mBuffer, srcOffset,
+                       size);
+  }
 
   void *srcContents = src->mBuffer->contents();
   if (srcContents == nullptr)
@@ -206,6 +224,14 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
     return context->device->driver->status.create(
         "Copy size exceeds Metal source buffer length");
 
+  return enqueueBlit(dst->mBuffer, dstOffset, src->mBuffer, srcOffset, size);
+}
+
+M_driver_status_t M_driver_queue::enqueueBlit(MTL::Buffer *dst,
+                                              uint64_t dstOffset,
+                                              MTL::Buffer *src,
+                                              uint64_t srcOffset,
+                                              uint64_t size) {
   std::lock_guard<std::mutex> lock(mMutex);
 
   MTL::CommandBuffer *cmdBuffer = mCommandQueue->commandBuffer();
@@ -218,8 +244,7 @@ M_driver_status_t M_driver_queue::copyIntraDevice(M_driver_memory_t dst,
   if (encoder == nullptr)
     return context->device->driver->status.create(
         "Failed to create blit command encoder");
-  encoder->copyFromBuffer(src->mBuffer, srcOffset, dst->mBuffer, dstOffset,
-                          size);
+  encoder->copyFromBuffer(src, srcOffset, dst, dstOffset, size);
   encoder->updateFence(mOrderingFence.get());
   encoder->endEncoding();
 
