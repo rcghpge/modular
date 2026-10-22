@@ -28,12 +28,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsyncRT/Runtime/Globals/VirtualDeviceGlobals.h"
+#include "MLRT/Driver/DeviceContext/DeviceAPINames.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "TestUtils.h"
 
 #include "gtest/gtest.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace M::Driver {
@@ -160,6 +162,64 @@ TEST_F(HALVirtualDeviceTest, NoPeerAccess) {
 
   ASSIGN_NO_ERR(bool, canAccess, device0->canAccess(*device1));
   EXPECT_FALSE(canAccess);
+}
+
+// The api knob takes a `--target-accelerator` vendor name as a synonym for the
+// device API it belongs to, so a caller holding one does not have to rewrite
+// it (GEX-4019). Asserted on the resolved device rather than the knob: the
+// synonym is resolved in `CompilationDevice::create`, and `api()` reporting
+// the canonical name is what keeps every `api() == cudaAPI` comparison
+// downstream correct.
+TEST_F(HALVirtualDeviceTest, VendorNameIsASynonymForTheApi) {
+  AsyncRT::setVirtualDeviceAPI("nvidia");
+  DeviceRef device = virtualDevice();
+  ASSERT_NE(device.getPointer(), nullptr);
+  EXPECT_EQ(device->api(), Device::cudaAPI);
+
+  ASSIGN_NO_ERR(const char *, arch, device->getArchName());
+  EXPECT_STREQ(arch, kVirtualArch);
+}
+
+TEST_F(HALVirtualDeviceTest, AmdVendorNamesAreSynonymsForHip) {
+  // Only the compilation device is built here: `Device::create` would need the
+  // HIP arch in the knob, and the point is the api name, not the arch.
+  for (const char *vendor : {"amdgpu", "amd", "hip"}) {
+    ASSIGN_NO_ERR(std::unique_ptr<CompilationDevice>, device,
+                  CompilationDevice::create(vendor, "gfx942"));
+    EXPECT_EQ(device->api(), Device::hipAPI) << vendor;
+  }
+}
+
+// `DeviceAPINames.h` spells the api names as literals, because the headers
+// that declare `Device::cudaAPI` and friends include it. Nothing else makes
+// the two agree, so this does -- in both backends, since each declares its own
+// copy of the constants.
+TEST(DeviceAPINamesTest, MatchesTheDeviceApiConstants) {
+  EXPECT_EQ(canonicalDeviceAPI("nvidia"), Device::cudaAPI);
+  EXPECT_EQ(canonicalDeviceAPI("amdgpu"), Device::hipAPI);
+  EXPECT_EQ(canonicalDeviceAPI("amd"), Device::hipAPI);
+  EXPECT_EQ(canonicalDeviceAPI("metal"), Device::metalAPI);
+
+  // Round-trips, so an arch string built from an api parses back to it.
+  EXPECT_EQ(canonicalDeviceAPI(apiToVendorPrefix(Device::cudaAPI)),
+            Device::cudaAPI);
+  EXPECT_EQ(canonicalDeviceAPI(apiToVendorPrefix(Device::hipAPI)),
+            Device::hipAPI);
+  EXPECT_EQ(canonicalDeviceAPI(apiToVendorPrefix(Device::metalAPI)),
+            Device::metalAPI);
+
+  // An api with no distinct vendor name, and a plugin api, pass through.
+  EXPECT_EQ(apiToVendorPrefix(Device::metalAPI), Device::metalAPI);
+  EXPECT_EQ(apiToVendorPrefix("wombat42"), "wombat42");
+  EXPECT_EQ(canonicalDeviceAPI("wombat42"), "wombat42");
+}
+
+TEST_F(HALVirtualDeviceTest, UnknownApiNamesTheValuePassedIn) {
+  // A vendor name that resolves to nothing must come back verbatim rather than
+  // as whatever it was rewritten to, or the message names a string the caller
+  // never wrote.
+  EXPECT_ERR_MSG(CompilationDevice::create("wombat42", kVirtualArch),
+                 "Unknown virtual device API: wombat42");
 }
 
 TEST_F(HALVirtualDeviceTest, AcceleratorArchComesFromTheKnobs) {

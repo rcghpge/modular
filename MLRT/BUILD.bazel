@@ -492,6 +492,7 @@ modular_cc_library(
     name = "Driver/DeviceContextAPI",
     hdrs = [
         "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceAPINames.h",
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
         "include/MLRT/Driver/DeviceContext/DeviceGraphBuilder.h",
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",
@@ -610,6 +611,7 @@ modular_shared_library(
     hdrs = [
         "include/MLRT/Driver/DeviceContext/BinaryID.h",
         "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceAPINames.h",
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
         "include/MLRT/Driver/DeviceContext/HALDeviceContext.h",
     ],
@@ -808,6 +810,7 @@ modular_cc_library(
     hdrs = [
         "include/MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h",
         "include/MLRT/Driver/DeviceContext/CompilationDevice.h",
+        "include/MLRT/Driver/DeviceContext/DeviceAPINames.h",
         "include/MLRT/Driver/DeviceContext/DeviceContext.h",
         "include/MLRT/Driver/DeviceContext/DeviceGraphBuilder.h",
         "include/MLRT/Driver/DeviceContext/ErrorMacros.h",

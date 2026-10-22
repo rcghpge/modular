@@ -29,6 +29,7 @@ static_assert(
 #include "AsyncRT/Runtime/Algorithms.h"
 #include "AsyncRT/Support/UnknownLocationDecoder.h"
 #include "MLRT/Driver/DeviceContext/CPU/CpuDeviceContext.h"
+#include "MLRT/Driver/DeviceContext/DeviceAPINames.h"
 #include "MLRT/Driver/DeviceContext/DeviceAffinity.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
@@ -2068,17 +2069,6 @@ bool DeviceContext::isDebugAllocatorEnabled(StringRef name) const {
 ErrorOr<Config> &DeviceContext::getConfig() {
   static ErrorOr<Config> configuration = Config::open();
   return configuration;
-}
-
-// Maps a device API name to its vendor prefix for accelerator arch strings.
-static StringRef apiToVendorPrefix(StringRef api) {
-  if (api == "cuda")
-    return "nvidia";
-  if (api == "hip")
-    return "amdgpu";
-  if (api == "metal")
-    return "metal";
-  return api;
 }
 
 MODULAR_CXX_EXPORT const std::string &Device::getAcceleratorArchOrEmpty() {

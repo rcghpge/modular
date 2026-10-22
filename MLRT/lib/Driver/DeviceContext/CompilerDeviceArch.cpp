@@ -28,6 +28,7 @@
 #include "MLRT/Driver/DeviceContext/HALDeviceContext.h"
 
 #include "HAL/M_driver_api.h"
+#include "MLRT/Driver/DeviceContext/DeviceAPINames.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Process.h"
@@ -112,19 +113,6 @@ std::string queryAcceleratorArch() {
   destroy(driver);
   ::dlclose(lib);
   return arch;
-}
-
-// Maps a device API name to its vendor prefix for accelerator arch strings.
-// Duplicated rather than shared: this TU exists precisely so the compiler
-// family links no DeviceContext runtime.
-StringRef apiToVendorPrefix(StringRef api) {
-  if (api == Device::cudaAPI)
-    return "nvidia";
-  if (api == Device::hipAPI)
-    return "amdgpu";
-  if (api == Device::metalAPI)
-    return "metal";
-  return api;
 }
 
 } // namespace

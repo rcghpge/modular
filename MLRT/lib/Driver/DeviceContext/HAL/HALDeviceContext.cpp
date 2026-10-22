@@ -21,6 +21,7 @@
 
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
+#include "MLRT/Driver/DeviceContext/DeviceAPINames.h"
 #include "Support/BinaryID.h"
 #include "Support/Configuration.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -200,18 +201,6 @@ Device::API mapAPI(StringRef api) {
   return Device::gpuAPI;
 }
 
-/// Maps a device API name to its vendor prefix for accelerator arch strings,
-/// mirroring the legacy backend's mapping of the same name.
-StringRef apiToVendorPrefix(StringRef api) {
-  if (api == Device::cudaAPI)
-    return "nvidia";
-  if (api == Device::hipAPI)
-    return "amdgpu";
-  if (api == Device::metalAPI)
-    return "metal";
-  return api;
-}
-
 } // namespace
 
 ErrorOr<DeviceRef> Device::create(StringRef api, int id) {
@@ -303,20 +292,18 @@ const std::string &Device::getAcceleratorArchOrEmpty() {
       return std::string();
     llvm::StringRef name(nameOr.takeValue());
 
-    // FIXME: Vendor mapping logic should move out of here.
-    llvm::StringRef vendor;
-    if (dev->api() == "cuda")
-      vendor = "nvidia";
-    else if (dev->api() == "hip")
-      vendor = "amdgpu";
+    // The apis this backend names a vendor for. A plugin api has none, and
+    // the caller reads "" as "no accelerator" -- `apiToVendorPrefix` would
+    // otherwise hand back the plugin's own name as though it were a vendor.
+    llvm::StringRef api = dev->api();
+    bool named = api == cudaAPI || api == hipAPI;
 #if MODULAR_MACOS
-    else if (dev->api() == "metal")
-      vendor = "metal";
+    named = named || api == metalAPI;
 #endif
-    if (vendor.empty())
+    if (!named)
       return std::string();
 
-    return (llvm::Twine(vendor) + ":" + name).str();
+    return (llvm::Twine(apiToVendorPrefix(api)) + ":" + name).str();
   }();
   return arch;
 }

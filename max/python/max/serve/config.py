@@ -617,12 +617,28 @@ class Settings(BaseSettings):
         logger.info("")
 
 
+# Device-API name for each Mojo ``--target-accelerator`` vendor name. Mojo
+# names the vendor after the LLVM backend while a device API is named after its
+# runtime, so one target has two spellings; accepting both lets ``--target``
+# take a ``--target-accelerator`` value unchanged. ``metal`` needs no entry:
+# its two names already coincide.
+_API_BY_VENDOR = {
+    "nvidia": "cuda",
+    "amdgpu": "hip",
+    "amd": "hip",
+}
+
+
 def parse_api_and_target_arch(compile_spec: str) -> tuple[str, str]:
-    """Parse the compile-only specification into API and target architecture.
+    """Parses the compile-only specification into API and target architecture.
 
     Supports two formats:
     1. <api> - Uses default target architecture for the API
     2. <api>:<target_arch> - Uses explicit target architecture
+
+    ``<api>`` is either a device-API name (``cuda``, ``hip``, ``metal``) or the
+    Mojo ``--target-accelerator`` vendor name for the same device (``nvidia``,
+    ``amdgpu``/``amd``), which is returned as its device-API name.
 
     Args:
         compile_spec: The compile-only specification string
@@ -638,6 +654,8 @@ def parse_api_and_target_arch(compile_spec: str) -> tuple[str, str]:
         ('cuda', 'sm_80')
         >>> parse_api_and_target_arch("cuda:sm_90")
         ('cuda', 'sm_90')
+        >>> parse_api_and_target_arch("nvidia:sm_90")
+        ('cuda', 'sm_90')
     """
     # Default target architectures for each API
     default_target_archs = {
@@ -649,16 +667,19 @@ def parse_api_and_target_arch(compile_spec: str) -> tuple[str, str]:
     # Parse the compile-only value as <api> or <api>:<target_arch>
     if ":" in compile_spec:
         api, target_arch = compile_spec.split(":", 1)
+        api = _API_BY_VENDOR.get(api, api)
     else:
-        api = compile_spec
+        api = _API_BY_VENDOR.get(compile_spec, compile_spec)
         target_arch = default_target_archs.get(api, "")
 
     # Validate API
     valid_apis = ["cuda", "hip", "metal"]
     if api not in valid_apis:
         raise ValueError(
-            f"Invalid API in --target: '{api}'. "
-            f"Valid APIs are: {', '.join(valid_apis)}"
+            f"Invalid API in --target: '{api}'. Valid APIs are: "
+            f"{', '.join(valid_apis)} (or the equivalent "
+            f"--target-accelerator vendor name: "
+            f"{', '.join(_API_BY_VENDOR)})"
         )
 
     return api, target_arch

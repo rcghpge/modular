@@ -18,6 +18,7 @@
 #include "MLRT/Driver/DeviceContext/CompilationDevice.h"
 #include "CUDA/CUDACompilationDevice.h"
 #include "HIP/HIPCompilationDevice.h"
+#include "MLRT/Driver/DeviceContext/DeviceAPINames.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
@@ -44,7 +45,9 @@ MODULAR_CXX_EXPORT std::string DriverVersion::toString() const {
 }
 
 MODULAR_CXX_EXPORT ErrorOr<std::unique_ptr<CompilationDevice>>
-CompilationDevice::create(StringRef api, StringRef arch) {
+CompilationDevice::create(StringRef requestedAPI, StringRef arch) {
+  const StringRef api = canonicalDeviceAPI(requestedAPI);
+
   // Branch based on the configured API (not the requested API which is often
   // generic "gpu")
   if (api == "cuda") {
@@ -86,7 +89,7 @@ CompilationDevice::create(StringRef api, StringRef arch) {
     // Fall through to unknown API error if no plugin handles this.
   }
 
-  return Error(llvm::Twine("Unknown virtual device API: ") + api);
+  return Error(llvm::Twine("Unknown virtual device API: ") + requestedAPI);
 }
 
 } // namespace M::Driver

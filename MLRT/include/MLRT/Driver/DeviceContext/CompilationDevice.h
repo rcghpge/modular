@@ -102,7 +102,12 @@ public:
   compileFunction(StringRef ir, StringRef debugLevel, int32_t optimizationLevel,
                   StringRef targetAccelerator = "") const = 0;
 
-  /// \param api The api for which to create a compilation device
+  /// \param api The api for which to create a compilation device. Accepts
+  ///        either a device-API name ("cuda", "hip") or the Mojo
+  ///        `--target-accelerator` vendor name for the same device ("nvidia",
+  ///        "amdgpu"/"amd"), so a caller holding a target-accelerator value
+  ///        can pass it through unchanged. `api()` on the result is always
+  ///        the device-API name.
   /// \return Compilation device or error
   static ErrorOr<std::unique_ptr<CompilationDevice>> create(StringRef api,
                                                             StringRef arch);
