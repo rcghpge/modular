@@ -300,6 +300,11 @@ class MiMoV2ModuleV3Model(
     batch_processor_cls: ClassVar[type[BatchProcessor[Any, Any]]] = (
         MiMoV2ModuleV3BatchProcessor
     )
+    # Below data parallelism the dispatch tokens are one replicated batch
+    # (the allreduce backend); above it each replica's dispatches cross
+    # every expert rank, which only the P2P backend collects. gen_mef
+    # picks the matching backend from this at export time.
+    ep_dispatch_token_layout: ClassVar[str] = "dp_replicated"
 
     def __init__(
         self,
