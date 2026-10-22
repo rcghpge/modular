@@ -131,6 +131,10 @@ struct __EnumStorage[case_types: _MLIR.KGENParamListType[AnyType]](
     ]
     var _impl: Self._mlir_type
 
+    # Build discriminants with `from_int=`, a plain `pop.cast`. Declaring an
+    # enum resolves its copy constructor, and a conversion through `SIMD.cast`
+    # there would pull in `String` and the atomics, so an enum could not
+    # appear in the signature of anything those depend on.
     comptime _Discriminant = Scalar[
         __enum_discriminant_dtype(Self._Cases.length)
     ]
@@ -151,7 +155,7 @@ struct __EnumStorage[case_types: _MLIR.KGENParamListType[AnyType]](
             # derive the element's conformance from `all_conforms_to`, so the
             # assert supplies it for the call below (as in `Tuple.__init__`).
             comptime assert conforms_to(Self._Cases()[i], Copyable)
-            if discriminant == Self._Discriminant(i):
+            if discriminant == Self._Discriminant(from_int=i):
                 self.payload_ptr[i]().unsafe_write(copy=copy.payload_ptr[i]()[])
 
     @inline(.always)
@@ -163,7 +167,7 @@ struct __EnumStorage[case_types: _MLIR.KGENParamListType[AnyType]](
         self._discriminant() = discriminant
         comptime for i in range(Self._Cases.length):
             comptime assert conforms_to(Self._Cases()[i], Movable)
-            if discriminant == Self._Discriminant(i):
+            if discriminant == Self._Discriminant(from_int=i):
                 self.payload_ptr[i]().unsafe_write_move_from(
                     move.payload_ptr[i]()
                 )
@@ -173,7 +177,7 @@ struct __EnumStorage[case_types: _MLIR.KGENParamListType[AnyType]](
         var discriminant = self._discriminant()
         comptime for i in range(Self._Cases.length):
             comptime assert conforms_to(Self._Cases()[i], Deinitable)
-            if discriminant == Self._Discriminant(i):
+            if discriminant == Self._Discriminant(from_int=i):
                 self.payload_ptr[i]().unsafe_deinit_pointee()
 
     @inline(.nodebug)
@@ -196,7 +200,7 @@ struct __EnumStorage[case_types: _MLIR.KGENParamListType[AnyType]](
         Returns:
             The index of the active case.
         """
-        return Int(self._discriminant())
+        return Int(mlir_value=self._discriminant().__mlir_index__())
 
     @inline(.nodebug)
     def payload_ptr[
@@ -279,7 +283,7 @@ trait __Enum(EnumLike):
         __get_address_as_uninit_lvalue(storage._mlir_value) = Storage(
             unsafe_uninitialized=()
         )
-        storage[]._discriminant() = Storage._Discriminant(id)
+        storage[]._discriminant() = Storage._Discriminant(from_int=id)
         var slot = storage[].payload_ptr[id]()
 
         # `slot` is typed by the case type, which the type checker cannot
