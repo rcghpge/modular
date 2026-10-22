@@ -11,10 +11,50 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
+from std.sys import llvm_intrinsic
 from std.sys.info import CompilationTarget
 
+from max.gpu.memory.memory import (
+    _AsyncCopyGroupPluginHookFnType,
+    _AsyncCopyWaitGroupPluginHookFnType,
+)
+from max.gpu.sync.sync import (
+    _BarrierPluginHookFnType,
+    _SyncwarpPluginHookFnType,
+)
+
 from ._trait import MaxPlugin, MaxPluginHooks
+
+
+@inline(.always)
+def _barrier():
+    _ = __mlir_op.`nvvm.barrier`[
+        _properties=__mlir_attr.`{operandSegmentSizes = array<i32: 0, 0>}`,
+    ]()
+
+
+@inline(.always)
+def _syncwarp(mask: Int):
+    __mlir_op.`nvvm.bar.warp.sync`(
+        __mlir_op.`index.casts`[_type=__mlir_type.i32](mask.__mlir_index__())
+    )
+
+
+@inline(.always)
+def _async_copy_commit_group():
+    llvm_intrinsic["llvm.nvvm.cp.async.commit.group", NoneType]()
+
+
+@inline(.always)
+def _async_copy_wait_group(n: Int32):
+    llvm_intrinsic["llvm.nvvm.cp.async.wait.group", NoneType](n)
+
+
+@inline(.always)
+def _async_copy_wait_all():
+    llvm_intrinsic["llvm.nvvm.cp.async.wait.all", NoneType]()
 
 
 struct CudaMaxPlugin(MaxPlugin):
@@ -25,4 +65,14 @@ struct CudaMaxPlugin(MaxPlugin):
 
 
 struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
-    pass
+    comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = _barrier
+    comptime syncwarp_fn: OptionalReg[_SyncwarpPluginHookFnType] = _syncwarp
+    comptime async_copy_commit_group_fn: OptionalReg[
+        _AsyncCopyGroupPluginHookFnType
+    ] = _async_copy_commit_group
+    comptime async_copy_wait_group_fn: OptionalReg[
+        _AsyncCopyWaitGroupPluginHookFnType
+    ] = _async_copy_wait_group
+    comptime async_copy_wait_all_fn: OptionalReg[
+        _AsyncCopyGroupPluginHookFnType
+    ] = _async_copy_wait_all

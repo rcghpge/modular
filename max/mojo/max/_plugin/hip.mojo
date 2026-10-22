@@ -11,10 +11,39 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.atomic import Ordering, fence
+from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
+from std.sys import llvm_intrinsic
+from std.sys.defines import get_defined_bool
 from std.sys.info import CompilationTarget
 
+from max.gpu.sync.sync import (
+    _BarrierPluginHookFnType,
+    _SyncwarpPluginHookFnType,
+)
+
 from ._trait import MaxPlugin, MaxPluginHooks
+
+comptime _USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM = get_defined_bool[
+    "USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM", False
+]()
+
+
+@inline(.always)
+def _barrier():
+    comptime if _USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM:
+        llvm_intrinsic["llvm.amdgcn.s.waitcnt", NoneType](Int32(0xC07F))
+        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
+    else:
+        fence[Ordering.RELEASE, scope="workgroup"]()
+        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
+        fence[Ordering.ACQUIRE, scope="workgroup"]()
+
+
+@inline(.always)
+def _syncwarp(mask: Int):
+    llvm_intrinsic["llvm.amdgcn.wave.barrier", NoneType]()
 
 
 struct HipMaxPlugin(MaxPlugin):
@@ -25,4 +54,5 @@ struct HipMaxPlugin(MaxPlugin):
 
 
 struct HipMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
-    pass
+    comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = _barrier
+    comptime syncwarp_fn: OptionalReg[_SyncwarpPluginHookFnType] = _syncwarp

@@ -24,12 +24,11 @@ thread blocks and warps, and manage memory consistency across different memory s
 """
 
 from std.os import abort
-from std.atomic import Ordering, fence
-from std.sys import is_amd_gpu, is_apple_gpu, is_nvidia_gpu, llvm_intrinsic
+from std.sys import is_amd_gpu, is_nvidia_gpu, llvm_intrinsic
 from std.sys._assembly import inlined_assembly
 from std.sys.info import CompilationTarget, _is_amd_cdna
-from std.sys.defines import get_defined_bool
 
+from max._plugin import CurrentMaxPlugin
 from max.gpu.intrinsics import Scope
 
 from max.gpu._utils import to_i32, to_llvm_shared_mem_ptr
@@ -38,9 +37,8 @@ from max.gpu._utils import to_i32, to_llvm_shared_mem_ptr
 # barrier
 # ===-----------------------------------------------------------------------===#
 
-comptime _USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM = get_defined_bool[
-    "USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM", False
-]()
+comptime _BarrierPluginHookFnType = def() thin -> None
+"""Plugin-hook signature for `MaxPluginHooks.barrier_fn`."""
 
 comptime MaxHardwareBarriers = 16
 """Maximum number of hardware barriers available per block."""
@@ -121,21 +119,8 @@ def barrier():
     memory operations before the barrier are visible to all threads after the barrier.
     """
 
-    comptime if is_nvidia_gpu():
-        _ = __mlir_op.`nvvm.barrier`[
-            _properties=__mlir_attr.`{operandSegmentSizes = array<i32: 0, 0>}`,
-        ]()
-    elif _USE_EXPERIMENTAL_AMD_BLOCK_SYNC_LDS_WITHOUT_SYNC_VMEM:
-        comptime assert is_amd_gpu()
-        llvm_intrinsic["llvm.amdgcn.s.waitcnt", NoneType](Int32(0xC07F))
-        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-    elif is_amd_gpu():
-        fence[Ordering.RELEASE, scope="workgroup"]()
-        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-        fence[Ordering.ACQUIRE, scope="workgroup"]()
-    elif is_apple_gpu():
-        # threadgroup_barrier(mem_flags::mem_threadgroup)
-        llvm_intrinsic["llvm.air.wg.barrier", NoneType](Int32(2), Int32(1))
+    comptime if case .Some(_barrier) = CurrentMaxPlugin.barrier_fn:
+        _barrier()
     else:
         CompilationTarget.unsupported_target_error[
             operation=__get_current_function_name()
@@ -435,6 +420,9 @@ def s_waitcnt_barrier[
 # syncwarp
 # ===-----------------------------------------------------------------------===#
 
+comptime _SyncwarpPluginHookFnType = def(mask: Int) thin -> None
+"""Plugin-hook signature for `MaxPluginHooks.syncwarp_fn`."""
+
 
 @inline(.nodebug)
 def syncwarp(mask: Int = -1):
@@ -461,19 +449,8 @@ def syncwarp(mask: Int = -1):
         - Threads not participating in the sync must still execute the instruction.
     """
 
-    comptime if is_nvidia_gpu():
-        __mlir_op.`nvvm.bar.warp.sync`(
-            __mlir_op.`index.casts`[_type=__mlir_type.i32](
-                mask.__mlir_index__()
-            )
-        )
-    elif is_amd_gpu():
-        llvm_intrinsic["llvm.amdgcn.wave.barrier", NoneType]()
-    elif is_apple_gpu():
-        # simdgroup_barrier(mem_flags::mem_none)
-        llvm_intrinsic["llvm.air.simdgroup.barrier", NoneType](
-            Int32(0), Int32(4)
-        )
+    comptime if case .Some(_syncwarp) = CurrentMaxPlugin.syncwarp_fn:
+        _syncwarp(mask)
     else:
         CompilationTarget.unsupported_target_error[
             operation=__get_current_function_name()

@@ -11,10 +11,29 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
+from std.sys import llvm_intrinsic
 from std.sys.info import CompilationTarget
 
+from max.gpu.sync.sync import (
+    _BarrierPluginHookFnType,
+    _SyncwarpPluginHookFnType,
+)
+
 from ._trait import MaxPlugin, MaxPluginHooks
+
+
+@inline(.always)
+def _barrier():
+    # threadgroup_barrier(mem_flags::mem_threadgroup)
+    llvm_intrinsic["llvm.air.wg.barrier", NoneType](Int32(2), Int32(1))
+
+
+@inline(.always)
+def _syncwarp(mask: Int):
+    # simdgroup_barrier(mem_flags::mem_none)
+    llvm_intrinsic["llvm.air.simdgroup.barrier", NoneType](Int32(0), Int32(4))
 
 
 struct MetalMaxPlugin(MaxPlugin):
@@ -25,4 +44,5 @@ struct MetalMaxPlugin(MaxPlugin):
 
 
 struct MetalMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
-    pass
+    comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = _barrier
+    comptime syncwarp_fn: OptionalReg[_SyncwarpPluginHookFnType] = _syncwarp

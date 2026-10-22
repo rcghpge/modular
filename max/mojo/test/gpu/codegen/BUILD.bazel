@@ -25,3 +25,19 @@ mojo_test(
         "@mojo//:std",
     ],
 )
+
+mojo_test(
+    name = "test_sync_codegen.mojo.test",
+    srcs = ["test_sync_codegen.mojo"],
+    target_compatible_with = select({
+        "//:use_prebuilt_mojo_toolchain_disabled": ["@platforms//:incompatible"],
+        # Retargets to NVPTX, AMDGPU and AIR at comptime, which times out under
+        # asan on aarch64 like `test_range_codegen.mojo` (MOCO-3794).
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
+)

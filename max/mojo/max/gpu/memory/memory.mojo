@@ -37,14 +37,12 @@ from std.sys import (
     bit_width_of,
     is_apple_gpu,
     is_amd_gpu,
-    is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
     size_of,
 )
 from std.sys._assembly import inlined_assembly
 from std.sys.info import (
-    CompilationTarget,
     _is_sm_9x_or_newer,
     _is_sm_100x_or_newer,
     is_apple_gpu,
@@ -58,6 +56,7 @@ from std.memory.unsafe import bitcast
 from std.utils import IndexList, StaticTuple
 from std.utils.numerics import get_accum_type
 
+from max._plugin import CurrentMaxPlugin
 from max.gpu._utils import (
     to_i16,
     to_i32,
@@ -749,6 +748,14 @@ def async_copy[
             )
 
 
+comptime _AsyncCopyGroupPluginHookFnType = def() thin -> None
+"""Plugin-hook signature for `MaxPluginHooks.async_copy_commit_group_fn` and
+`MaxPluginHooks.async_copy_wait_all_fn`."""
+
+comptime _AsyncCopyWaitGroupPluginHookFnType = def(n: Int32) thin -> None
+"""Plugin-hook signature for `MaxPluginHooks.async_copy_wait_group_fn`."""
+
+
 @inline(.always)
 def async_copy_commit_group():
     """Commits all prior initiated but uncommitted cp.async instructions into a cp.async-group.
@@ -764,15 +771,10 @@ def async_copy_commit_group():
     - Should be paired with async_copy_wait_group() or async_copy_wait_all()
     """
 
-    comptime if is_nvidia_gpu():
-        llvm_intrinsic["llvm.nvvm.cp.async.commit.group", NoneType]()
-    elif is_amd_gpu() or is_apple_gpu() or not is_gpu():
-        # This operation is a no-op on AMD and CPU.
-        pass
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name()
-        ]()
+    comptime if case .Some(
+        _async_copy_commit_group
+    ) = CurrentMaxPlugin.async_copy_commit_group_fn:
+        _async_copy_commit_group()
 
 
 @inline(.always)
@@ -793,15 +795,10 @@ def async_copy_wait_group(n: Int32):
     - Can be used to implement a pipeline of asynchronous transfers.
     """
 
-    comptime if is_nvidia_gpu():
-        llvm_intrinsic["llvm.nvvm.cp.async.wait.group", NoneType](n)
-    elif is_amd_gpu() or is_apple_gpu() or not is_gpu():
-        # This operation is a no-op on AMD and CPU.
-        pass
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name()
-        ]()
+    comptime if case .Some(
+        _async_copy_wait_group
+    ) = CurrentMaxPlugin.async_copy_wait_group_fn:
+        _async_copy_wait_group(n)
 
 
 @inline(.always)
@@ -820,15 +817,10 @@ def async_copy_wait_all():
     - More coarse-grained than `async_copy_wait_group()`.
     """
 
-    comptime if is_nvidia_gpu():
-        llvm_intrinsic["llvm.nvvm.cp.async.wait.all", NoneType]()
-    elif is_amd_gpu() or is_apple_gpu() or not is_gpu():
-        # This operation is a no-op on AMD and CPU.
-        pass
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name()
-        ]()
+    comptime if case .Some(
+        _async_copy_wait_all
+    ) = CurrentMaxPlugin.async_copy_wait_all_fn:
+        _async_copy_wait_all()
 
 
 @inline(.always)

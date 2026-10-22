@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
 from std.utils.index import IndexList
 from std._plugin.selector import Plugin
@@ -18,6 +19,14 @@ from std.sys.info import CompilationTarget
 
 from max.gpu import PDLLevel
 from max.gpu.host import DeviceContext
+from max.gpu.memory.memory import (
+    _AsyncCopyGroupPluginHookFnType,
+    _AsyncCopyWaitGroupPluginHookFnType,
+)
+from max.gpu.sync.sync import (
+    _BarrierPluginHookFnType,
+    _SyncwarpPluginHookFnType,
+)
 
 
 trait MaxPlugin(Plugin):
@@ -61,6 +70,46 @@ trait MaxPluginHooks:
 
     comptime _handles_elementwise: Bool = False
     """Whether this plugin overrides MAX elementwise dispatch."""
+
+    comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = None
+    """Lowers `barrier()`, which synchronizes the threads of a block and
+    makes their shared-memory writes visible to each other.
+
+    A GPU target that leaves this `None` rejects `barrier()` at compile time.
+    """
+
+    comptime syncwarp_fn: OptionalReg[_SyncwarpPluginHookFnType] = None
+    """Lowers `syncwarp()`, which synchronizes the lanes of a warp.
+
+    A GPU target that leaves this `None` rejects `syncwarp()` at compile time.
+
+    Args:
+        mask: The lanes taking part; a target without lane masks ignores it.
+    """
+
+    comptime async_copy_commit_group_fn: OptionalReg[
+        _AsyncCopyGroupPluginHookFnType
+    ] = None
+    """Lowers `async_copy_commit_group()`.
+
+    A target without asynchronous copy groups leaves this and the two wait
+    hooks `None`: its `async_copy()` completes before returning, so there is
+    nothing to commit or wait for, and the calls compile to nothing.
+    """
+
+    comptime async_copy_wait_group_fn: OptionalReg[
+        _AsyncCopyWaitGroupPluginHookFnType
+    ] = None
+    """Lowers `async_copy_wait_group()`; see `async_copy_commit_group_fn`.
+
+    Args:
+        n: The number of committed groups that may still be pending.
+    """
+
+    comptime async_copy_wait_all_fn: OptionalReg[
+        _AsyncCopyGroupPluginHookFnType
+    ] = None
+    """Lowers `async_copy_wait_all()`; see `async_copy_commit_group_fn`."""
 
 
 struct DefaultMaxPlugin(MaxPlugin):
