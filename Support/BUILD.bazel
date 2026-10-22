@@ -518,7 +518,7 @@ modular_cc_library(
         "//max/lib/max_license:__pkg__",
         "//max/python/max/_core/max_license:__subpackages__",
         "//max/tests/internal/profiler:__pkg__",
-        "//plugins:device_backend_plugins",
+        "//plugins:__subpackages__",
     ],
     deps = [
         # Configuration backs the max-debug.profiling-enabled auto-start knob
