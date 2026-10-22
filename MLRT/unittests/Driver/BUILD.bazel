@@ -254,10 +254,37 @@ _MEMORY_MANAGER_OOM_ENV = {
     for suffix, test in [
         ("Genuine", "GenuineOutOfMemory"),
         ("Pending", "PendingMemoryBlocksUntilSync"),
+        ("PendingRecovered", "PendingMemoryRecoveredWithoutCallerSync"),
         ("Fragmented", "FragmentedPartialGranulesBlockWholeGranule"),
         ("Reclaimable", "SnapshotCountsReclaimableGranule"),
     ]
 ]
+
+# The drain retry turned off. Its own target because the setting is read once
+# when the device MemoryManager is constructed, so it cannot vary per test
+# within a process.
+modular_cc_test(
+    name = "MemoryManagerOomDrainRetriesOffTest",
+    size = "medium",
+    srcs = [
+        "MemoryManagerOomTest.cpp",
+    ],
+    args = ["--gtest_filter=MemoryManagerOomTest.DrainRetriesZeroDisablesTheRetry"],
+    env = _MEMORY_MANAGER_OOM_ENV | {
+        "MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_VMM_DRAIN_RETRIES": "0",
+    },
+    gpu_constraints = select({
+        "//:apple_gpu": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    tags = ["gpu"],
+    deps = [
+        ":TestUtils",
+        "//MLRT:Driver/DeviceContextImpl",
+        "//Support:Base",
+        "@llvm-project//llvm:Support",
+    ],
+)
 
 modular_cc_test(
     name = "MemoryManagerOomMeasurementTest",

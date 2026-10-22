@@ -156,4 +156,80 @@ TEST_F(MemoryManagerOomMeasurementTest, MixedStateSnapshotIsExact) {
   cache->clear();
 }
 
+// What a drain actually recovers, which the allocation path gates its retry on.
+// Byte totals cannot answer that question in either direction, and this state
+// exercises both: a page is handed back only when nothing in use sits on it and
+// every child-owned desc on it is in a buffer some queued event names.
+//
+// Only the first free on a free-list queues an event; a later one, landing
+// while that flush is still in flight, joins the rotated primary buffer that no
+// record names. Three child free-lists therefore give three queued descs, and
+// child1's second free gives a stuck one.
+//
+//   page0 [0,2)  : Q0 queued 0.5 | R0 root-free 1.5  -> recovered
+//   page1 [2,4)  : Q1 queued 1.0 | S1 stuck     1.0  -> pinned by the straggler
+//   page2 [4,6)  : U0 in-use 2.0                     -> in use
+//   page3 [6,8)  : Q2 queued 1.0 | I1 in-use    1.0  -> pinned by the in-use
+//
+// So 2.5 MiB is drainable but only page0 (2 MiB) comes back, while the
+// snapshot's recoverableBySync() counts pages 0 and 1 (4 MiB) because it cannot
+// see that S1 has no event coming.
+TEST_F(MemoryManagerOomMeasurementTest, DrainableRecoveryCountsWholeGranules) {
+  ASSIGN_NO_ERR(DeviceRef, device, Device::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::gpuAPI));
+  std::unique_ptr<MemoryManager> cache = makeCache(*device, kBudget);
+  ASSERT_NE(cache, nullptr);
+
+  const Device::AllocMode mode = Device::AllocMode::SYNC;
+  MemoryManagerFreeList &root = *cache->freeList();
+
+  {
+    MemoryManagerFreeList child1(ctx.getPointer(), *cache, cache->freeList(),
+                                 /*disableFlush=*/false, "child1");
+    MemoryManagerFreeList child2(ctx.getPointer(), *cache, cache->freeList(),
+                                 /*disableFlush=*/false, "child2");
+    MemoryManagerFreeList child3(ctx.getPointer(), *cache, cache->freeList(),
+                                 /*disableFlush=*/false, "child3");
+
+    // Allocated in offset order so the bump layout matches the map above.
+    ASSIGN_NO_ERR(void *, q0, child1.allocate(kMiB / 2, mode));
+    ASSIGN_NO_ERR(void *, r0, root.allocate(kMiB * 3 / 2, mode));
+    ASSIGN_NO_ERR(void *, q1, child2.allocate(kMiB, mode));
+    ASSIGN_NO_ERR(void *, s1, child1.allocate(kMiB, mode));
+    ASSIGN_NO_ERR(void *, u0, root.allocate(kMiB * 2, mode));
+    ASSIGN_NO_ERR(void *, q2, child3.allocate(kMiB, mode));
+    ASSIGN_NO_ERR(void *, i1, root.allocate(kMiB, mode));
+
+    // First free on each child queues an event naming the buffer it lands in.
+    EXPECT_NO_ERR(child1.free(q0));
+    // Second free on child1: its flush is already in flight, so this one joins
+    // the rotated primary and no queued record names it.
+    EXPECT_NO_ERR(child1.free(s1));
+    EXPECT_NO_ERR(child2.free(q1));
+    EXPECT_NO_ERR(child3.free(q2));
+    EXPECT_NO_ERR(root.free(r0));
+
+    const VmmOomSnapshot s = cache->oomSnapshotForTesting(0);
+    EXPECT_EQ(s.drainableBytes, kMiB * 5 / 2); // Q0 + Q1 + Q2
+    EXPECT_EQ(s.drainableGranules, 1u);        // page0 only
+
+    // The point of counting granules rather than bytes: the drainable bytes
+    // exceed what a drain hands back, while on page0 half a MiB releases a
+    // whole 2 MiB page. Either figure alone misleads, in opposite directions.
+    EXPECT_GT(s.drainableBytes, s.drainableGranules * kPage);
+
+    // And the older lever over-states it, because S1 is pending with no event
+    // coming. Both now live in the same snapshot, so a reader of the OOM dump
+    // sees the gap between them.
+    EXPECT_EQ(s.recoverableBySync(), 2 * kPage);
+    EXPECT_LT(s.drainableGranules * kPage, s.recoverableBySync());
+
+    EXPECT_NO_ERR(root.free(u0));
+    EXPECT_NO_ERR(root.free(i1));
+    EXPECT_NO_ERR(ctx->synchronize());
+  }
+
+  cache->clear();
+}
+
 } // namespace

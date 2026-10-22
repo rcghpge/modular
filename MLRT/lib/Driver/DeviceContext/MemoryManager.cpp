@@ -20,6 +20,7 @@
 #include "Support/StringExtras.h"
 #include "Support/max_license/Tracy/Tracy.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Signals.h"
@@ -28,10 +29,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <mutex>
+#include <thread>
 
 // Helpers for logging.
 #define TWINE(val) (llvm::Twine(val))
@@ -51,6 +54,9 @@
 
 static constexpr int KB = 1024;                  // NOLINT
 static constexpr size_t GB = 1024 * 1024 * 1024; // NOLINT
+
+// Ceiling on memory_manager_vmm_drain_budget_ms; see where it is read.
+static constexpr int64_t kMaxDrainBudgetMs = 60 * 1000;
 
 namespace M::Driver {
 
@@ -865,6 +871,18 @@ MemoryManager::MemoryManager(Device &device, size_t maxSize, size_t chunkSize,
                                                       /*disableFlush=*/false,
                                                       "mm:root");
 
+  // Zero disables the drain retry; anything else is a pass count. Read here
+  // rather than per miss because configAsInt takes a process-wide lock.
+  drainRetries_ = std::max<int64_t>(
+      0, DeviceContext::configAsInt("memory_manager_vmm_drain_retries", 200));
+  // Converting to the clock's nanoseconds overflows a signed 64-bit count
+  // somewhere past 9.2e12 ms, and a wrapped deadline lands in the past, so an
+  // operator setting a huge budget to mean "no time limit" would silently get
+  // a single pass. A minute is already far past anything useful here.
+  drainBudgetMs_ = std::clamp<int64_t>(
+      DeviceContext::configAsInt("memory_manager_vmm_drain_budget_ms", 2000), 1,
+      kMaxDrainBudgetMs);
+
   // Determine state of debugging flags.
   doLog_ = DeviceContext::configAsBool("memory_manager_log", false);
   doSelfCheck_ =
@@ -1566,11 +1584,26 @@ VmmOomSnapshot MemoryManager::computeVmmOomSnapshot(size_t needed) const {
   const size_t n = c->granuleBacked_.size();
   const char *base = static_cast<const char *>(c->base_);
 
-  // One desc walk: mark per-granule occupancy (in-use / pending), sum pending
-  // bytes, and track the largest contiguous root-free region (the VA a request
-  // is carved from). State comes from descs; backing comes from the bitvector.
+  // The descs a queued event will migrate: exactly the buffers the records
+  // name, which is what flushFreeBuffersToParent walks. Collected up front so
+  // the walk below can tell a pending desc that is on its way out from one
+  // nothing is coming for.
+  llvm::SmallPtrSet<const Desc *, 16> queued;
+  for (const PendingFrees::Record &record : pendingFrees_.records()) {
+    for (const Desc *d = record.fl->freeBuffers_[record.bufferId]; d != nullptr;
+         d = d->nextFree_) {
+      queued.insert(d);
+      s.drainableBytes += d->size_;
+    }
+  }
+
+  // One desc walk: mark per-granule occupancy (in-use / pending, the latter
+  // split by whether a queued record will drain it), sum pending bytes, and
+  // track the largest contiguous root-free region (the VA a request is carved
+  // from). State comes from descs; backing comes from the bitvector.
   llvm::BitVector inUse(n, false);
-  llvm::BitVector pending(n, false);
+  llvm::BitVector freeing(n, false);
+  llvm::BitVector stuck(n, false);
   for (const Desc *d = c->descs_; d != nullptr; d = d->next_) {
     const bool descInUse = d->isInUse();
     const bool descPending = d->isFree() && d->owner() != freeList_.get();
@@ -1593,8 +1626,10 @@ VmmOomSnapshot MemoryManager::computeVmmOomSnapshot(size_t needed) const {
       continue;
     if (descInUse)
       inUse.set(first, end);
+    else if (queued.count(d) != 0)
+      freeing.set(first, end);
     else
-      pending.set(first, end);
+      stuck.set(first, end);
   }
 
   // Classify each backed granule by strongest occupant (in-use > pending >
@@ -1606,10 +1641,15 @@ VmmOomSnapshot MemoryManager::computeVmmOomSnapshot(size_t needed) const {
     ++mapped;
     if (inUse[g])
       ++s.inUseGranules;
-    else if (pending[g])
+    else if (freeing[g] || stuck[g])
       ++s.pendingGranules;
     else
       ++s.reclaimableGranules;
+    // A subset of the pending granules: one comes back only when nothing in
+    // use sits on it and every child-owned desc on it is in a queued buffer.
+    // A single straggler pins it just as an in-use desc would.
+    if (freeing[g] && !inUse[g] && !stuck[g])
+      ++s.drainableGranules;
   }
 
   const size_t budgetGranules = maxCacheSize_ / ps;
@@ -1622,6 +1662,22 @@ VmmOomSnapshot MemoryManager::computeVmmOomSnapshot(size_t needed) const {
 VmmOomSnapshot MemoryManager::oomSnapshotForTesting(size_t needed) const {
   std::lock_guard<std::mutex> lock(mu_);
   return computeVmmOomSnapshot(needed);
+}
+
+bool pendingRetryWorthwhile(const VmmOomSnapshot &s) {
+  if (!s.arenaReserved)
+    return false;
+  const bool physicalShort = s.available() < s.neededPhysicalBytes();
+  const bool vaShort = s.largestRootFreeVA < s.needed;
+  const bool closesPhysical =
+      physicalShort && s.available() + s.drainableGranules * s.pageSize >=
+                           s.neededPhysicalBytes();
+  // Sized rather than merely non-empty: coalescing every migrated byte onto
+  // the largest root-free region is the most VA a drain could ever produce, so
+  // a gap wider than that cannot close however long we wait.
+  const bool mayFreeVa =
+      vaShort && s.largestRootFreeVA + s.drainableBytes >= s.needed;
+  return closesPhysical || mayFreeVa;
 }
 
 VmmOomCategory classifyVmmOom(const VmmOomSnapshot &s,
@@ -1740,6 +1796,8 @@ std::string dumpVmmOom(const VmmOomSnapshot &s) {
      << " used=" << humanMemorySize(s.usedBytes)
      << " available=" << humanMemorySize(s.available())
      << " recoverable_by_sync=" << humanMemorySize(s.recoverableBySync())
+     << " drainable=" << humanMemorySize(s.drainableGranules * s.pageSize)
+     << " drainable_bytes=" << humanMemorySize(s.drainableBytes)
      << " trapped=" << humanMemorySize(s.trapped())
      << " pending_total=" << humanMemorySize(s.pendingTotalBytes)
      << " largest_root_free_va=" << humanMemorySize(s.largestRootFreeVA)
@@ -2315,6 +2373,71 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
           desc = allocateDesc(wrappedSize);
         }
       }
+      // Both steps above only poll once: they recover frees whose gating event
+      // has already fired. A free still gated on in-flight work is invisible to
+      // them by construction, and that is exactly what the snapshot counts as
+      // recoverable_by_sync. Giving up on it fails an allocation the budget can
+      // cover -- and under memory-manager-only mode that error is not a lost
+      // request but a dead process, since the driver fallback below is closed.
+      //
+      // So re-drain and retry, letting those events fire on their own.
+      // Deliberately NOT waitForPendingFrees(): blocking on an event that is
+      // ordered behind a host-value wait would hang this thread forever, since
+      // this thread is the one that would have released it. Bounded retries
+      // degrade that case to the error we raise today instead of to a deadlock.
+      //
+      // Classified first so a genuine exhaustion does not buy a stall it cannot
+      // use. On the way to an unavoidable failure that costs one extra desc
+      // walk before an error the caller was going to raise anyway; on the way
+      // to a recovery it replaces a restart.
+      //
+      // Only worth a stall when the manager is the last word. With the driver
+      // backdoor open the miss below is served immediately and at full size,
+      // so waiting here would buy budget adherence with latency the caller
+      // never asked for.
+      if (desc == nullptr && memoryManager_.drainRetries_ > 0 &&
+          memoryManager_.useOnlyMemoryManagerMode_ &&
+          memoryManager_.pendingFrees_.mayHaveRecords() &&
+          wrappedSize <= memoryManager_.chunkSize_) {
+        bool worthRetrying = false;
+        uint64_t waitedOnSeq = 0;
+        {
+          std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+          const VmmOomSnapshot s =
+              memoryManager_.computeVmmOomSnapshot(wrappedSize);
+          // Ask what waiting can recover, rather than which diagnostic category
+          // this falls in. `Avoidable` is both too loose and too tight for the
+          // decision: it is satisfied by trapped bytes alone, which no wait
+          // unpins (only a smaller page size does), and it excludes a VA-shaped
+          // miss, where migrating a pending desc to the root list can still
+          // yield a large enough region.
+          //
+          // The snapshot already separates what a drain will really move from
+          // the pending totals, which count child-owned descs no queued event
+          // covers.
+          //
+          // Read before the retry, so a free queued while it runs stays above
+          // the mark and a later miss is still free to wait for it.
+          waitedOnSeq = memoryManager_.pendingFrees_.maxSeq();
+          worthRetrying = waitedOnSeq > memoryManager_.futileDrainSeq_ &&
+                          pendingRetryWorthwhile(s);
+        }
+        if (worthRetrying) {
+          LOG_MSG("alloc miss: retrying on pending frees (size " +
+                  TWINE(wrappedSize) + ")");
+          memoryManager_.drainRetryAttempts_.fetch_add(
+              1, std::memory_order_relaxed);
+          desc = drainAndRetry(wrappedSize);
+          std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+          if (desc != nullptr) {
+            memoryManager_.drainRetryRecoveries_.fetch_add(
+                1, std::memory_order_relaxed);
+          } else {
+            memoryManager_.futileDrainSeq_ =
+                std::max(memoryManager_.futileDrainSeq_, waitedOnSeq);
+          }
+        }
+      }
       if (desc != nullptr) {
         if (redzoneEnable_ || poisonEnable_) {
           return finalizeDebugAlloc(desc->ptr_, size);
@@ -2411,6 +2534,57 @@ ErrorOr<void *> MemoryManagerFreeList::allocate(size_t size,
 bool MemoryManagerFreeList::backingFailedDuringCapture() const {
   return tlsBackingFailure == VmmBackingFailure::MapRefused &&
          ctx_ != nullptr && ctx_->isGraphCapturing();
+}
+
+MemoryManager::Desc *MemoryManagerFreeList::drainAndRetry(size_t wrappedSize) {
+  // Each pass migrates only the records whose gating event has fired, so the
+  // retries are a wait for that device work. A record gated on something the
+  // host has not released never becomes ready and simply runs out of attempts,
+  // rather than blocking this thread forever the way synchronizing would.
+  //
+  // The default spans a chunked prefill step on a loaded server, which is the
+  // work a pending free is usually behind. Attempts rather than elapsed time
+  // because each pass costs a drain plus a free-list walk under `mu_`, which
+  // every other allocating thread contends with.
+  static constexpr auto kRetryInterval = std::chrono::milliseconds(5);
+  // The attempt count on its own does not bound wall time: each pass queries
+  // every pending event and walks the free list under `mu_`, and concurrent
+  // misses inflate both through the contention they create. The budget bounds
+  // the elapsed time too, so a stall meant to avoid a restart cannot grow into
+  // one.
+  //
+  // Soft: it caps how many further passes start, not how long one takes. A
+  // drain already under way runs to completion, so a single slow event sweep
+  // or lock wait can still overshoot. Bounding that needs the drain itself to
+  // be interruptible.
+  const auto deadline =
+      std::chrono::steady_clock::now() +
+      std::chrono::milliseconds(memoryManager_.drainBudgetMs_);
+  for (int64_t i = 0; i < memoryManager_.drainRetries_; ++i) {
+    if (i != 0) {
+      std::this_thread::sleep_for(kRetryInterval);
+      // After the sleep, so the budget is spent on work rather than on a pass
+      // that was already over it before starting.
+      if (std::chrono::steady_clock::now() >= deadline)
+        break;
+    }
+    // A failed pass means the events cannot be queried at all, which a sticky
+    // device fault does to every one of them. Nothing will migrate however
+    // long we wait, and the caller wants that error promptly.
+    if (ErrorOrSuccess drained = memoryManager_.drainCompletedFrees();
+        drained.isError())
+      break;
+    {
+      std::lock_guard<std::mutex> lock(memoryManager_.mu_);
+      if (MemoryManager::Desc *desc = allocateDesc(wrappedSize))
+        return desc;
+    }
+    // Every queued free has landed and still did not cover the request. More
+    // passes would sleep out the budget waiting for frees that are not coming.
+    if (!memoryManager_.pendingFrees_.mayHaveRecords())
+      break;
+  }
+  return nullptr;
 }
 
 MemoryManager::Desc *MemoryManagerFreeList::allocateDesc(size_t size) {

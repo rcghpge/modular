@@ -51,7 +51,10 @@
 
 #include "gtest/gtest.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -148,7 +151,11 @@ TEST_F(MemoryManagerOomTest, PendingMemoryBlocksUntilSync) {
   EXPECT_NO_ERR(holderStream->enqueueWaitOnHostValue(*gate, 1));
   held.reset();
 
-  // The allocator cannot reach the holder's gated (pending) physical.
+  // The allocator cannot reach the holder's gated (pending) physical. The miss
+  // path exhausts its drain retries first and gets nothing, since the gate only
+  // opens below -- which is also what proves that step cannot deadlock on an
+  // event the calling thread itself is holding shut. Costs those retries in
+  // wall time.
   ErrorOr<DeviceBufferRef> blocked = allocator->enqueueCreateBuffer(bufSize);
   EXPECT_TRUE(blocked.isError())
       << "expected OOM while freed memory is pending behind the gate";
@@ -180,6 +187,101 @@ TEST_F(MemoryManagerOomTest, PendingMemoryBlocksUntilSync) {
     // context alive and registered, which a later allocation would deadlock on.
     ok.takeValue().reset();
   }
+  EXPECT_NO_ERR(allocator->synchronize());
+}
+
+// The allocator's own recovery from condition 2. Same setup as above, except
+// the gate opens while the request is in flight: the miss path classifies the
+// shortfall as avoidable and retries on its pending frees, so the request is
+// served by memory that had not yet migrated when it started. No caller-side
+// synchronize, and no OOM. Before that step this request failed outright,
+// taking the process with it under memory-manager-only mode.
+TEST_F(MemoryManagerOomTest, PendingMemoryRecoveredWithoutCallerSync) {
+  const size_t bufSize = 192 * kMiB;
+
+  ASSIGN_NO_ERR(DeviceContextRef, holder,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, allocator,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceStreamRef, holderStream, holder->stream());
+  ASSIGN_NO_ERR(CompletionFlagRef, gate, holder->allocateCompletionFlag());
+  gate->reset();
+
+  ASSIGN_NO_ERR(DeviceBufferRef, held, holder->enqueueCreateBuffer(bufSize));
+  EXPECT_NO_ERR(holderStream->enqueueWaitOnHostValue(*gate, 1));
+  held.reset();
+
+  // Counters live on the device's manager, which the whole suite shares.
+  const size_t attemptsBefore = mm(*allocator).drainRetryAttempts();
+  const size_t recoveriesBefore = mm(*allocator).drainRetryRecoveries();
+
+  // Open the gate only once the request has entered the retry path. A fixed
+  // sleep would race: were it to elapse first, the existing poll would serve
+  // the request, the counters would not move, and the assertions below would
+  // fail. `signal` is a release store to pinned host memory, so driving it
+  // from another thread is sound.
+  std::atomic<bool> handshook{false};
+  std::thread opener([&] {
+    // Bounded so a request that never retries releases this thread instead of
+    // hanging the join. That exit is a failure, not a handshake, and is
+    // reported below rather than being papered over by the signal.
+    for (int i = 0; i < 2000; ++i) {
+      if (mm(*allocator).drainRetryAttempts() != attemptsBefore) {
+        handshook.store(true);
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    gate->signal(1);
+  });
+
+  ErrorOr<DeviceBufferRef> recovered = allocator->enqueueCreateBuffer(bufSize);
+  opener.join();
+
+  EXPECT_TRUE(handshook.load())
+      << "the request never entered the retry path, so this run proves nothing "
+         "about it";
+  if (recovered.isError()) {
+    ADD_FAILURE() << "expected the drain retry to serve this: "
+                  << recovered.getError();
+  } else {
+    // The request went through the new path rather than being served outright.
+    EXPECT_EQ(mm(*allocator).drainRetryAttempts(), attemptsBefore + 1);
+    EXPECT_EQ(mm(*allocator).drainRetryRecoveries(), recoveriesBefore + 1);
+    recovered.takeValue().reset();
+  }
+  EXPECT_NO_ERR(holder->synchronize());
+  EXPECT_NO_ERR(allocator->synchronize());
+}
+
+// The operator's off switch. Same pending shortfall as the two tests above,
+// but the target sets memory_manager_vmm_drain_retries=0, so the miss must
+// fail the way it did before the retry existed: no attempt recorded, and no
+// time spent waiting for a free that would have arrived.
+TEST_F(MemoryManagerOomTest, DrainRetriesZeroDisablesTheRetry) {
+  const size_t bufSize = 192 * kMiB;
+
+  ASSIGN_NO_ERR(DeviceContextRef, holder,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, allocator,
+                DeviceContext::create(Device::gpuAPI));
+  ASSIGN_NO_ERR(DeviceStreamRef, holderStream, holder->stream());
+  ASSIGN_NO_ERR(CompletionFlagRef, gate, holder->allocateCompletionFlag());
+  gate->reset();
+
+  ASSIGN_NO_ERR(DeviceBufferRef, held, holder->enqueueCreateBuffer(bufSize));
+  EXPECT_NO_ERR(holderStream->enqueueWaitOnHostValue(*gate, 1));
+  held.reset();
+
+  const size_t attemptsBefore = mm(*allocator).drainRetryAttempts();
+  ErrorOr<DeviceBufferRef> blocked = allocator->enqueueCreateBuffer(bufSize);
+  EXPECT_TRUE(blocked.isError())
+      << "expected OOM while freed memory is pending behind the gate";
+  EXPECT_EQ(mm(*allocator).drainRetryAttempts(), attemptsBefore)
+      << "the retry ran despite being configured off";
+
+  gate->signal(1);
+  EXPECT_NO_ERR(holder->synchronize());
   EXPECT_NO_ERR(allocator->synchronize());
 }
 

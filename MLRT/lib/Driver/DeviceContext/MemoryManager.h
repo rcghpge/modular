@@ -66,6 +66,19 @@ struct VmmOomSnapshot {
   size_t usedBytes = 0;         // bytes under in-use descs
   size_t pendingTotalBytes = 0; // all child-free desc bytes
 
+  // What a drain of the queued records would really recover, which is narrower
+  // than the pending totals above. Those count every child-owned desc, but a
+  // free landing while its list already has a flush in flight joins the
+  // primary buffer without queuing an event of its own, so nothing migrates it
+  // until a later free rotates the lists. Waiting on the difference is waiting
+  // for something that is not coming.
+  size_t drainableBytes = 0; // bytes the queued records will migrate
+  // Granules left wholly root-owned once they do, which is the physical a
+  // drain can hand back. Bytes cannot answer that: one byte in a queued buffer
+  // can release a whole granule, while a granule's worth spread across
+  // granules that keep other child-owned bytes releases none.
+  size_t drainableGranules = 0;
+
   // Free descs seen in the walk, root-owned and child-owned. freeCount_ is not
   // maintained in VMM mode, so this is the free-block count the diagnostics
   // report.
@@ -136,6 +149,17 @@ enum class VmmOomCategory {
   // illegal mid-capture, so this is a pre-backing gap, not a shortage.
   IllegalDuringCapture,
 };
+
+// Whether waiting for the queued records could serve a request the free lists
+// just missed, i.e. whether a retry is worth a stall. Each axis is tested on
+// its own against the figure that answers it -- `drainableGranules` for
+// physical, `drainableBytes` for VA -- because `available()` is sufficient but
+// not necessary: a request landing on already-backed VA can be served with
+// less than it says, so a physical shortfall must not rule the VA route out.
+// Requiring a shortfall on the axis being tested keeps a miss with neither
+// short (physical held outside this manager) from buying a stall nothing here
+// can resolve. Pure.
+bool pendingRetryWorthwhile(const VmmOomSnapshot &snapshot);
 
 // Classify a failure from the snapshot and (if known) why backing failed.
 // `duringCapture` says whether a graph capture was in progress when the
@@ -241,6 +265,14 @@ public:
   // by later eager allocations), so the steady-state footprint matches an eager
   // full-budget allocation. Must NOT be called while already capturing.
   ErrorOrSuccess preBackForCapture();
+
+  // Allocation misses that retried after a drain, and those the retry served.
+  size_t drainRetryAttempts() const {
+    return drainRetryAttempts_.load(std::memory_order_relaxed);
+  }
+  size_t drainRetryRecoveries() const {
+    return drainRetryRecoveries_.load(std::memory_order_relaxed);
+  }
 
   // Factory methods configure the memory manager based on defaults or the
   // environment.
@@ -358,7 +390,11 @@ private:
 
   // Block until the device work gating every record naming `fl` has completed,
   // so ~MemoryManagerFreeList's unconditional flush cannot release blocks a
-  // kernel may still be reading. Caller must NOT hold `mu_`.
+  // kernel may still be reading. Unbounded, so this is for teardown only: an
+  // event ordered behind a host-value wait never fires on its own, and an
+  // allocating thread that blocked here would be the thread that was going to
+  // release it. The allocation path uses bounded retries instead.
+  // Caller must NOT hold `mu_`.
   void waitForPendingFrees(const MemoryManagerFreeList *fl);
 
   // Avoid malloc under lock.
@@ -438,6 +474,16 @@ private:
     bool mayHaveRecords() const {
       return count_.load(std::memory_order_acquire) != 0;
     }
+    const llvm::SmallVector<Record> &records() const { return records_; }
+    // Highest sequence number still queued, 0 when nothing is. Sequences only
+    // ever increase, so a value above a previous reading means a free was
+    // queued since it.
+    uint64_t maxSeq() const {
+      uint64_t seq = 0;
+      for (const Record &record : records_)
+        seq = std::max(seq, record.seq);
+      return seq;
+    }
 
   private:
     // Keeps the lock-free counter in step with the records it mirrors.
@@ -450,6 +496,25 @@ private:
     std::atomic<size_t> count_ = {0};
   };
   PendingFrees pendingFrees_;
+
+  std::atomic<size_t> drainRetryAttempts_ = {0};
+  std::atomic<size_t> drainRetryRecoveries_ = {0};
+
+  // How hard an allocation miss tries to wait out its pending frees, read once
+  // so the miss path does not take the global config lock. Zero retries turns
+  // the wait off outright and restores the pre-existing behaviour of failing
+  // the miss immediately, which is the switch to reach for if the stall ever
+  // costs more than the restarts it avoids.
+  int64_t drainRetries_ = 0;
+  int64_t drainBudgetMs_ = 0;
+
+  // Sequence high-water mark as of the last drain retry that recovered
+  // nothing. A later miss whose queued records all sit at or below it is
+  // waiting on the very frees that already failed to arrive -- a record gated
+  // behind a host-value wait this thread releases never fires on its own -- so
+  // it skips the retry instead of paying the budget again on every call.
+  // Guarded by `mu_`.
+  uint64_t futileDrainSeq_ = 0;
 
   const size_t maxCacheSize_;
   size_t chunkSize_;
@@ -569,6 +634,13 @@ private:
   const DeviceContext *context() const;
 
   MemoryManager::Desc *allocateDesc(size_t size);
+  // Re-drain completed frees and retry `wrappedSize`, up to
+  // `memory_manager_vmm_drain_retries` times, returning the descriptor or null.
+  // For the allocation miss path, where the snapshot says the shortfall is
+  // covered by frees still gated on in-flight device work: retrying lets those
+  // land without blocking on an event that may never fire.
+  // Caller must NOT hold `mu_`.
+  MemoryManager::Desc *drainAndRetry(size_t wrappedSize);
   // Whether a graph capture was in progress when the last backing step on this
   // thread failed. Queried only on the failure path, so the driver call it
   // needs stays off the hot path.

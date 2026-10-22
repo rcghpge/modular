@@ -45,6 +45,19 @@ VmmOomSnapshot base(size_t needed) {
   return s;
 }
 
+// The drain figures are the only inputs that vary across the retry cases, so
+// set them on a copy rather than restating the whole snapshot each time.
+VmmOomSnapshot withDrainableSnapshot(VmmOomSnapshot s, size_t bytes,
+                                     size_t granules) {
+  s.drainableBytes = bytes;
+  s.drainableGranules = granules;
+  return s;
+}
+
+bool withDrainable(const VmmOomSnapshot &s, size_t bytes, size_t granules) {
+  return pendingRetryWorthwhile(withDrainableSnapshot(s, bytes, granules));
+}
+
 TEST(MemoryManagerOomClassify, Genuine) {
   VmmOomSnapshot s = base(20 * kMiB);
   s.inUseGranules = kBudgetGranules; // whole budget pinned by live allocations
@@ -326,6 +339,95 @@ TEST(MemoryManagerOomClassify, DumpContainsAllTerms) {
         "page_counts", "in_use", "pending", "reclaimable", "pooled",
         "uncommitted"})
     EXPECT_NE(d.find(term), std::string::npos) << "missing term: " << term;
+}
+
+// pendingRetryWorthwhile decides whether the allocation path stalls to wait for
+// queued frees. It asks what a drain actually hands back, which is a different
+// question from which diagnostic category the miss falls in.
+
+// A whole-granule physical shortfall that the queued records cover.
+TEST(MemoryManagerPendingRetry, GranulesCloseThePhysicalGap) {
+  VmmOomSnapshot s = base(20 * kMiB);
+  s.reclaimableGranules = 2; // available = 4 MiB, need 20 MiB
+  s.inUseGranules = 98;
+  s.usedBytes = 98 * kPage;
+  s.largestRootFreeVA = 100 * kMiB; // VA is fine; physical is the problem
+  EXPECT_TRUE(withDrainable(s, /*bytes=*/20 * kMiB, /*granules=*/8));
+  // The same bytes spread so they free no whole granule buy nothing.
+  EXPECT_FALSE(withDrainable(s, /*bytes=*/20 * kMiB, /*granules=*/0));
+}
+
+// Trapped bytes satisfy `Avoidable`, but no wait unpins a partially-used page,
+// so a shortfall covered only by them must not buy a stall.
+TEST(MemoryManagerPendingRetry, TrappedOnlyDoesNotRetry) {
+  VmmOomSnapshot s = base(20 * kMiB);
+  s.reclaimableGranules = 2; // available = 4 MiB
+  s.inUseGranules = 98;
+  s.usedBytes = 100 * kMiB; // trapped = 96 MiB
+  s.largestRootFreeVA = 100 * kMiB;
+  ASSERT_EQ(classifyVmmOom(s, VmmBackingFailure::None),
+            VmmOomCategory::Avoidable);
+  EXPECT_FALSE(withDrainable(s, /*bytes=*/0, /*granules=*/0));
+}
+
+// The VA-shaped miss, which needs a granule larger than base()'s to show: with
+// 32 MiB granules a 48 MiB request claims 64 MiB of physical as things stand,
+// more than every lever here reaches. It is still servable, because those 48
+// MiB can land on VA that is already backed -- a 16 MiB root-free remainder
+// trapped in a live granule, beside a 32 MiB pending granule -- once the
+// pending block migrates and the two coalesce. `available()` is sufficient but
+// not necessary, so the physical shortfall must not veto the VA route.
+TEST(MemoryManagerPendingRetry, VaShortfallRetriesDespitePhysicalShortfall) {
+  VmmOomSnapshot s;
+  s.pageSize = 32 * kMiB;
+  s.needed = 48 * kMiB;
+  s.arenaReserved = true;
+  s.budget = 7 * s.pageSize; // 6 live granules + 1 pending, nothing spare
+  s.vaSize = 4 * s.budget;
+  s.inUseGranules = 6;
+  s.usedBytes = 6 * s.pageSize - 16 * kMiB; // the remainder shares a live
+                                            // granule, so it is trapped
+  s.pendingGranules = 1;
+  s.pendingTotalBytes = 32 * kMiB;
+  s.largestRootFreeVA = 16 * kMiB; // < the 48 MiB requested
+  ASSERT_EQ(s.available(), 0u);
+  ASSERT_EQ(s.neededPhysicalBytes(), 64 * kMiB);
+  ASSERT_EQ(s.trapped(), 16 * kMiB);
+
+  // Draining the pending granule yields 32 MiB of physical -- short of the 64
+  // MiB the request rounds up to, so the physical route says no -- but it is
+  // the VA route that serves this.
+  const VmmOomSnapshot pending =
+      withDrainableSnapshot(s, /*bytes=*/32 * kMiB, /*granules=*/1);
+  ASSERT_LT(pending.available() + pending.drainableGranules * pending.pageSize,
+            pending.neededPhysicalBytes());
+  EXPECT_TRUE(pendingRetryWorthwhile(pending));
+
+  // Nothing queued to migrate: the root-free region cannot grow, so there is
+  // nothing to wait for.
+  EXPECT_FALSE(withDrainable(s, /*bytes=*/0, /*granules=*/0));
+
+  // Queued, but far too little to span the gap. Coalescing every migrated byte
+  // onto the largest region is the best a drain could do, and it still falls
+  // short, so waiting is time spent on an answer that cannot change.
+  EXPECT_FALSE(withDrainable(s, /*bytes=*/2 * kMiB, /*granules=*/0));
+}
+
+// Neither axis short: the physical is held somewhere this manager cannot see,
+// and waiting on frees cannot resolve that.
+TEST(MemoryManagerPendingRetry, NeitherAxisShortDoesNotRetry) {
+  VmmOomSnapshot s = base(20 * kMiB);
+  s.reclaimableGranules = 20;       // available = 40 MiB >= need
+  s.largestRootFreeVA = 100 * kMiB; // VA fine too
+  EXPECT_FALSE(withDrainable(s, /*bytes=*/40 * kMiB, /*granules=*/20));
+}
+
+// Without an arena there is neither VA nor physical to reason about, and the
+// zeroed snapshot would otherwise read as "everything is short".
+TEST(MemoryManagerPendingRetry, NoArenaDoesNotRetry) {
+  VmmOomSnapshot s = base(20 * kMiB);
+  s.arenaReserved = false;
+  EXPECT_FALSE(withDrainable(s, /*bytes=*/40 * kMiB, /*granules=*/20));
 }
 
 } // namespace
