@@ -1492,7 +1492,7 @@ def _hipblasLt_matmul[
     @inline(.always)
     def create_hipblas_matrix_layout[
         buf_type: DType,
-    ](rows: Int, cols: Int) raises -> hipblasLtMatrixLayout_t:
+    ](rows: Int, cols: Int, lead: Int) raises -> hipblasLtMatrixLayout_t:
         var _desc = hipblasLtMatrixLayout_t()
         _check_hipblas_error(
             hipblasLtMatrixLayoutCreate(
@@ -1500,7 +1500,7 @@ def _hipblasLt_matmul[
                 _convert_to_hip_datatype[buf_type](),
                 UInt64(cols),
                 UInt64(rows),
-                Int64(cols),
+                Int64(lead),
             )
         )
         return _desc
@@ -1620,15 +1620,33 @@ def _hipblasLt_matmul[
             )
         )
 
-    var _adesc = create_hipblas_matrix_layout[a_type](a_rows, a_cols)
-    var _bdesc = create_hipblas_matrix_layout[b_type](b_rows, b_cols)
-    var _ddesc = create_hipblas_matrix_layout[d_type](d_rows, d_cols)
+    var a_lead = a_cols
+    var b_lead = b_cols
+    var d_lead = d_cols
+    if c_row_major:
+        # Forward each operand's row stride as the leading dimension; a
+        # non-unit inner stride can't be expressed, so fall back to naive.
+        if (
+            a.dynamic_stride(1) != 1
+            or b.dynamic_stride(1) != 1
+            or d.layout.stride[1]().value() != 1
+        ):
+            raise Error("vendor BLAS matmul requires a unit inner stride")
+        # Packed FP4 strides count bytes; hipBLASLt counts FP4 elements.
+        comptime pack = 2 if has_scales else 1
+        a_lead = Int(a.dynamic_stride(0)) * pack
+        b_lead = Int(b.dynamic_stride(0)) * pack
+        d_lead = Int(d.layout.stride[0]().value())
+
+    var _adesc = create_hipblas_matrix_layout[a_type](a_rows, a_cols, a_lead)
+    var _bdesc = create_hipblas_matrix_layout[b_type](b_rows, b_cols, b_lead)
+    var _ddesc = create_hipblas_matrix_layout[d_type](d_rows, d_cols, d_lead)
 
     # set batch size accordingly
     if batch_size > 1:
-        set_matrix_layout_batch_size(_adesc, batch_size, Int64(a_rows * a_cols))
-        set_matrix_layout_batch_size(_bdesc, batch_size, Int64(b_rows * b_cols))
-        set_matrix_layout_batch_size(_ddesc, batch_size, Int64(d_rows * d_cols))
+        set_matrix_layout_batch_size(_adesc, batch_size, Int64(a_rows * a_lead))
+        set_matrix_layout_batch_size(_bdesc, batch_size, Int64(b_rows * b_lead))
+        set_matrix_layout_batch_size(_ddesc, batch_size, Int64(d_rows * d_lead))
 
     var transa = (
         hipblasOperation_t.OP_T if transpose_a else hipblasOperation_t.OP_N
