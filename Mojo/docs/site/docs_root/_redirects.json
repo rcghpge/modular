@@ -75,6 +75,16 @@
     "status": 302
   },
   {
+    "source": "/docs/std/builtin/simd/(.*)",
+    "dest": "/docs/std/simd/{0}",
+    "status": 302
+  },
+  {
+    "source": "/docs/std/hashlib/(.*)",
+    "dest": "/docs/std/hash/{0}",
+    "status": 302
+  },
+  {
     "source": "/docs/(?:stdlib|lib)/?",
     "dest": "/docs/std/",
     "status": 302
