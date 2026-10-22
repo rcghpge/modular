@@ -14,10 +14,12 @@
 from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
 from std.utils.index import IndexList
+from std._gpu import lane_id
 from std._plugin.selector import Plugin
 from std.sys.info import CompilationTarget
 
 from max.gpu import PDLLevel
+from max.gpu.globals import WARP_SIZE
 from max.gpu.host import DeviceContext
 from max.gpu.memory.memory import (
     _AsyncCopyGroupPluginHookFnType,
@@ -110,6 +112,129 @@ trait MaxPluginHooks:
         _AsyncCopyGroupPluginHookFnType
     ] = None
     """Lowers `async_copy_wait_all()`; see `async_copy_commit_group_fn`."""
+
+    @staticmethod
+    def shuffle_idx_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        """Lowers `shuffle_idx()`, which copies `val` from lane `offset`.
+
+        This is the one shuffle a GPU plugin has to provide: the up, down and
+        XOR hooks default to reading their source lane through it. A target
+        that doesn't override it rejects every shuffle at compile time.
+
+        Parameters:
+            dtype: The element type of `val`.
+            simd_width: The number of elements in `val`.
+
+        Args:
+            mask: The lanes taking part; a target without lane masks ignores it.
+            val: The value each lane contributes.
+            offset: The source lane.
+
+        Returns:
+            The value read from the source lane.
+        """
+        CompilationTarget.unsupported_target_error[operation="shuffle_idx"]()
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_up_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        """Lowers `shuffle_up()`, which copies `val` from the lane `offset`
+        below the caller.
+
+        The default reads that lane through `shuffle_idx_fn`; a lane whose
+        source would fall below the first lane of the warp keeps its own
+        value. A plugin with a native instruction overrides it.
+
+        Parameters:
+            dtype: The element type of `val`.
+            simd_width: The number of elements in `val`.
+
+        Args:
+            mask: The lanes taking part; a target without lane masks ignores it.
+            val: The value each lane contributes.
+            offset: The number of lanes to look down.
+
+        Returns:
+            The value read from the source lane.
+        """
+        var lane = Int32(lane_id())
+        var src_lane = lane - offset.cast[.int32]()
+        return Self.shuffle_idx_fn(
+            mask, val, UInt32(src_lane.lt(0).select(lane, src_lane))
+        )
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_down_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        """Lowers `shuffle_down()`, which copies `val` from the lane `offset`
+        above the caller.
+
+        The default reads that lane through `shuffle_idx_fn`; a lane whose
+        source would fall past the last lane of the warp keeps its own value.
+        A plugin with a native instruction overrides it.
+
+        Parameters:
+            dtype: The element type of `val`.
+            simd_width: The number of elements in `val`.
+
+        Args:
+            mask: The lanes taking part; a target without lane masks ignores it.
+            val: The value each lane contributes.
+            offset: The number of lanes to look up.
+
+        Returns:
+            The value read from the source lane.
+        """
+        var lane = UInt32(lane_id())
+        return Self.shuffle_idx_fn(
+            mask,
+            val,
+            (lane + offset).le(UInt32(WARP_SIZE - 1)).select(offset, 0) + lane,
+        )
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_xor_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        """Lowers `shuffle_xor()`, which copies `val` from the lane whose ID is
+        the caller's XOR `offset`.
+
+        The default reads that lane through `shuffle_idx_fn`; a lane whose
+        source would fall outside the warp keeps its own value. A plugin with
+        a native instruction overrides it.
+
+        Parameters:
+            dtype: The element type of `val`.
+            simd_width: The number of elements in `val`.
+
+        Args:
+            mask: The lanes taking part; a target without lane masks ignores it.
+            val: The value each lane contributes.
+            offset: The value XORed with the caller's lane ID.
+
+        Returns:
+            The value read from the source lane.
+        """
+        var lane = UInt32(lane_id())
+        var src_lane = lane ^ offset
+        return Self.shuffle_idx_fn(
+            mask, val, src_lane.lt(UInt32(WARP_SIZE)).select(src_lane, lane)
+        )
 
 
 struct DefaultMaxPlugin(MaxPlugin):

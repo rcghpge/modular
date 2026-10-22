@@ -48,15 +48,11 @@ from std.math.math import max as _max, min as _min
 from std._gpu import lane_id
 from std.memory import bitcast
 
+from max._plugin import CurrentMaxPlugin
 from max.gpu.globals import WARP_SIZE
 from max.gpu.intrinsics import permlane_shuffle, readfirstlane
 
-# TODO (#24457): support shuffles with width != 32
-comptime _WIDTH_MASK = WARP_SIZE - 1
 comptime _FULL_MASK = UInt(2**WARP_SIZE - 1)
-
-# shfl.sync.up.b32 prepares this mask differently from other shuffle intrinsics
-comptime _WIDTH_MASK_SHUFFLE_UP = 0
 
 # Common function type for binary SIMD reduction operations (add, max, min).
 comptime _ReduceFn = def[dtype: DType, width: SIMDLength](
@@ -320,166 +316,6 @@ def _dpp_prefix_sum[
 
 
 # ===-----------------------------------------------------------------------===#
-# utilities
-# ===-----------------------------------------------------------------------===#
-
-
-@inline(.always)
-def _shuffle[
-    mnemonic: StringSlice,
-    dtype: DType,
-    simd_width: SIMDLength,
-    *,
-    WIDTH_MASK: Int32,
-](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
-    dtype, simd_width
-]:
-    comptime assert (
-        dtype.is_half_float() or simd_width == 1
-    ), "Unsupported simd_width"
-
-    comptime if dtype == .float32:
-        return llvm_intrinsic[
-            "llvm.nvvm.shfl.sync." + mnemonic + ".f32", Scalar[dtype]
-        ](Int32(mask), val, offset, WIDTH_MASK)
-    elif dtype in (DType.int32, DType.uint32):
-        return llvm_intrinsic[
-            "llvm.nvvm.shfl.sync." + mnemonic + ".i32", Scalar[dtype]
-        ](Int32(mask), val, offset, WIDTH_MASK)
-    elif bit_width_of[dtype]() == 64:
-        var val_bitcast = bitcast[.uint32, simd_width * 2](val)
-        var val_half1, val_half2 = val_bitcast.deinterleave()
-        var shuffle1 = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-            mask, val_half1, offset
-        )
-        var shuffle2 = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-            mask, val_half2, offset
-        )
-        var result = shuffle1.interleave(shuffle2)
-        return bitcast[dtype, simd_width](result)
-    elif dtype.is_half_float():
-        comptime if simd_width == 1:
-            # splat and recurse to meet 32 bitwidth requirements
-            var splatted_val = SIMD[dtype, 2](val._refine[new_size=1]())
-            return _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-                mask, splatted_val, offset
-            )[0]
-        else:
-            # bitcast and recurse to use i32 intrinsic. Two half values fit
-            # into an int32.
-            var packed_val = bitcast[.int32, simd_width // 2](val)
-            var result_packed = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-                mask, packed_val, offset
-            )
-            return bitcast[dtype, simd_width](result_packed)
-    elif dtype == .bool:
-        comptime assert simd_width == 1, "unhandled simd width"
-        return _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-            mask, val.cast[.int32](), offset
-        ).cast[dtype]()
-
-    else:
-        comptime assert False, "unhandled shuffle dtype"
-
-
-@inline(.always)
-def _shuffle_amd_helper[
-    dtype: DType, simd_width: SIMDLength
-](dst_lane: UInt32, val: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
-    comptime if size_of[SIMD[dtype, simd_width]]() == 4:
-        # Handle int32, float32, float16x2, etc.
-        var result_packed = llvm_intrinsic["llvm.amdgcn.ds.bpermute", Int32](
-            dst_lane * 4, bitcast[.int32, 1](val)
-        )
-        return bitcast[dtype, simd_width](result_packed)
-    else:
-        comptime assert simd_width == 1, "Unsupported simd width"
-
-        comptime if dtype == .bool:
-            return _shuffle_amd_helper(dst_lane, val.cast[.int32]()).cast[
-                dtype
-            ]()
-        elif bit_width_of[dtype]() == 16:
-            var val_splatted = SIMD[dtype, 2](val._refine[new_size=1]())
-            return _shuffle_amd_helper(dst_lane, val_splatted)[0]
-        elif bit_width_of[dtype]() == 64:
-            var val_bitcast = bitcast[.uint32, simd_width * 2](val)
-            var val_half1, val_half2 = val_bitcast.deinterleave()
-            var shuffle1 = _shuffle_amd_helper(dst_lane, val_half1)
-            var shuffle2 = _shuffle_amd_helper(dst_lane, val_half2)
-            var result = shuffle1.interleave(shuffle2)
-            return bitcast[dtype, simd_width](result)
-        else:
-            comptime assert False, "unhandled shuffle dtype"
-
-
-@inline(.always)
-def _shuffle_apple_helper[
-    op: StringSlice, dtype: DType, simd_width: SIMDLength
-](
-    mask: UInt,  # Ignored, for API parity
-    val: SIMD[dtype, simd_width],
-    offset: UInt32,
-) -> SIMD[dtype, simd_width]:
-    """
-    Mapping from Metal stdlib to AIR (LLVM) intrinsics:
-      Metal                         → AIR intrinsic stem
-      ----------------------------------------------------------
-      simd_shuffle                  → llvm.air.simd_shuffle
-      simd_shuffle_down             → llvm.air.simd_shuffle_down
-      simd_shuffle_up               → llvm.air.simd_shuffle_up
-      simd_shuffle_xor              → llvm.air.simd_shuffle_xor
-    """
-
-    comptime assert (
-        dtype.is_half_float() or simd_width == 1
-    ), "Unsupported simd_width"
-
-    var arg = UInt16(offset)  # AIR intrinsics use 16-bit offsets
-
-    comptime if dtype.is_integral() and bit_width_of[dtype]() == 64:
-        var bits = bitcast[.uint32, simd_width * 2](val)
-        var half1, half2 = bits.deinterleave()
-
-        var half1_n = rebind[SIMD[.uint32, simd_width]](half1)
-        var half2_n = rebind[SIMD[.uint32, simd_width]](half2)
-        var s1 = _shuffle_apple_helper[op, DType.uint32, simd_width](
-            mask, half1_n, offset
-        )
-        var s2 = _shuffle_apple_helper[op, DType.uint32, simd_width](
-            mask, half2_n, offset
-        )
-
-        var merged = s1.interleave(s2)
-        return bitcast[dtype, simd_width](merged)
-    elif dtype == .bool:
-        var val1 = rebind[Int32](val.cast[.int32]())
-        var tmp = _shuffle_apple_helper[op, DType.int32, 1](mask, val1, offset)
-        return tmp.cast[dtype]()
-    elif (
-        dtype == .bfloat16
-    ):  # bfloat16 is declared in MSL but actually causes a backend error.
-        comptime if simd_width == 1:
-            var pair = SIMD[dtype, 2](val._refine[new_size=1]())
-            var pair_i32 = bitcast[.int32, 1](pair)
-            var y_i32 = _shuffle_apple_helper[op, DType.int32, 1](
-                mask, pair_i32, offset
-            )
-            return bitcast[dtype, 2](y_i32)[0]
-        else:
-            var packed = bitcast[.int32, simd_width // 2](val)
-            var packed_shuf = _shuffle_apple_helper[
-                op, DType.int32, simd_width // 2
-            ](mask, packed, offset)
-            return bitcast[dtype, simd_width](packed_shuf)
-    else:
-        comptime name = "llvm.air.simd_shuffle" + (
-            "" if op == "indexed" else "_" + op
-        )
-        return llvm_intrinsic[name, SIMD[dtype, simd_width]](val, arg)
-
-
-# ===-----------------------------------------------------------------------===#
 # shuffle_idx
 # ===-----------------------------------------------------------------------===#
 
@@ -523,23 +359,6 @@ def shuffle_idx[
 
 
 @inline(.always)
-def _shuffle_idx_amd[
-    dtype: DType, simd_width: SIMDLength, //
-](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
-    dtype, simd_width
-]:
-    # FIXME: Set the EXECute mask register to the mask
-    var lane = Int32(lane_id())
-    # Godbolt uses 0x3fffffc0. It is masking out the lower 64-bits
-    # But it's also masking out the upper two bits. Why?
-    # The lane should not be > 64 so the upper 2 bits should always be zero.
-    # Use -64 for now.
-    var t0 = lane & Int32(-WARP_SIZE)
-    var dst_lane = t0 | offset.cast[.int32]()
-    return _shuffle_amd_helper(UInt32(dst_lane), val)
-
-
-@inline(.always)
 def shuffle_idx[
     dtype: DType, simd_width: SIMDLength, //
 ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
@@ -576,21 +395,7 @@ def shuffle_idx[
         ```
     """
 
-    comptime if is_nvidia_gpu():
-        return _shuffle[
-            "idx",
-            WIDTH_MASK=Int32(_WIDTH_MASK),
-        ](mask, val, offset)
-    elif is_amd_gpu():
-        return _shuffle_idx_amd(mask, val, offset)
-    elif is_apple_gpu():
-        return _shuffle_apple_helper["indexed", dtype, simd_width](
-            mask, val, offset
-        )
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name(),
-        ]()
+    return CurrentMaxPlugin.shuffle_idx_fn(mask, val, offset)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -628,20 +433,6 @@ def shuffle_up[
 
 
 @inline(.always)
-def _shuffle_up_amd[
-    dtype: DType, simd_width: SIMDLength, //
-](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
-    dtype, simd_width
-]:
-    # FIXME: Set the EXECute mask register to the mask
-    var lane = Int32(lane_id())
-    var t0 = lane - offset.cast[.int32]()
-    var t1 = lane & Int32(-WARP_SIZE)
-    var dst_lane = t0.lt(t1).select(lane, t0)
-    return _shuffle_amd_helper(UInt32(dst_lane), val)
-
-
-@inline(.always)
 def shuffle_up[
     dtype: DType, simd_width: SIMDLength, //
 ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
@@ -674,18 +465,7 @@ def shuffle_up[
         threads not in the mask.
     """
 
-    comptime if is_nvidia_gpu():
-        return _shuffle["up", WIDTH_MASK=_WIDTH_MASK_SHUFFLE_UP](
-            mask, val, offset
-        )
-    elif is_amd_gpu():
-        return _shuffle_up_amd(mask, val, offset)
-    elif is_apple_gpu():
-        return _shuffle_apple_helper["up", dtype, simd_width](mask, val, offset)
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name(),
-        ]()
+    return CurrentMaxPlugin.shuffle_up_fn(mask, val, offset)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -724,21 +504,6 @@ def shuffle_down[
 
 
 @inline(.always)
-def _shuffle_down_amd[
-    dtype: DType, simd_width: SIMDLength, //
-](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
-    dtype, simd_width
-]:
-    # FIXME: Set the EXECute mask register to the mask
-    var lane = UInt32(lane_id())
-    # set the offset to 0 if lane + offset >= WARP_SIZE
-    var dst_lane = (lane + offset).le(UInt32(_WIDTH_MASK)).select(
-        offset, 0
-    ) + lane
-    return _shuffle_amd_helper(dst_lane, val)
-
-
-@inline(.always)
 def shuffle_down[
     dtype: DType, simd_width: SIMDLength, //
 ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
@@ -772,20 +537,7 @@ def shuffle_down[
         or where the corresponding mask bit is not set.
     """
 
-    comptime if is_nvidia_gpu():
-        return _shuffle["down", WIDTH_MASK=Int32(_WIDTH_MASK)](
-            mask, val, offset
-        )
-    elif is_amd_gpu():
-        return _shuffle_down_amd(mask, val, offset)
-    elif is_apple_gpu():
-        return _shuffle_apple_helper["down", dtype, simd_width](
-            mask, val, offset
-        )
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name(),
-        ]()
+    return CurrentMaxPlugin.shuffle_down_fn(mask, val, offset)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -816,22 +568,6 @@ def shuffle_xor[
         The SIMD value from the thread at lane (current_lane XOR offset).
     """
     return shuffle_xor(_FULL_MASK, val, offset)
-
-
-@inline(.always)
-def _shuffle_xor_amd[
-    dtype: DType, simd_width: SIMDLength, //
-](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
-    dtype, simd_width
-]:
-    # FIXME: Set the EXECute mask register to the mask
-    var lane = UInt32(lane_id())
-    var t0 = lane ^ offset
-    var t1 = lane & UInt32(-WARP_SIZE)
-    # This needs to be "add nsw" = add no sign wrap
-    var t2 = t1 + UInt32(WARP_SIZE)
-    var dst_lane = t0.lt(t2).select(t0, lane)
-    return _shuffle_amd_helper(dst_lane, val)
 
 
 @inline(.always)
@@ -873,20 +609,7 @@ def shuffle_xor[
         ```
     """
 
-    comptime if is_nvidia_gpu():
-        return _shuffle["bfly", WIDTH_MASK=Int32(_WIDTH_MASK)](
-            mask, val, offset
-        )
-    elif is_amd_gpu():
-        return _shuffle_xor_amd(mask, val, offset)
-    elif is_apple_gpu():
-        return _shuffle_apple_helper["xor", dtype, simd_width](
-            mask, val, offset
-        )
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name(),
-        ]()
+    return CurrentMaxPlugin.shuffle_xor_fn(mask, val, offset)
 
 
 # ===-----------------------------------------------------------------------===#

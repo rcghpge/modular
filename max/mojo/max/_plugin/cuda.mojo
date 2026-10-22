@@ -13,9 +13,11 @@
 
 from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
-from std.sys import llvm_intrinsic
+from std.memory import bitcast
+from std.sys import bit_width_of, llvm_intrinsic
 from std.sys.info import CompilationTarget
 
+from max.gpu.globals import WARP_SIZE
 from max.gpu.memory.memory import (
     _AsyncCopyGroupPluginHookFnType,
     _AsyncCopyWaitGroupPluginHookFnType,
@@ -57,6 +59,71 @@ def _async_copy_wait_all():
     llvm_intrinsic["llvm.nvvm.cp.async.wait.all", NoneType]()
 
 
+# TODO (#24457): support shuffles with width != 32
+comptime _WIDTH_MASK = WARP_SIZE - 1
+
+# shfl.sync.up.b32 prepares this mask differently from other shuffle intrinsics
+comptime _WIDTH_MASK_SHUFFLE_UP = 0
+
+
+@inline(.always)
+def _shuffle[
+    mnemonic: StringSlice,
+    dtype: DType,
+    simd_width: SIMDLength,
+    *,
+    WIDTH_MASK: Int32,
+](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+    dtype, simd_width
+]:
+    comptime assert (
+        dtype.is_half_float() or simd_width == 1
+    ), "Unsupported simd_width"
+
+    comptime if dtype == .float32:
+        return llvm_intrinsic[
+            "llvm.nvvm.shfl.sync." + mnemonic + ".f32", Scalar[dtype]
+        ](Int32(mask), val, offset, WIDTH_MASK)
+    elif dtype in (DType.int32, DType.uint32):
+        return llvm_intrinsic[
+            "llvm.nvvm.shfl.sync." + mnemonic + ".i32", Scalar[dtype]
+        ](Int32(mask), val, offset, WIDTH_MASK)
+    elif bit_width_of[dtype]() == 64:
+        var val_bitcast = bitcast[.uint32, simd_width * 2](val)
+        var val_half1, val_half2 = val_bitcast.deinterleave()
+        var shuffle1 = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
+            mask, val_half1, offset
+        )
+        var shuffle2 = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
+            mask, val_half2, offset
+        )
+        var result = shuffle1.interleave(shuffle2)
+        return bitcast[dtype, simd_width](result)
+    elif dtype.is_half_float():
+        comptime if simd_width == 1:
+            # splat and recurse to meet 32 bitwidth requirements
+            var splatted_val = SIMD[dtype, 2](val._refine[new_size=1]())
+            return _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
+                mask, splatted_val, offset
+            )[0]
+        else:
+            # bitcast and recurse to use i32 intrinsic. Two half values fit
+            # into an int32.
+            var packed_val = bitcast[.int32, simd_width // 2](val)
+            var result_packed = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
+                mask, packed_val, offset
+            )
+            return bitcast[dtype, simd_width](result_packed)
+    elif dtype == .bool:
+        comptime assert simd_width == 1, "unhandled simd width"
+        return _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
+            mask, val.cast[.int32](), offset
+        ).cast[dtype]()
+
+    else:
+        comptime assert False, "unhandled shuffle dtype"
+
+
 struct CudaMaxPlugin(MaxPlugin):
     """Provides default MAX behavior for CUDA targets."""
 
@@ -76,3 +143,45 @@ struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     comptime async_copy_wait_all_fn: OptionalReg[
         _AsyncCopyGroupPluginHookFnType
     ] = _async_copy_wait_all
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_idx_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        return _shuffle["idx", WIDTH_MASK=Int32(_WIDTH_MASK)](mask, val, offset)
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_up_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        return _shuffle["up", WIDTH_MASK=_WIDTH_MASK_SHUFFLE_UP](
+            mask, val, offset
+        )
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_down_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        return _shuffle["down", WIDTH_MASK=Int32(_WIDTH_MASK)](
+            mask, val, offset
+        )
+
+    @inline(.always)
+    @staticmethod
+    def shuffle_xor_fn[
+        dtype: DType, simd_width: SIMDLength, //
+    ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
+        dtype, simd_width
+    ]:
+        return _shuffle["bfly", WIDTH_MASK=Int32(_WIDTH_MASK)](
+            mask, val, offset
+        )
