@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "GraphCompiler/MAPDialect/Dialect/MAPOps.h"
+#include "GraphCompiler/MAPDialect/Support/InputFusion.h"
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h"
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MOGGDialect/MOGGAttrs.h"
@@ -77,58 +78,12 @@ bool canFuseProducer(IterRowwiseOp dst, IterElementwiseOp src) {
   return true;
 }
 
-// Merges same-index loads in a block, so a producer is cloned once per value.
-void mergeRedundantLoads(BlockArgument tensor, RewriterBase &rewriter) {
-  DenseMap<std::pair<Block *, Value>, LoadOp> first;
-  for (Operation *user : llvm::to_vector(tensor.getUsers())) {
-    auto load = cast<LoadOp>(user);
-    auto [it, inserted] =
-        first.try_emplace({load->getBlock(), load.getIndex()}, load);
-    if (inserted)
-      continue;
-    LoadOp kept = it->second;
-    if (load->isBeforeInBlock(kept))
-      std::swap(load, kept);
-    rewriter.replaceAllUsesWith(load.getResult(), kept.getResult());
-    rewriter.eraseOp(load);
-    it->second = kept;
-  }
-}
-
+// Leaves `dst` with unique inputs, as `fuseConsumer` does.
 void fuseProducer(IterRowwiseOp dst, IterElementwiseOp src,
                   RewriterBase &rewriter) {
-  Block &dstBody = dst.getBody().front();
-  unsigned numSrcInputs = src.getInputs().size();
-
-  SmallVector<unsigned> fusionIndices;
-  for (auto [i, input] : llvm::enumerate(dst.getInputs()))
-    if (input == src.getResult(0))
-      fusionIndices.push_back(i);
-
-  for (unsigned argIdx : llvm::reverse(fusionIndices)) {
-    dst.insertInputsAt(argIdx, src.getInputs());
-    ValueRange newDstArgs = dstBody.getArguments().slice(argIdx, numSrcInputs);
-    BlockArgument oldTensorArg = dstBody.getArgument(argIdx + numSrcInputs);
-
-    mergeRedundantLoads(oldTensorArg, rewriter);
-    for (Operation *user : llvm::to_vector(oldTensorArg.getUsers())) {
-      auto load = cast<LoadOp>(user);
-      rewriter.cloneRegionBefore(src.getBody(), dst.getBody(),
-                                 dst.getBody().begin());
-      Block &srcClone = dst.getBody().front();
-      StoreOp storeOp = getUniqueStore(srcClone);
-      Value fusedVal = storeOp.getValue();
-      rewriter.eraseOp(storeOp);
-      srcClone.eraseArgument(numSrcInputs);
-
-      SmallVector<Value> fusedArgs(newDstArgs.begin(), newDstArgs.end());
-      fusedArgs.push_back(load.getIndex());
-      rewriter.inlineBlockBefore(&srcClone, load, fusedArgs);
-      rewriter.replaceOp(load, fusedVal);
-    }
-    dst.eraseInputsAt(argIdx + numSrcInputs);
-  }
+  spliceProducer(dst, src, rewriter);
   stampFusion(dst, src);
+  IterOpInterface(dst).dedupeInputs(rewriter);
 }
 
 // The only store to output `outputIdx`, if it writes at the row index.
@@ -340,7 +295,6 @@ struct FuseReductionsPass
         while (IterElementwiseOp src = findProducer(dst)) {
           fuseProducer(dst, src, rewriter);
           rewriter.eraseOp(src);
-          IterOpInterface(dst).dedupeInputs(rewriter);
           ++numKernelsFused;
           changed = true;
         }

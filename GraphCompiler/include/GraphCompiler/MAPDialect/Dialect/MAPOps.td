@@ -365,7 +365,6 @@ def MAP_IterElementwiseOp : MAP_Op<"iter.elementwise", [
 
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
-  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     ::mlir::Block::BlockArgListType getInputBlockArgs();

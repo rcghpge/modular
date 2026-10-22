@@ -50,6 +50,14 @@ bool isPureViewForeach(IterElementwiseOp op);
 /// every extra copy re-reads all of them (JSC-30 / MSTDL-2759).
 bool isCheapToDuplicate(IterElementwiseOp op);
 
+/// Clones `src`'s body into `dst` at each load of `src`'s result, at the
+/// load's own index, and replaces that input with `src`'s inputs. Loads of
+/// one index in one block share a clone. Leaves `src` and duplicate inputs in
+/// place. `dst` is a structured kernel (elementwise or rowwise) whose every use
+/// of that input is a load.
+void spliceProducer(IterOpInterface dst, IterElementwiseOp src,
+                    mlir::RewriterBase &rewriter);
+
 /// The policy a wrapper supplies to narrow generic input fusion.
 struct InputFusionConfig {
   /// Whether the edge from `producerStore` (a producer kernel's store) to

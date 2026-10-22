@@ -155,9 +155,19 @@ def MAP_IterOpInterface : OpInterface<"IterOpInterface"> {
       "return $_op.getOutputChain();"
     >,
     InterfaceMethod<
+      "Sets the input chain, adding the output chain if there was none.",
+      "void", "setChain", (ins "::mlir::Value":$chain),
+      "$_op.setChain(chain);"
+    >,
+    InterfaceMethod<
       "Returns the fusion provenance, or null.",
       "::mlir::Attribute", "getFusionInfoAttr", (ins),
       "return $_op.getFusionInfoAttr();"
+    >,
+    InterfaceMethod<
+      "Sets the fusion provenance.",
+      "void", "setFusionInfoAttr", (ins "::M::MOGG::FusionInfoAttr":$info),
+      "$_op.setFusionInfoAttr(info);"
     >,
     InterfaceMethod<
       "Returns whether the kernel reads memory.",

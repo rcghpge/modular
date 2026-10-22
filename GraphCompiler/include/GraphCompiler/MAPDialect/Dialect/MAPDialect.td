@@ -44,6 +44,7 @@ def MAPDialect : Dialect {
     "::M::MOGG::MOGGDialect",
   ];
 
+  let hasCanonicalizer = 1;
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
 }

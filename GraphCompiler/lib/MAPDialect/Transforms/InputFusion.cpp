@@ -160,7 +160,7 @@ LoadOp firstConsumerLoad(IterElementwiseOp dst, IterElementwiseOp src) {
 
 // Folds the loads of `tensor` that read the same index in the same block into
 // the first of them, as CSE would.
-void mergeRedundantLoads(BlockArgument tensor, PatternRewriter &rewriter) {
+void mergeRedundantLoads(BlockArgument tensor, mlir::RewriterBase &rewriter) {
   DenseMap<std::pair<Block *, Value>, LoadOp> first;
   for (Operation *user : llvm::to_vector(tensor.getUsers())) {
     auto load = cast<LoadOp>(user);
@@ -177,52 +177,11 @@ void mergeRedundantLoads(BlockArgument tensor, PatternRewriter &rewriter) {
   }
 }
 
-// Splices `src`'s body into `dst` at each load site, at the load's own
-// (possibly transformed) index.
+// Splices `src` into `dst` and records it as a view or elementwise fusion.
 void spliceIntoForeach(IterElementwiseOp dst, IterElementwiseOp src,
                        PatternRewriter &rewriter) {
   bool isView = producesThroughView(producerStoreOf(src));
-  Block &dstBody = dst.getBody().front();
-
-  SmallVector<unsigned> fusionIndices;
-  for (auto [i, input] : llvm::enumerate(dst.getInputs()))
-    if (input == src.getResult(0))
-      fusionIndices.push_back(i);
-  assert(!fusionIndices.empty() && "src must be a current input of dst");
-
-  for (unsigned argIdx : llvm::reverse(fusionIndices)) {
-    unsigned numSrcInputs = src.getInputs().size();
-    dst.insertInputsAt(argIdx, src.getInputs());
-    ValueRange newDstArgs = dstBody.getArguments().slice(argIdx, numSrcInputs);
-    BlockArgument oldTensorArg = dstBody.getArgument(argIdx + numSrcInputs);
-
-    // One load per index, so `src` is cloned once per value it computes; a
-    // clone per load doubles the body at every fan-out level.
-    mergeRedundantLoads(oldTensorArg, rewriter);
-    for (Operation *user : llvm::to_vector(oldTensorArg.getUsers())) {
-      auto load = cast<LoadOp>(user);
-      Value loadIndex = load.getIndex();
-
-      rewriter.cloneRegionBefore(src.getBody(), *dstBody.getParent(),
-                                 dstBody.getParent()->begin());
-      Block &srcClone = dstBody.getParent()->front();
-
-      auto storeOp = getUniqueStore(srcClone);
-      Value fusedVal = storeOp.getValue();
-      storeOp.erase();
-      srcClone.eraseArgument(numSrcInputs);
-
-      // Before `load`, so dst's own transform chain dominates.
-      SmallVector<Value> fusedArgs(newDstArgs.begin(), newDstArgs.end());
-      fusedArgs.push_back(loadIndex);
-      rewriter.inlineBlockBefore(&srcClone, load, fusedArgs);
-
-      load.getResult().replaceAllUsesWith(fusedVal);
-      load.erase();
-    }
-
-    dst.eraseInputsAt(argIdx + numSrcInputs);
-  }
+  spliceProducer(dst, src, rewriter);
 
   if (isView)
     dst.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionViewAttr>(
@@ -437,6 +396,49 @@ IterElementwiseOp findEligibleProducer(Operation *dstOp,
 }
 
 } // namespace
+
+void spliceProducer(IterOpInterface dst, IterElementwiseOp src,
+                    mlir::RewriterBase &rewriter) {
+  assert(isa<StructuredIterOpInterface>(dst.getOperation()) &&
+         "an opaque kernel reads its inputs through closures, not loads");
+  Region &dstRegion = dst->getRegion(0);
+  Block &dstBody = dstRegion.front();
+  unsigned numSrcInputs = src.getInputs().size();
+
+  SmallVector<unsigned> fusionIndices;
+  for (auto [i, input] : llvm::enumerate(dst.getInputs()))
+    if (input == src.getResult(0))
+      fusionIndices.push_back(i);
+  assert(!fusionIndices.empty() && "src must be a current input of dst");
+
+  for (unsigned argIdx : llvm::reverse(fusionIndices)) {
+    dst.insertInputsAt(argIdx, src.getInputs());
+    ValueRange newDstArgs = dstBody.getArguments().slice(argIdx, numSrcInputs);
+    BlockArgument oldTensorArg = dstBody.getArgument(argIdx + numSrcInputs);
+
+    // One load per index, so `src` is cloned once per value it computes; a
+    // clone per load doubles the body at every fan-out level.
+    mergeRedundantLoads(oldTensorArg, rewriter);
+    for (Operation *user : llvm::to_vector(oldTensorArg.getUsers())) {
+      auto load = cast<LoadOp>(user);
+      rewriter.cloneRegionBefore(src.getBody(), dstRegion, dstRegion.begin());
+      Block &srcClone = dstRegion.front();
+
+      StoreOp storeOp = getUniqueStore(srcClone);
+      Value fusedVal = storeOp.getValue();
+      rewriter.eraseOp(storeOp);
+      srcClone.eraseArgument(numSrcInputs);
+
+      // Before `load`, so dst's own transform chain dominates.
+      SmallVector<Value> fusedArgs(newDstArgs.begin(), newDstArgs.end());
+      fusedArgs.push_back(load.getIndex());
+      rewriter.inlineBlockBefore(&srcClone, load, fusedArgs);
+      rewriter.replaceOp(load, fusedVal);
+    }
+
+    dst.eraseInputsAt(argIdx + numSrcInputs, 1);
+  }
+}
 
 unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
   PatternRewriter rewriter(graphOp.getContext());

@@ -706,26 +706,26 @@ FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
       MOGG::getMojoKernelAdaptor(registry, op);
   if (adaptor.isError())
-    return static_cast<Operation *>(nullptr);
+    return nullptr;
 
   if (auto mutableStoreOp = dyn_cast<MO::MutableStoreOp>(op)) {
     if (failed(lowerMutableStoreToForeach(mutableStoreOp, *adaptor)))
       return failure();
-    return static_cast<Operation *>(nullptr);
+    return nullptr;
   }
 
   // Reductions have no executeFunction either.
   if (adaptor->isReduction()) {
     if (failed(lowerReductionToRowwise(op, *adaptor)))
       return failure();
-    return static_cast<Operation *>(nullptr);
+    return nullptr;
   }
 
   // Elementwise kernels have no executeFunction.
   if (adaptor->isElementwise()) {
     if (failed(lowerElementwiseToForeach(op, *adaptor)))
       return failure();
-    return static_cast<Operation *>(nullptr);
+    return nullptr;
   }
 
   if (!adaptor->executeFunction) {
@@ -758,7 +758,7 @@ FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
 
   if (failed(foreachResult))
     return failure();
-  return static_cast<Operation *>(nullptr);
+  return nullptr;
 }
 
 struct MOToMAPPass : public M::MO::impl::MOToMAPBase<MOToMAPPass> {

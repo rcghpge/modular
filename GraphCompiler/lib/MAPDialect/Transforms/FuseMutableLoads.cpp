@@ -35,61 +35,9 @@ namespace M::MAP {
 #define GEN_PASS_DEF_FUSEMUTABLELOADS
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
-// Bridges the `map.iter.elementwise` / `map.iter.opaque` accessors so the
-// fusion logic is written once against `Operation *`.
-
+// Only these kernels take a fused mutable load.
 bool isFusibleKernel(Operation *op) {
   return isa_and_present<MAP::IterElementwiseOp, MAP::IterOpaqueOp>(op);
-}
-
-Value getKernelInputChain(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.getInputChain();
-  return cast<MAP::IterOpaqueOp>(kernelOp).getInputChain();
-}
-
-Value getKernelOutputChain(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.getOutputChain();
-  return cast<MAP::IterOpaqueOp>(kernelOp).getOutputChain();
-}
-
-void setKernelChain(Operation *kernelOp, Value chain) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.setChain(chain);
-  return cast<MAP::IterOpaqueOp>(kernelOp).setChain(chain);
-}
-
-void insertKernelInputAt(Operation *kernelOp, unsigned idx, Value val) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.insertInputsAt(idx, val);
-  return cast<MAP::IterOpaqueOp>(kernelOp).insertInputsAt(idx, val);
-}
-
-void eraseKernelInputAt(Operation *kernelOp, unsigned idx) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.eraseInputsAt(idx);
-  return cast<MAP::IterOpaqueOp>(kernelOp).eraseInputsAt(idx);
-}
-
-Block &getKernelBody(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.getBody().front();
-  return cast<MAP::IterOpaqueOp>(kernelOp).getBody().front();
-}
-
-void setKernelFusionInfo(Operation *kernelOp, MOGG::FusionInfoAttr fusionInfo) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.setFusionInfoAttr(fusionInfo);
-  return cast<MAP::IterOpaqueOp>(kernelOp).setFusionInfoAttr(fusionInfo);
-}
-
-bool kernelHasWriteEffect(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
-    return foreachOp.getHasWriteEffect();
-  if (auto opaqueOp = dyn_cast<MAP::IterOpaqueOp>(kernelOp))
-    return opaqueOp.getHasWriteEffect();
-  return false;
 }
 
 /// The kernel to fuse `loadOp` into, or null. The kernel must be the sole
@@ -313,10 +261,11 @@ void fuseLoadBuffer(PatternRewriter &rewriter, MO::MutableLoadOp loadOp,
   OpOperand &operand = *tensor.getUses().begin();
   auto argIdx = operand.getOperandNumber();
 
-  Block &kernelBody = getKernelBody(kernelOp);
+  auto kernel = cast<IterOpInterface>(kernelOp);
+  Block &kernelBody = kernelOp->getRegion(0).front();
 
   TypedValue<MO::ChainType> loadOutChain = loadOp.getOutChain();
-  if (Value kernelInChain = getKernelInputChain(kernelOp)) {
+  if (Value kernelInChain = kernel.getInputChain()) {
     if (kernelInChain != loadOutChain &&
         dataflowGraphDependsOn(kernelInChain, loadOutChain) &&
         !detachExclusiveChainPath(loadOutChain, loadOp.getInChain(),
@@ -327,31 +276,30 @@ void fuseLoadBuffer(PatternRewriter &rewriter, MO::MutableLoadOp loadOp,
     }
   }
 
-  insertKernelInputAt(kernelOp, argIdx, buffer);
+  kernel.insertInputsAt(argIdx, buffer);
   Value newBufferArg = kernelBody.getArgument(argIdx);
 
   auto oldBlockArg = kernelBody.getArgument(argIdx + 1);
   oldBlockArg.replaceAllUsesWith(newBufferArg);
-  eraseKernelInputAt(kernelOp, argIdx + 1);
+  kernel.eraseInputsAt(argIdx + 1, 1);
 
   retypeFusedPrologueCaptures(newBufferArg);
 
   if (!kernelHasLoadsOutputChain) {
-    loadOutChain.replaceAllUsesWith(getKernelOutputChain(kernelOp));
+    loadOutChain.replaceAllUsesWith(kernel.getOutputChain());
 
     rewriter.setInsertionPoint(kernelOp);
 
     auto newChain = rewriter.createOrFold<MO::ChainCreateOp>(
         loadOp.getLoc(),
-        ValueRange{getKernelInputChain(kernelOp), loadOp.getInChain()});
-    setKernelChain(kernelOp, newChain);
+        ValueRange{kernel.getInputChain(), loadOp.getInChain()});
+    kernel.setChain(newChain);
   } else {
-    setKernelChain(kernelOp, loadOp.getInChain());
+    kernel.setChain(loadOp.getInChain());
   }
 
-  setKernelFusionInfo(kernelOp,
-                      MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
-                          kernelOp->getContext(), {loadOp, kernelOp}));
+  kernel.setFusionInfoAttr(MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
+      kernelOp->getContext(), {loadOp, kernelOp}));
   kernelOp->setLoc(mlir::FusedLoc::get(kernelOp->getContext(),
                                        {loadOp->getLoc(), kernelOp->getLoc()}));
 
@@ -404,9 +352,9 @@ IterOpaqueOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
        llvm::zip(kernelOp->getResults(), newKernelOp->getResults()))
     oldRes.replaceAllUsesWith(newRes);
 
-  setKernelFusionInfo(newKernelOp,
-                      MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
-                          ctx, {loadOp, kernelOp}));
+  newKernelOp.setFusionInfoAttr(
+      MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(ctx,
+                                                          {loadOp, kernelOp}));
 
   kernelOp->erase();
   loadOp->erase();
@@ -438,7 +386,8 @@ struct ParallelizeLoadsWithMultipleUsers
     // consumers' fused reads.
     for (OpOperand &use : tensor.getUses()) {
       Operation *consumer = use.getOwner();
-      if (!kernelHasWriteEffect(consumer))
+      auto kernel = dyn_cast<IterOpInterface>(consumer);
+      if (!kernel || !kernel.getHasWriteEffect())
         continue;
 
       if (llvm::is_contained(consumer->getOperands(), loadBuffer)) {
@@ -528,7 +477,8 @@ bool kernelAlreadyHasDirectBufferInput(Operation *kernelOp,
 }
 
 bool kernelHasInOutChains(Operation *kernelOp) {
-  return getKernelInputChain(kernelOp) && getKernelOutputChain(kernelOp);
+  auto kernel = cast<IterOpInterface>(kernelOp);
+  return kernel.getInputChain() && kernel.getOutputChain();
 }
 
 struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {

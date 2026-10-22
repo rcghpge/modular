@@ -26,13 +26,12 @@ using namespace M::MAP;
 
 namespace {
 
-template <typename OpTy>
-struct DedupeIterInputs : OpRewritePattern<OpTy> {
-  using OpRewritePattern<OpTy>::OpRewritePattern;
+struct DedupeIterInputs : OpInterfaceRewritePattern<IterOpInterface> {
+  using OpInterfaceRewritePattern::OpInterfaceRewritePattern;
 
-  LogicalResult matchAndRewrite(OpTy op,
+  LogicalResult matchAndRewrite(IterOpInterface op,
                                 PatternRewriter &rewriter) const override {
-    return success(IterOpInterface(op).dedupeInputs(rewriter));
+    return success(op.dedupeInputs(rewriter));
   }
 };
 
@@ -312,15 +311,14 @@ bool IterOpInterface::dedupeInputs(RewriterBase &rewriter) {
   return true;
 }
 
-void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                               MLIRContext *context) {
-  results.add<DedupeIterInputs<IterOpaqueOp>, DropDeadIterOpaqueInputs,
-              FuseConstantIterOpaqueInputs>(context);
+// Applies to every op implementing `IterOpInterface`.
+void MAPDialect::getCanonicalizationPatterns(RewritePatternSet &results) const {
+  results.add<DedupeIterInputs>(results.getContext());
 }
 
-void IterElementwiseOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                                    MLIRContext *context) {
-  results.add<DedupeIterInputs<IterElementwiseOp>>(context);
+void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
+  results.add<DropDeadIterOpaqueInputs, FuseConstantIterOpaqueInputs>(context);
 }
 
 void LoadOp::getCanonicalizationPatterns(RewritePatternSet &results,
