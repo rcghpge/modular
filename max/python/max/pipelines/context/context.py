@@ -558,6 +558,19 @@ class TextContext:
     schema layer.
     """
 
+    kv_cache_write_ranges: dict[str, tuple[int, int]] = field(
+        default_factory=dict
+    )
+    """Absolute half-open ranges written by the latest forward, per SWA leaf.
+
+    A range certifies the intersection of writes by every layer sharing the
+    leaf, including draft layers. The batch producer must report it after
+    execution and before the cache manager steps. The manager consumes it.
+    Once a leaf reports partial writes, every subsequent forward must report
+    its writes, including ordinary decode; missing reports cannot extend its
+    known coverage. Unreported leaves retain ordinary full-write behavior.
+    """
+
     cached_prefix_length: int | None = field(default=None)
     """Number of prompt tokens served from the KV prefix cache.
 

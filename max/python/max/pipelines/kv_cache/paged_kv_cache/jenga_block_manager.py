@@ -600,6 +600,7 @@ class JengaBlockManager:
     @traced
     def release(self, ctx: TextContext) -> None:
         """Frees every page the request holds, in every cache."""
+        ctx.kv_cache_write_ranges.clear()
         req_id = ctx.request_id
         replica_idx = self._replica_of(ctx)
 
@@ -831,6 +832,26 @@ class JengaBlockManager:
     def step(self, ctx: TextContext) -> None:
         """Records what the forward just wrote and slides every window."""
         replica_idx = self._replica_of(ctx)
+        write_ranges = ctx.kv_cache_write_ranges
+        ctx.kv_cache_write_ranges = {}
+        for leaf_id, (start, end) in write_ranges.items():
+            group = self._groups[leaf_id]
+            if not isinstance(group, SlidingWindowKVGroupCoordinator):
+                raise ValueError("Partial writes require a sliding-window leaf")
+            if not 0 <= start <= end <= ctx.tokens.processed_length:
+                raise ValueError("Write range exceeds processed tokens")
+        for leaf_id, (start, end) in write_ranges.items():
+            group = self._groups[leaf_id]
+            assert isinstance(group, SlidingWindowKVGroupCoordinator)
+            group.record_write_range(ctx.request_id, start, end)
+        for leaf_id, group in self._groups.items():
+            if (
+                isinstance(group, SlidingWindowKVGroupCoordinator)
+                and leaf_id not in write_ranges
+            ):
+                group.record_full_write(
+                    ctx.request_id, ctx.tokens.processed_length
+                )
         if self._enable_prefix_caching:
             self._commit_blocks_into_prefix_cache(ctx, replica_idx)
 

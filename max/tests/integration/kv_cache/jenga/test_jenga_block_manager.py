@@ -191,6 +191,69 @@ def uncommit(
             pool.uncommit_block(block)
 
 
+def test_step_consumes_shared_swa_coverage_and_leaves_other_leaves_unchanged() -> (
+    None
+):
+    bm = make_manager(
+        {FULL: full(), SLIDING: sliding(window=5), VALUES: sliding(window=5)},
+        block_size=4,
+        enable_prefix_caching=True,
+    )
+    ctx = make_ctx(24)
+    bm.claim(ctx)
+    bm.alloc(ctx)
+    ctx.update(42)
+    # The producer must intersect all 40 trunk and 3 draft layer writes.
+    layer_writes = [(8, 24)] * 42 + [(13, 24)]
+    ctx.kv_cache_write_ranges[SLIDING] = (
+        max(start for start, _ in layer_writes),
+        min(end for _, end in layer_writes),
+    )
+    bm.step(ctx)
+
+    hashes = bm._compute_hashes_for_request(ctx)
+    pool = bm.pools[0]
+    assert not ctx.kv_cache_write_ranges
+    assert set(pool.prefix_caches[SLIDING]) == set(hashes[4:6])
+    assert set(pool.prefix_caches[FULL]) == set(hashes)
+    assert set(pool.prefix_caches[VALUES]) == set(hashes)
+
+    # A subsequent missing report cannot certify newly appended SWA rows.
+    decode(bm, ctx)
+    decode(bm, ctx)
+    decode(bm, ctx)
+    decode(bm, ctx)
+    hashes = bm._compute_hashes_for_request(ctx)
+    assert hashes[6] not in pool.prefix_caches[SLIDING]
+    assert hashes[6] in pool.prefix_caches[FULL]
+    ctx.kv_cache_write_ranges[SLIDING] = (28, 28)
+    bm.release(ctx)
+    assert not ctx.kv_cache_write_ranges
+
+
+@pytest.mark.parametrize(
+    "leaf_id,write_range", [(FULL, (0, 8)), (SLIDING, (0, 9))]
+)
+def test_step_rejects_invalid_write_metadata_without_replaying_it(
+    leaf_id: str, write_range: tuple[int, int]
+) -> None:
+    bm = make_manager(
+        {FULL: full(), SLIDING: sliding()},
+        block_size=4,
+        enable_prefix_caching=True,
+    )
+    ctx = make_ctx(8)
+    bm.claim(ctx)
+    bm.alloc(ctx)
+    ctx.update(42)
+    ctx.kv_cache_write_ranges[leaf_id] = write_range
+    with pytest.raises(ValueError):
+        bm.step(ctx)
+    assert not ctx.kv_cache_write_ranges
+    assert not bm.pools[0].prefix_caches[FULL]
+    assert not bm.pools[0].prefix_caches[SLIDING]
+
+
 # ===--------------------------------------------------------------------=== #
 # Basic Functionality
 # ===--------------------------------------------------------------------=== #
