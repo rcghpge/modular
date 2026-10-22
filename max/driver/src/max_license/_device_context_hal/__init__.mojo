@@ -1031,7 +1031,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
     @inline(.always)
     def enqueue_function[
-        FuncType: def() -> None,
+        FuncType: ImplicitlyCopyable & RegisterPassable & def() -> None,
         ExecutionConfigType: GridBlockExecutionConfig,
         //,
     ](
@@ -1068,13 +1068,13 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         )
 
         var gpu_kernel = DeviceFunction[
-            FuncType.__call__, TypeList.of[Trait=AnyType]()
+            FuncType.__call__, TypeList.of[Trait=AnyType, FuncType]()
         ](self.assert_default_target())
 
-        gpu_kernel._call_with_pack(
+        gpu_kernel._do_call_with_pack_checked(
             self,
             execution_config,
-            func,
+            host_args=(func,),
             location=location.or_else(call_location()),
         )
 
@@ -1240,7 +1240,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
     @inline(.always)
     def enqueue_function[
-        FuncType: def() -> None,
+        FuncType: ImplicitlyCopyable & RegisterPassable & def() -> None,
         //,
     ](
         self,
@@ -1286,16 +1286,16 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
             block_dim, location=call_location()
         )
         var gpu_kernel = DeviceFunction[
-            FuncType.__call__, TypeList.of[Trait=AnyType]()
+            FuncType.__call__, TypeList.of[Trait=AnyType, FuncType]()
         ](
             self.assert_default_target(),
             func_attribute=self._func_attribute_for_launch(
                 func_attribute, shared_mem_bytes
             ),
         )
-        gpu_kernel._call_with_pack(
+        gpu_kernel._call_with_pack_checked(
             self,
-            func,
+            host_args=(func,),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -3501,7 +3501,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
 
     @inline(.always)
     def enqueue_function[
-        FuncType: def() -> None,
+        FuncType: ImplicitlyCopyable & RegisterPassable & def() -> None,
         //,
     ](
         self,
@@ -3540,11 +3540,11 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
             block_dim, location=call_location()
         )
         var gpu_kernel = DeviceFunction[
-            FuncType.__call__, TypeList.of[Trait=AnyType]()
+            FuncType.__call__, TypeList.of[Trait=AnyType, FuncType]()
         ](self._ctx)
-        gpu_kernel._call_with_pack(
+        gpu_kernel._call_with_pack_checked(
             self,
-            func,
+            host_args=(func,),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -3557,7 +3557,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
     @inline(.always)
     def enqueue_function[
         ExecutionConfigType: GridBlockExecutionConfig,
-        FuncType: def() -> None,
+        FuncType: ImplicitlyCopyable & RegisterPassable & def() -> None,
         //,
     ](
         self,
@@ -3580,12 +3580,22 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         Raises:
             If the operation fails.
         """
+        var grid_dim = execution_config.get_grid_dim()
+        var block_dim = execution_config.get_block_dim()
+
+        _check_dim["DeviceStream.enqueue_function", "grid_dim"](
+            grid_dim, location=call_location()
+        )
+        _check_dim["DeviceStream.enqueue_function", "block_dim"](
+            block_dim, location=call_location()
+        )
         var gpu_kernel = DeviceFunction[
-            FuncType.__call__, TypeList.of[Trait=AnyType]()
+            FuncType.__call__, TypeList.of[Trait=AnyType, FuncType]()
         ](self._ctx)
-        self.enqueue_function(
+        gpu_kernel._do_call_with_pack_checked(
+            self,
             execution_config,
-            gpu_kernel,
+            host_args=(func,),
             location=location.or_else(call_location()),
         )
 
