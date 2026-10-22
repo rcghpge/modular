@@ -15,7 +15,7 @@ primitives."""
 
 from std.compile import compile_info
 from std.sys.info import CompilationTarget
-from std.testing import TestSuite, assert_false, assert_true
+from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
 from max.gpu.host import get_gpu_target
 from max.gpu.primitives.warp import match_all, match_any, vote
@@ -80,9 +80,39 @@ def test_amd() raises:
 def test_apple() raises:
     var llvm = _compile_vote_match_kernel[get_gpu_target["apple-m4"]()]()
     assert_true("call i32 @air.simd_ballot.i32.i1(i1" in llvm)
-    # No match instruction, so both matches use the default: a sweep that
-    # reads every lane's bits.
+    # No match instruction, so both matches use the default, which
+    # broadcasts lanes' bits.
     assert_true("call i32 @air.simd_shuffle.i32.i16(i32" in llvm)
+
+
+def test_apple_match_any() raises:
+    def kernel(data: Pointer[UInt32, MutAnyOrigin]):
+        data[unsafe_offset=1] = match_any(data[]).cast[.uint32]()
+
+    var llvm = String(
+        compile_info[
+            kernel, emission_kind="llvm", target=get_gpu_target["apple-m4"]()
+        ]()
+    )
+    # The default loops once per distinct value rather than unrolling a
+    # shuffle per lane: one shuffle and one ballot in the loop, and one
+    # ballot for the active lanes.
+    assert_equal(llvm.count("call i32 @air.simd_shuffle.i32.i16(i32"), 1)
+    assert_equal(llvm.count("call i32 @air.simd_ballot.i32.i1(i1"), 2)
+
+
+def test_apple_match_all() raises:
+    def kernel(data: Pointer[UInt32, MutAnyOrigin]):
+        data[unsafe_offset=1] = match_all(data[]).cast[.uint32]()
+
+    var llvm = String(
+        compile_info[
+            kernel, emission_kind="llvm", target=get_gpu_target["apple-m4"]()
+        ]()
+    )
+    # The default broadcasts lane 0's bits once and ballots the rest.
+    assert_equal(llvm.count("call i32 @air.simd_shuffle.i32.i16(i32"), 1)
+    assert_equal(llvm.count("call i32 @air.simd_ballot.i32.i1(i1"), 2)
 
 
 def main() raises:

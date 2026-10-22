@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.bit import count_trailing_zeros
 from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
 from std.utils.index import IndexList
@@ -264,9 +265,11 @@ trait MaxPluginHooks:
         """Lowers `match_any()`, which returns the mask of warp lanes whose
         bits equal the caller's.
 
-        The default needs only `shuffle_idx_fn`: each lane reads every lane's
-        bits, which costs `WARP_SIZE` shuffles. A plugin with a match
-        instruction, or a cheaper way to group equal lanes, overrides it.
+        The default finds one group per round: the lowest lane not yet in a
+        group broadcasts its bits through `shuffle_idx_fn`, and `vote_fn`
+        collects the lanes holding them. That is one shuffle and one ballot
+        per distinct value in the warp. A plugin with a match instruction, or
+        a cheaper broadcast, overrides it.
 
         Parameters:
             dtype: The bits' type, `DType.uint32` or `DType.uint64`.
@@ -278,10 +281,17 @@ trait MaxPluginHooks:
         Returns:
             The mask with bit `l` set for each lane `l` holding equal bits.
         """
+        # `pending` is a ballot, so it's the same on every lane and the warp
+        # runs each round converged, as the shuffle requires.
+        var pending = Self.vote_fn[mask_type](True)
         var result = Scalar[mask_type](0)
-        comptime for l in range(WARP_SIZE):
-            if Self.shuffle_idx_fn(_FULL_MASK, bits, UInt32(l)) == bits:
-                result |= Scalar[mask_type](1) << Scalar[mask_type](l)
+        while pending != 0:
+            var leader = UInt32(count_trailing_zeros(pending))
+            var matches = Self.shuffle_idx_fn(_FULL_MASK, bits, leader) == bits
+            var group = Self.vote_fn[mask_type](matches)
+            if matches:
+                result = group
+            pending &= ~group
         return result
 
     @inline(.always)
@@ -292,10 +302,10 @@ trait MaxPluginHooks:
         """Lowers `match_all()`, which returns the mask of warp lanes if they
         all hold the caller's bits, and 0 otherwise.
 
-        The default needs only `shuffle_idx_fn`: each lane compares every
-        lane's bits with the first lane's, which costs `WARP_SIZE` shuffles.
-        A plugin with a match instruction, or a cheaper way to compare the
-        lanes, overrides it.
+        The default broadcasts the first lane's bits through `shuffle_idx_fn`
+        and checks, through `vote_fn`, that the lanes holding them are all the
+        active lanes. A plugin with a match instruction, or a cheaper
+        broadcast, overrides it.
 
         Parameters:
             dtype: The bits' type, `DType.uint32` or `DType.uint64`.
@@ -308,13 +318,9 @@ trait MaxPluginHooks:
             The mask of all lanes if they hold equal bits, otherwise 0.
         """
         var chosen = Self.shuffle_idx_fn(_FULL_MASK, bits, 0)
-        var all_same = True
-        var active = Scalar[mask_type](0)
-        comptime for l in range(WARP_SIZE):
-            if Self.shuffle_idx_fn(_FULL_MASK, bits, UInt32(l)) != chosen:
-                all_same = False
-            active |= Scalar[mask_type](1) << Scalar[mask_type](l)
-        return active if all_same else Scalar[mask_type](0)
+        var matched = Self.vote_fn[mask_type](bits == chosen)
+        var active = Self.vote_fn[mask_type](True)
+        return matched if matched == active else Scalar[mask_type](0)
 
 
 struct DefaultMaxPlugin(MaxPlugin):

@@ -17,27 +17,12 @@ including the **MAX Framework**🧑‍🚀 and the **Mojo Language**🔥.
 
 ## Get started
 
-Want to use MAX and Mojo in your own projects? Check out the
-[MAX get started guide](https://max.modular.com/get-started) and the
-[Mojo get started guide](https://mojolang.org/docs/manual/quickstart/).
+To get started with the Modular Platform and serve a model using the MAX
+framework, see
+[the MAX quickstart guide](https://max.modular.com/get-started).
 
-Want to experiment with functionality in MAX or Mojo? Work from the
-repository:
-
-- Run `mojo` on a file:
-
-  ```bash
-  ./bazelw run //Mojo:mojo -- Mojo/examples/hello.mojo
-  ```
-
-- Run `max` to generate text with a model (requires a
-  [compatible GPU](https://max.modular.com/packages#gpu-compatibility)):
-
-  ```bash
-  ./bazelw run //max/python/max/_entrypoints:pipelines -- generate \
-    --model Qwen/Qwen3.5-0.8B --max-batch-size 1 --max-length 10000 \
-    --prompt "The sky is blue because"
-  ```
+To get started with the Mojo language, see
+[the Mojo quickstart guide](https://mojolang.org/docs/manual/quickstart/).
 
 ## About the repo
 
@@ -52,9 +37,6 @@ The main components for which source is available today include:
   (GPU programming in Mojo, since May 2025)
 - MAX accelerator library: [/max/kernels](/max/kernels) (Mojo compute kernels,
   since May 2025)
-- MAX graph compiler: [/GraphCompiler](/GraphCompiler)
-- MAX runtime: [/MLRT](/MLRT)
-- MAX driver: [/max/driver](/max/driver)
 - MAX AI framework: [/max/python/max](/max/python/max) (model authoring in
   Python, since November 2025)
 - MAX model pipelines: [/max/python/max/pipelines](/max/python/max/pipelines)
@@ -78,13 +60,11 @@ here](https://github.com/modular/modular/issues/new/choose).
 
 ## License
 
-Mojo and its contributions are licensed under the Apache License v2.0
-with LLVM Exceptions. See [Licenses/APACHE_LICENSE](Licenses/APACHE_LICENSE).
+This repository and its contributions are licensed under the Apache License v2.0
+with LLVM Exceptions. See [LICENSE](LICENSE).
 
-Portions of the MAX source code and its binary distribution are licensed
-under the [Licenses/MAX_LICENSE](Licenses/MAX_LICENSE), with the
-remainder of the source under the Apache License v2.0 with LLVM
-Exceptions. See [Licenses/APACHE_LICENSE](Licenses/APACHE_LICENSE).
+MAX usage and distribution are licensed under the
+[Modular Community License](https://www.modular.com/legal/community).
 
 ### Third party licenses
 
