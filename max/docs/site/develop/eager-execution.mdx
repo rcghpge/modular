@@ -23,8 +23,6 @@ A [`Tensor`](/api/python/generated/max.experimental.tensor.Tensor/) is the
 fundamental data structure for eager execution. This example creates a `Tensor`
 with hard-coded data:
 
-{/* @sync: ../../code/develop/index/eager_simple.py */}
-
 ```python
 from max.driver import CPU
 from max.experimental.tensor import Tensor
@@ -53,8 +51,6 @@ complex computation.
 
 Here's how to perform arithmetic operations using Python operators:
 
-{/* @sync: ../../code/develop/index/arithmetic_ops.py */}
-
 ```python
 from max.experimental.tensor import Tensor
 
@@ -71,8 +67,6 @@ print(d)
 Here are some
 [`max.experimental.functional`](/api/python/experimental.functional/) APIs
 in use:
-
-{/* @sync: ../../code/develop/index/functional_api.py */}
 
 ```python
 from max.experimental import functional as F
@@ -94,8 +88,6 @@ One of the biggest advantages of the eager API is that you can inspect
 intermediate values at any point in your code. Use this capability to verify
 that intermediate computations match your expectations as you build up a
 forward pass.
-
-{/* @sync: ../../code/develop/index/when_to_use_eager.py */}
 
 ```python
 from max.driver import CPU
@@ -135,8 +127,6 @@ After ReLU: Tensor([0 0 2 4], dtype=DType.float32, device=Device(type=cpu,id=0))
 A forward pass strings together everything you've seen so far into the shape of
 a single neural network layer. Here's a realistic example with random weights,
 a matmul, an activation, and a reduction.
-
-{/* @sync: ../../code/develop/index/eager_workflow.py */}
 
 ```python
 from max.driver import CPU

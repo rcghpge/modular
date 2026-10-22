@@ -82,8 +82,6 @@ any reshape: MAX pads `bias` on the left to `(1, features)` and broadcasts it
 across every row in the batch. The following example adds an `(8,)` bias to
 `(4, 8)` activations:
 
-{/* @sync: ../../code/develop/broadcasting/auto_broadcast.py */}
-
 ```python
 from max.experimental.tensor import Tensor
 
@@ -109,8 +107,6 @@ applies to has shape `(batch, seq_len, seq_len)`. The mask is missing the batch
 dimension, yet the operation works without any reshape: MAX pads the leading
 dimension automatically, applying the same mask to every sequence in the batch.
 The following example adds an `(8, 8)` mask to `(2, 8, 8)` scores:
-
-{/* @sync: ../../code/develop/broadcasting/mask_broadcast.py */}
 
 ```python
 from max.experimental.tensor import Tensor
@@ -141,8 +137,6 @@ operation.
 
 The following example uses `F.broadcast_to` to expand a `(1, features)` weight
 vector to `(batch, features)`:
-
-{/* @sync: ../../code/develop/broadcasting/explicit_broadcast.py */}
 
 ```python
 from max.experimental import functional as F
@@ -185,8 +179,6 @@ solution is to add the missing trailing dimension with
 before the operation. The following example turns a `(batch,)` vector into a
 `(batch, 1)` column so it broadcasts across the features of a
 `(batch, features)` tensor:
-
-{/* @sync: ../../code/develop/broadcasting/fix_rank.py */}
 
 ```python
 from max.experimental.tensor import Tensor

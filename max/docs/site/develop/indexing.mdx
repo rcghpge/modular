@@ -38,8 +38,6 @@ Slice syntax works the same way it does in Python, NumPy, and PyTorch: `x[i]`
 selects by index, `x[a:b]` selects a range, and negative indices count from the
 end.
 
-{/* @sync: ../../code/develop/indexing/slicing.py */}
-
 ```python
 from max.experimental.tensor import Tensor
 
@@ -70,8 +68,6 @@ When positions are data rather than literals,
 selects elements from `input` at the positions given by `indices`, along `axis`.
 The following example uses it for a vocabulary lookup: each token ID selects one
 row from an embedding table:
-
-{/* @sync: ../../code/develop/indexing/gather.py */}
 
 ```python
 import max.experimental.functional as F
@@ -113,8 +109,6 @@ After `F.where`, softmax drives the masked positions toward zero.
 
 The following example applies a causal mask to attention scores of shape
 `(batch, seq_len, seq_len)`, setting masked positions to `-1e9`:
-
-{/* @sync: ../../code/develop/indexing/where.py */}
 
 ```python
 import max.experimental.functional as F
@@ -159,8 +153,6 @@ The following example writes 4 expert outputs back into an 8-token sequence.
 [`F.tile`](/api/python/experimental.functional/#max.experimental.functional.tile)
 repeats the route indices across all 64 feature positions so that `indices` has
 the same shape as `expert_out`:
-
-{/* @sync: ../../code/develop/indexing/scatter.py */}
 
 ```python
 import max.experimental.functional as F

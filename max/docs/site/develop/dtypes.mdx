@@ -14,8 +14,6 @@ compatibility with different hardware.
 The [`DType`](/api/python/generated/max.dtype.DType/) enum in MAX provides
 all supported data types:
 
-{/* @sync: ../../code/develop/dtypes/dtype_intro.py */}
-
 ```python
 from max.dtype import DType
 
@@ -55,8 +53,6 @@ For the complete list including float8 variants and all integer types, see the
 Pass `dtype=DType.<name>` when creating a tensor to control how its values are
 stored:
 
-{/* @sync: ../../code/develop/dtypes/specify_dtype.py */}
-
 ```python
 from max.driver import CPU
 from max.dtype import DType
@@ -91,8 +87,6 @@ Every tensor has a
 [`dtype`](/api/python/generated/max.experimental.tensor.Tensor/#max.experimental.tensor.Tensor.dtype)
 property that returns its data type:
 
-{/* @sync: ../../code/develop/dtypes/check_dtype.py */}
-
 ```python
 from max.driver import CPU
 from max.dtype import DType
@@ -125,8 +119,6 @@ Weights are float32
 converts a tensor from one dtype to another, useful when you need to move
 between floating-point and integer types, or change precision:
 
-{/* @sync: ../../code/develop/dtypes/cast_dtype.py */}
-
 ```python
 from max.driver import CPU
 from max.dtype import DType
@@ -156,8 +148,6 @@ After cast to float64: DType.float64
 ## DType properties and methods
 
 The `DType` enum provides useful properties and methods for inspecting types:
-
-{/* @sync: ../../code/develop/dtypes/dtype_properties.py */}
 
 ```python
 from max.dtype import DType
@@ -195,8 +185,6 @@ minimal copies.
 The recommended way to convert NumPy arrays to MAX tensors is through DLPack,
 which enables zero-copy conversion when possible:
 
-{/* @sync: ../../code/develop/dtypes/dlpack_conversion.py */}
-
 ```python
 import numpy as np
 from max.experimental.tensor import Tensor
@@ -230,8 +218,6 @@ may need to cast to a compatible type first.
 
 [`torch_dtype_to_max()`](/api/python/generated/max.experimental.torch.torch_dtype_to_max/)
 converts a PyTorch dtype to a MAX dtype:
-
-{/* @sync: ../../code/develop/dtypes/pytorch_to_max.py */}
 
 ```python
 import torch
@@ -305,8 +291,6 @@ Understanding dtype memory usage is critical for deploying large models. The
 [`size_in_bytes`](/api/python/generated/max.dtype.DType/#max.dtype.DType.size_in_bytes)
 property lets you calculate memory requirements.
 
-{/* @sync: ../../code/develop/dtypes/calculate_memory.py */}
-
 ```python
 from max.dtype import DType
 
@@ -337,8 +321,6 @@ print(f"int8: {int8_mb:.1f} MB")  # 1024.0 MB (75% reduction)
 
 Use dtype checking methods to write code that validates inputs at
 runtime. For example:
-
-{/* @sync: ../../code/develop/dtypes/validate_dtypes.py */}
 
 ```python
 from max.dtype import DType
