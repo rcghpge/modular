@@ -234,9 +234,6 @@ def main(
         "8xMI355": run_on_8xmi355,
     }
     gpus = [gpu for gpu, ok in flags.items() if ok]
-    # Mach serves on B200 runners only, even with --models-override.
-    if framework == "mach-ci":
-        gpus = [gpu for gpu in gpus if gpu.endswith("B200")]
     models = parse_override(models_override) or tier_models(tier)
     ignore_exclusions = models_override is not None
 

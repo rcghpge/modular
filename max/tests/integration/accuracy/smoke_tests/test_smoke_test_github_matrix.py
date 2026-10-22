@@ -171,30 +171,3 @@ def test_mach_skips_variants() -> None:
     scheduled = {job["model"] for job in json.loads(result.output)["include"]}
     assert scheduled
     assert not {m for m in scheduled if "__" in m}
-
-
-def test_mach_runs_on_b200_only() -> None:
-    result = CliRunner().invoke(
-        smoke_test_github_matrix.main,
-        [
-            "--framework",
-            "mach-ci",
-            "--run-on-b200",
-            "--run-on-mi355",
-            "--run-on-2xb200",
-            "--run-on-2xmi355",
-            "--run-on-4xb200",
-            "--run-on-8xb200",
-            "--run-on-8xmi355",
-            "--models-override",
-            "meta-llama/Llama-3.1-8B-Instruct",
-        ],
-    )
-    assert result.exit_code == 0
-    jobs = json.loads(result.output)["include"]
-    assert [job["display_name"] for job in jobs] == [
-        "2xB200 - meta-llama/Llama-3.1-8B-Instruct",
-        "4xB200 - meta-llama/Llama-3.1-8B-Instruct",
-        "8xB200 - meta-llama/Llama-3.1-8B-Instruct",
-        "B200 - meta-llama/Llama-3.1-8B-Instruct",
-    ]
