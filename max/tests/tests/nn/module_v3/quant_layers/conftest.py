@@ -16,8 +16,9 @@
 The quant layers are traced under :func:`max.experimental.functional.lazy`
 against a mocked accelerator, so they exercise GPU kernel dispatch without a
 real device. ``mock_accelerator`` provides that stand-in device;
-``fp8_quant_config`` and ``nvfp4_quant_config`` provide the block-scaled FP8
-and NVFP4 configs used to drive the quantized code paths.
+``fp8_quant_config``, ``nvfp4_quant_config`` and ``mxfp8_quant_config`` provide
+the block-scaled FP8, NVFP4 and MXFP8 configs used to drive the quantized code
+paths.
 """
 
 from __future__ import annotations
@@ -47,6 +48,10 @@ FP8_BLOCK_SIZE = (128, 128)
 # NVFP4 packs two float4-e2m1 values per byte with one float8_e4m3fn scale per
 # 16-element block along K.
 NVFP4_BLOCK_SIZE = (1, 16)
+
+# MXFP8 stores one float8_e4m3fn value per byte with one float8_e8m0fnu scale
+# per 32-element block along K.
+MXFP8_BLOCK_SIZE = (1, 32)
 
 
 def _make_fake_gpu(id: int = 0) -> MagicMock:
@@ -146,3 +151,24 @@ def nvfp4_quant_config() -> QuantConfig:
 def nvfp4_fake_quant_config(nvfp4_quant_config: QuantConfig) -> QuantConfig:
     """NVFP4 config whose weights are quantized from bf16 at runtime."""
     return dataclasses.replace(nvfp4_quant_config, source=WeightSource.QUANTIZE)
+
+
+@pytest.fixture
+def mxfp8_quant_config() -> QuantConfig:
+    """An MXFP8 config, mirroring ``parse_quant_config``'s MXFP8 output."""
+    return QuantConfig(
+        input_scale=InputScaleSpec(
+            granularity=ScaleGranularity.BLOCK,
+            origin=ScaleOrigin.DYNAMIC,
+            dtype=DType.float8_e8m0fnu,
+            block_size=MXFP8_BLOCK_SIZE,
+        ),
+        weight_scale=WeightScaleSpec(
+            granularity=ScaleGranularity.BLOCK,
+            dtype=DType.float8_e8m0fnu,
+            block_size=MXFP8_BLOCK_SIZE,
+        ),
+        mlp_quantized_layers={0},
+        attn_quantized_layers={0},
+        format=QuantFormat.MXFP8,
+    )

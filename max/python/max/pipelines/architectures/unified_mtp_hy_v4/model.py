@@ -42,6 +42,7 @@ from max.pipelines.lib.interfaces.pipeline_model import UnifiedEagleOutputs
 from max.pipelines.speculative.config import SpeculativeConfig
 from max.pipelines.speculative.driver import SequentialDriver
 from max.pipelines.speculative.spec_input_types import SpecDecodeInputTypeSpec
+from max.pipelines.weights.quant import parse_quant_config
 from typing_extensions import override
 
 from ..hy_v4.hy_v4 import HYV4TextModel
@@ -198,7 +199,6 @@ class UnifiedMTPHYV4Model(ModuleV3PipelineModelWithKVCache[TextContext]):
 
     @override
     def _create_model_config(self, state_dict: dict[str, Any]) -> HYV4Config:
-        del state_dict
         check_parallelism(self.pipeline_config, len(self.devices))
         config = UnifiedMTPHYV4Config.initialize(
             self.pipeline_config, max_seq_len=self.max_seq_len
@@ -206,6 +206,9 @@ class UnifiedMTPHYV4Model(ModuleV3PipelineModelWithKVCache[TextContext]):
         config.max_batch_context_length = (
             self.planned_max_batch_total_tokens
             or config.max_batch_context_length
+        )
+        config.quant_config = parse_quant_config(
+            self.huggingface_config, state_dict, self.dtype
         )
         return config
 

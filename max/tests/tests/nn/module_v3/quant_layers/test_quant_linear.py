@@ -26,6 +26,7 @@ from max.experimental.nn.common_layers.quant_linear import (
 )
 from max.experimental.nn.common_layers.quant_tensor import (
     FP8BlockTensor,
+    MXFP8Tensor,
     NVFP4Tensor,
     NVFP4TensorQuantizer,
 )
@@ -391,6 +392,73 @@ def test_mlp_nvfp4_forward(
     with F.lazy(), default_dtype(DType.bfloat16):
         layer = QuantizedMLP(
             _HIDDEN_DIM, _FFN_DIM, quant_config=nvfp4_quant_config
+        ).to(device)
+        x = Tensor.zeros(
+            [_SEQ_LEN, _HIDDEN_DIM], dtype=DType.bfloat16, device=device
+        )
+        out = layer(x)
+
+    assert list(out.shape) == [_SEQ_LEN, _HIDDEN_DIM]
+    assert out.dtype == DType.bfloat16
+
+
+# --------------------------------------------------------------------------- #
+# MXFP8
+# --------------------------------------------------------------------------- #
+
+
+def test_linear_mxfp8_parameters(
+    mock_accelerator: MagicMock, mxfp8_quant_config: QuantConfig
+) -> None:
+    """With an MXFP8 config the weight is a two-leaf MXFP8Tensor."""
+    device = mock_accelerator()
+    with F.lazy():
+        layer = QuantizedLinear(
+            _HIDDEN_DIM, _FFN_DIM, quant_config=mxfp8_quant_config
+        ).to(device)
+
+        assert isinstance(layer.weight, MXFP8Tensor)
+        assert layer.weight.weight.dtype == DType.float8_e4m3fn
+        assert layer.weight.weight_scale.dtype == DType.float8_e8m0fnu
+        assert list(layer.weight.weight.shape) == [_FFN_DIM, _HIDDEN_DIM]
+        assert list(layer.weight.weight_scale.shape) == [
+            _FFN_DIM,
+            _HIDDEN_DIM // 32,
+        ]
+        names = {name for name, _ in layer.parameters}
+        assert names == {"weight", "weight_scale", "bias"}
+
+
+def test_linear_mxfp8_forward(
+    mock_accelerator: MagicMock,
+    mxfp8_quant_config: QuantConfig,
+    sm100_arch: None,
+) -> None:
+    """MXFP8 block-scaled forward returns a bf16 ``[S, out]`` activation."""
+    device = mock_accelerator()
+    with F.lazy(), default_dtype(DType.bfloat16):
+        layer = QuantizedLinear(
+            _HIDDEN_DIM, _FFN_DIM, quant_config=mxfp8_quant_config
+        ).to(device)
+        x = Tensor.zeros(
+            [_SEQ_LEN, _HIDDEN_DIM], dtype=DType.bfloat16, device=device
+        )
+        out = layer(x)
+
+    assert list(out.shape) == [_SEQ_LEN, _FFN_DIM]
+    assert out.dtype == DType.bfloat16
+
+
+def test_mlp_mxfp8_forward(
+    mock_accelerator: MagicMock,
+    mxfp8_quant_config: QuantConfig,
+    sm100_arch: None,
+) -> None:
+    """The fused gate/up MXFP8 matmul and the down matmul keep ``[S, hidden]``."""
+    device = mock_accelerator()
+    with F.lazy(), default_dtype(DType.bfloat16):
+        layer = QuantizedMLP(
+            _HIDDEN_DIM, _FFN_DIM, quant_config=mxfp8_quant_config
         ).to(device)
         x = Tensor.zeros(
             [_SEQ_LEN, _HIDDEN_DIM], dtype=DType.bfloat16, device=device

@@ -59,7 +59,12 @@ from .quant_ops import (
     moe_requires_scales_offsets,
     routed_weight_dtype,
 )
-from .quant_tensor import FP8BlockTensor, NVFP4Tensor, QuantAwareTensor
+from .quant_tensor import (
+    FP8BlockTensor,
+    MXFP8Tensor,
+    NVFP4Tensor,
+    QuantAwareTensor,
+)
 
 _M = TypeVar("_M", bound=Module[..., Any])
 
@@ -103,7 +108,7 @@ def _stack_experts(
     if shard_axis is None or mesh.num_devices == 1:
         return stacked
     # Scatter: bf16 path uses Tensor.to(Sharded); FP8 uses FP8BlockTensor.shard.
-    if isinstance(stacked, (FP8BlockTensor, NVFP4Tensor)):
+    if isinstance(stacked, (FP8BlockTensor, NVFP4Tensor, MXFP8Tensor)):
         return stacked.shard(shard_axis, mesh)
     assert isinstance(stacked, Tensor)
     return stacked.to(DeviceMapping(mesh, (Sharded(axis=shard_axis),)))
@@ -391,8 +396,22 @@ class TensorParallelMoE(QuantizedMoE):
                 f"number of devices ({mesh.num_devices}) for tensor "
                 "parallelism"
             )
+        moe_dim = self._initial_moe_dim // mesh.num_devices
+        # The down weight is split on K, and its data and block scales are
+        # split evenly on their own lengths; they line up only when each
+        # device's K slice holds whole scale blocks.
+        qc = self.quant_config
+        if qc is not None and (qc.is_mxfp8 or qc.is_nvfp4):
+            block_size = qc.weight_scale.block_size
+            assert block_size is not None
+            if moe_dim % block_size[1] != 0:
+                raise ValueError(
+                    f"moe_dim per device ({moe_dim}) must be a multiple of "
+                    f"the weight scale block ({block_size[1]}) for "
+                    f"{qc.format} tensor parallelism"
+                )
         self.mesh = mesh
-        self.moe_dim = self._initial_moe_dim // mesh.num_devices
+        self.moe_dim = moe_dim
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
         """Moves the MoE layer to a single device."""
@@ -512,6 +531,12 @@ class ExpertParallelMoE(QuantizedMoE):
         self, *args, ep_batch_manager: EPBatchManager, **kwargs
     ) -> None:
         super().__init__(*args, **kwargs)
+        if quant_ops.is_mxfp8_quantized(self.quant_config):
+            # The EP dispatch quantizes tokens for FP8 and NVFP4 only, and
+            # gives the MXFP8 grouped matmul no per-expert scale offsets.
+            raise ValueError(
+                "ExpertParallelMoE does not support MXFP8 weights yet"
+            )
         self.ep_batch_manager = ep_batch_manager
 
     @property

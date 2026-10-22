@@ -33,6 +33,7 @@ from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.quant_tensor import (
     FP8BlockActivation,
     FP8BlockTensor,
+    MXFP8Tensor,
     NVFP4Activation,
     NVFP4Tensor,
     NVFP4TensorQuantizer,
@@ -644,3 +645,83 @@ def test_swiglu_route_per_architecture(
             encoding, prequantized, accum_dtype, limit, device, config
         )
     assert got == expected, arch
+
+
+# --------------------------------------------------------------------------- #
+# MXFP8
+# --------------------------------------------------------------------------- #
+
+
+def test_mxfp8_predicates_and_moe_inputs(
+    mxfp8_quant_config: QuantConfig, nvfp4_quant_config: QuantConfig
+) -> None:
+    """MXFP8 needs MoE scale offsets but no EP dispatch scales."""
+    assert quant_ops.is_mxfp8_quantized(mxfp8_quant_config)
+    assert not quant_ops.is_mxfp8_quantized(nvfp4_quant_config)
+    assert not quant_ops.is_mxfp8_quantized(None)
+    assert not quant_ops.is_nvfp4_quantized(mxfp8_quant_config)
+
+    assert quant_ops.moe_requires_scales_offsets(mxfp8_quant_config)
+    assert not quant_ops.ep_requires_dispatch_scales(mxfp8_quant_config)
+    assert (
+        quant_ops.routed_weight_dtype(mxfp8_quant_config) == DType.float8_e4m3fn
+    )
+
+
+def test_quantized_weight_mxfp8(mxfp8_quant_config: QuantConfig) -> None:
+    """An MXFP8 config yields an MXFP8Tensor with one scale per 32 values."""
+    with F.lazy():
+        weight = quant_ops.quantized_weight(
+            _MOE_DIM, _HIDDEN_DIM, mxfp8_quant_config
+        )
+
+        assert isinstance(weight, MXFP8Tensor)
+        assert weight.block_size == (1, 32)
+        assert list(weight.weight.shape) == [_MOE_DIM, _HIDDEN_DIM]
+        assert list(weight.weight_scale.shape) == [_MOE_DIM, _HIDDEN_DIM // 32]
+
+
+def test_stack_and_concat_mxfp8() -> None:
+    """Stacking adds an expert axis to both leaves; concat fuses rows."""
+    with F.lazy():
+        weights: list[quant_ops.QuantAwareTensor] = [
+            MXFP8Tensor.zeros((_MOE_DIM, _HIDDEN_DIM)) for _ in range(4)
+        ]
+        stacked = quant_ops.stack(weights, axis=0)
+        assert isinstance(stacked, MXFP8Tensor)
+        assert list(stacked.weight.shape) == [4, _MOE_DIM, _HIDDEN_DIM]
+        assert list(stacked.weight_scale.shape) == [
+            4,
+            _MOE_DIM,
+            _HIDDEN_DIM // 32,
+        ]
+
+        fused = quant_ops.concat_weights(weights[0], weights[1], axis=0)
+        assert isinstance(fused, MXFP8Tensor)
+        assert list(fused.weight.shape) == [2 * _MOE_DIM, _HIDDEN_DIM]
+        assert list(fused.weight_scale.shape) == [
+            2 * _MOE_DIM,
+            _HIDDEN_DIM // 32,
+        ]
+
+
+def test_concat_mxfp8_rejects_non_row_axis() -> None:
+    with F.lazy():
+        w = MXFP8Tensor.zeros((_MOE_DIM, _HIDDEN_DIM))
+        with pytest.raises(ValueError, match="only supports axis=0"):
+            quant_ops.concat_mxfp8(w, w, axis=1)
+
+
+def test_grouped_silu_takes_a_swiglu_limit(
+    mock_accelerator: MagicMock,
+) -> None:
+    """The bf16 SiLU accepts a clamping limit and keeps its shape."""
+    device = mock_accelerator()
+    with F.lazy():
+        x = Tensor.zeros(
+            [_TOKENS, 2 * _MOE_DIM], dtype=DType.bfloat16, device=device
+        )
+        offsets = Tensor.zeros([3], dtype=DType.uint32, device=device)
+        out = quant_ops.grouped_silu(x, offsets, swiglu_limit=7.0)
+        assert isinstance(out, Tensor)
+        assert list(out.shape) == [_TOKENS, _MOE_DIM]

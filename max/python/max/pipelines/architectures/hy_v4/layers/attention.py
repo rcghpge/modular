@@ -28,10 +28,11 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from max.driver import CPU
+from max.driver import CPU, Device
 from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn import Linear, Module
+from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.functional_kernels import (
     flare_mla_prefill_plan,
     mla_decode_graph,
@@ -39,25 +40,20 @@ from max.experimental.nn.common_layers.functional_kernels import (
 )
 from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
 from max.experimental.nn.common_layers.mesh_axis import TP
+from max.experimental.nn.common_layers.quant_linear import QuantizedLinear
 from max.experimental.nn.norm import RMSNorm
-from max.experimental.sharding import NamedMapping
+from max.experimental.sharding import DeviceMapping, DeviceMesh, NamedMapping
 from max.experimental.tensor import Tensor
 from max.nn.attention import MHAMaskVariant
 from max.nn.kv_cache import KVCacheParams, MultiKVCacheParams
+from typing_extensions import Self
 
 from ..model_config import HYV4Config
 from .indexer import HYV4Indexer
-from .mxfp8 import MXFP8Linear, MXFP8Tensor, matmul
 
 __all__ = ["HYV4Attention"]
 
 _EPS = 1e-6
-
-
-def _project(x: Tensor, weight: Tensor | MXFP8Tensor) -> Tensor:
-    if isinstance(weight, MXFP8Tensor):
-        return matmul(x, weight)
-    return x @ weight.T
 
 
 def _neox_to_interleaved(x: Tensor, rope_dim: int) -> Tensor:
@@ -74,11 +70,11 @@ class HYV4Attention(Module[..., tuple[Tensor, Tensor]]):
 
     Args:
         config: The model config; ``config.kv_params`` holds the ``mla`` and
-            ``indexer`` caches.
+            ``indexer`` caches, and ``config.quant_config`` decides whether
+            the MLA projections, ``o_proj`` and the indexer's ``wq_b``/``wk``
+            are quantized. ``kv_b_proj`` and ``linear_gate`` are BF16 either
+            way.
         layer_idx: The decoder layer, which picks its indexer kind.
-        quantized: Whether the MLA projections, ``o_proj`` and the indexer's
-            ``wq_b``/``wk`` are MXFP8. ``kv_b_proj`` and ``linear_gate`` are
-            BF16 either way.
         graph_mode: ``"auto"`` runs ``mla_prefill_decode_graph``, which picks
             the sparse prefill or decode kernel per batch; ``"decode"`` runs
             ``mla_decode_graph`` for every batch.
@@ -92,7 +88,6 @@ class HYV4Attention(Module[..., tuple[Tensor, Tensor]]):
         config: HYV4Config,
         layer_idx: int,
         *,
-        quantized: bool,
         graph_mode: str = "auto",
         rope_interleave: bool = True,
     ) -> None:
@@ -124,10 +119,10 @@ class HYV4Attention(Module[..., tuple[Tensor, Tensor]]):
         q_dim = self.n_heads * self.qk_head_dim
         o_dim = self.n_heads * self.v_head_dim
 
-        def weight(out_dim: int, in_dim: int) -> Tensor | MXFP8Tensor:
-            if quantized:
-                return MXFP8Tensor.zeros((out_dim, in_dim))
-            return Tensor.zeros([out_dim, in_dim])
+        def weight(out_dim: int, in_dim: int) -> quant_ops.QuantAwareTensor:
+            return quant_ops.quantized_weight(
+                out_dim, in_dim, config.quant_config
+            )
 
         self.q_a_proj = weight(self.q_lora_rank, hidden)
         self.q_a_layernorm = RMSNorm(self.q_lora_rank, eps=_EPS)
@@ -140,16 +135,24 @@ class HYV4Attention(Module[..., tuple[Tensor, Tensor]]):
                 self.kv_lora_rank,
             ]
         )
-        self.o_proj: Module[[Tensor], Tensor] = (
-            MXFP8Linear(o_dim, hidden)
-            if quantized
-            else Linear(o_dim, hidden, bias=False)
+        self.o_proj = QuantizedLinear(
+            o_dim, hidden, bias=False, quant_config=config.quant_config
         )
         self.linear_gate = Linear(hidden, o_dim, bias=False)
         self.learnable_sink_param = Tensor.zeros(
             [self.n_heads], dtype=DType.float32
         )
-        self.indexer = HYV4Indexer(config, layer_idx, quantized=quantized)
+        self.indexer = HYV4Indexer(config, layer_idx)
+
+    def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
+        """Moves the layer and its quantized projections to ``target`` in place."""
+        super().to(target)
+        # A quantized weight's ``to`` returns a copy, which ``Module.to``
+        # drops for child modules.
+        self.q_a_proj = self.q_a_proj.to(target)
+        self.q_b_proj = self.q_b_proj.to(target)
+        self.kv_a_proj_with_mqa = self.kv_a_proj_with_mqa.to(target)
+        return self
 
     def shard_heads(self) -> None:
         """Splits the heads over the mesh (tensor parallel), as R3 does.
@@ -160,23 +163,17 @@ class HYV4Attention(Module[..., tuple[Tensor, Tensor]]):
         latent, its own cache copy and the shared top-k.
         """
 
-        def distribute(t: Tensor, spec: tuple[str | None, ...]) -> Tensor:
-            return t.to(NamedMapping(t.mesh, spec))
-
-        if isinstance(self.q_b_proj, MXFP8Tensor):
-            self.q_b_proj.shard((TP, None))
-        else:
-            self.q_b_proj = distribute(self.q_b_proj, (TP, None))
-        self.kv_b_proj = distribute(self.kv_b_proj, (TP, None))
-        if isinstance(self.o_proj, MXFP8Linear):
-            self.o_proj.weight.shard((None, TP))
-        else:
-            assert isinstance(self.o_proj, Linear)
-            self.o_proj.weight = distribute(self.o_proj.weight, (None, TP))
-        self.linear_gate.weight = distribute(
-            self.linear_gate.weight, (TP, None)
+        mesh = self.kv_b_proj.mesh
+        rows = NamedMapping(mesh, (TP, None))
+        self.q_b_proj = self.q_b_proj.to(rows)
+        self.kv_b_proj = self.kv_b_proj.to(rows)
+        self.o_proj.weight = self.o_proj.weight.to(
+            NamedMapping(mesh, (None, TP))
         )
-        self.learnable_sink_param = distribute(self.learnable_sink_param, (TP,))
+        self.linear_gate.weight = self.linear_gate.weight.to(rows)
+        self.learnable_sink_param = self.learnable_sink_param.to(
+            NamedMapping(mesh, (TP,))
+        )
 
     # The absorbed kv_b_proj views, as LatentAttentionWithRope builds them.
     @property
@@ -254,9 +251,9 @@ class HYV4Attention(Module[..., tuple[Tensor, Tensor]]):
                 buffer length as the plan kernel computes it; the graph never
                 reads the plan's own back, which capture would reject.
         """
-        q_resid = self.q_a_layernorm(_project(x, self.q_a_proj))
-        q = _project(q_resid, self.q_b_proj)
-        kv = _project(x, self.kv_a_proj_with_mqa)
+        q_resid = self.q_a_layernorm(quant_ops.matmul(x, self.q_a_proj))
+        q = quant_ops.matmul(q_resid, self.q_b_proj)
+        kv = quant_ops.matmul(x, self.kv_a_proj_with_mqa)
         if not self.rope_interleave:
             q = _neox_to_interleaved(
                 q.reshape([-1, self.n_heads, self.qk_head_dim]),

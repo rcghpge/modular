@@ -27,6 +27,7 @@ from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn import Linear, Module
 from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
+from max.experimental.nn.common_layers.quant_linear import QuantizedLinear
 from max.experimental.nn.common_layers.quant_ops import (
     quantize_dynamic_scaled_float8,
 )
@@ -47,7 +48,6 @@ from .functional_kernels import (
     store_k_cache_ragged,
     store_k_scale_cache_ragged,
 )
-from .mxfp8 import MXFP8Linear
 
 __all__ = ["HYV4Indexer"]
 
@@ -92,14 +92,12 @@ class HYV4Indexer(Module[..., Tensor]):
     ``prev_topk_indices`` it is given.
 
     Args:
-        config: The model config.
+        config: The model config; ``config.quant_config`` decides whether
+            ``wq_b`` and ``wk`` are quantized.
         layer_idx: The decoder layer this indexer belongs to.
-        quantized: Whether ``wq_b`` and ``wk`` are MXFP8.
     """
 
-    def __init__(
-        self, config: HYV4Config, layer_idx: int, *, quantized: bool
-    ) -> None:
+    def __init__(self, config: HYV4Config, layer_idx: int) -> None:
         super().__init__()
         self.skip_topk = config.indexer_types[layer_idx] != "full"
         if self.skip_topk:
@@ -109,16 +107,18 @@ class HYV4Indexer(Module[..., Tensor]):
         self.index_topk = config.index_topk
 
         q_dim = self.n_heads * self.head_dim
-        if quantized:
-            self.wq_b: Module[[Tensor], Tensor] = MXFP8Linear(
-                config.q_lora_rank, q_dim
-            )
-            self.wk: Module[[Tensor], Tensor] = MXFP8Linear(
-                config.hidden_size, self.head_dim
-            )
-        else:
-            self.wq_b = Linear(config.q_lora_rank, q_dim, bias=False)
-            self.wk = Linear(config.hidden_size, self.head_dim, bias=False)
+        self.wq_b = QuantizedLinear(
+            config.q_lora_rank,
+            q_dim,
+            bias=False,
+            quant_config=config.quant_config,
+        )
+        self.wk = QuantizedLinear(
+            config.hidden_size,
+            self.head_dim,
+            bias=False,
+            quant_config=config.quant_config,
+        )
         self.k_norm = LayerNorm(
             self.head_dim, eps=config.rms_norm_eps, keep_dtype=False
         )

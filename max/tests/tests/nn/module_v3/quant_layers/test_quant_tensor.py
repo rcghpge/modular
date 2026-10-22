@@ -26,11 +26,13 @@ from max.experimental.nn import Module
 from max.experimental.nn.common_layers.mesh_axis import TP
 from max.experimental.nn.common_layers.quant_tensor import (
     FP8BlockTensor,
+    MXFP8Tensor,
     NVFP4Activation,
     NVFP4Tensor,
     NVFP4TensorQuantizer,
     QTensor,
     all_fp8_block,
+    all_mxfp8,
     all_nvfp4,
 )
 from max.experimental.sharding import DeviceMesh, Sharded
@@ -649,3 +651,62 @@ def test_nvfp4_activation_leaves() -> None:
             "scales_offset",
         }
         assert list(act.data.shape) == [8, 128]
+
+
+# --------------------------------------------------------------------------- #
+# MXFP8Tensor
+# --------------------------------------------------------------------------- #
+
+
+def test_mxfp8_zeros_dtypes_and_scale_grid() -> None:
+    """One E4M3 byte per value and one E8M0 scale per 32 values along K."""
+    with F.lazy():
+        qt = MXFP8Tensor.zeros((256, 512))
+        assert qt.weight.dtype == DType.float8_e4m3fn
+        assert qt.weight_scale.dtype == DType.float8_e8m0fnu
+        assert list(qt.weight.shape) == [256, 512]
+        assert list(qt.weight_scale.shape) == [256, 16]
+        assert qt.block_size == (1, 32)
+
+
+def test_mxfp8_zeros_scale_shape_uses_ceildiv() -> None:
+    """A partial trailing block still gets a scale."""
+    with F.lazy():
+        qt = MXFP8Tensor.zeros((8, 40))
+        assert list(qt.weight_scale.shape) == [8, 2]
+
+
+def test_mxfp8_local_parameters_discovered() -> None:
+    """Both leaves are discoverable, under the checkpoint's leaf names."""
+    with F.lazy():
+        qt = MXFP8Tensor.zeros((256, 512))
+        assert set(dict(qt.local_parameters)) == {"weight", "weight_scale"}
+
+
+@pytest.mark.parametrize(
+    ("axis", "data_shape", "scale_shape"),
+    [(0, [128, 512], [128, 16]), (-1, [256, 256], [256, 8])],
+)
+def test_mxfp8_shard_co_shards_scales(
+    axis: int, data_shape: list[int], scale_shape: list[int]
+) -> None:
+    """Sharding places the scales with their data rows or K blocks."""
+    with F.lazy(), patch("max.graph.type.Accelerator") as mock:
+        mock.side_effect = _fake_gpu
+        devices = [mock(0), mock(1)]
+        mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
+        sharded = MXFP8Tensor.zeros((256, 512)).shard(axis=axis, mesh=mesh)
+
+        assert isinstance(sharded, MXFP8Tensor)
+        assert sharded.weight.placements == (Sharded(axis=axis),)
+        assert sharded.weight_scale.placements == (Sharded(axis=axis),)
+        for shard in sharded.local_shards:
+            assert list(shard.weight.shape) == data_shape
+            assert list(shard.weight_scale.shape) == scale_shape
+
+
+def test_all_mxfp8_narrows_only_homogeneous_sequences() -> None:
+    with F.lazy():
+        mx = MXFP8Tensor.zeros((256, 512))
+        assert all_mxfp8([mx, mx])
+        assert not all_mxfp8([mx, NVFP4Tensor.zeros((256, 512))])

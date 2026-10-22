@@ -416,6 +416,104 @@ class NVFP4TensorQuantizer(_Quantizer):
         return self._quantize()
 
 
+class MXFP8Tensor(_QuantizedWeight):
+    """MXFP8 (OCP microscaling) block-scaled quantized tensor.
+
+    Args:
+        weight: Packed ``float8_e4m3fn`` data of shape ``[rows, cols]``.
+        weight_scale: Per-block ``float8_e8m0fnu`` scales of shape
+            ``[ceil(rows / block_m), ceil(cols / block_k)]``, in checkpoint
+            order; the matmuls interleave them for the kernel (see
+            :func:`~.quant_ops.matmul`).
+        block_size: Per-block size as ``(block_m, block_k)``; ``(1, 32)`` for
+            MXFP8.
+    """
+
+    weight_scale: Tensor
+
+    def __init__(
+        self,
+        *,
+        weight: Tensor,
+        weight_scale: Tensor,
+        block_size: tuple[int, int] = (1, 32),
+    ) -> None:
+        super().__init__()
+        self.weight = weight
+        self.weight_scale = weight_scale
+        self._block_size = block_size
+
+    @classmethod
+    def zeros(
+        cls,
+        shape: tuple[int, ...],
+        *,
+        block_size: tuple[int, int] = (1, 32),
+    ) -> MXFP8Tensor:
+        """Builds a zero-filled :class:`MXFP8Tensor` of shape ``[.., rows, cols]``.
+
+        Leading dimensions (such as stacked experts) are kept on both leaves.
+        """
+        *lead, rows, cols = (int(d) for d in shape)
+        block_m, block_k = block_size
+        return cls(
+            weight=Tensor.zeros((*lead, rows, cols), dtype=DType.float8_e4m3fn),
+            weight_scale=Tensor.zeros(
+                (*lead, _ceildiv(rows, block_m), _ceildiv(cols, block_k)),
+                dtype=DType.float8_e8m0fnu,
+            ),
+            block_size=block_size,
+        )
+
+    @property
+    def block_size(self) -> tuple[int, int]:
+        """Quantization block shape as ``(rows, cols)``."""
+        return self._block_size
+
+    def shard(self, axis: int, mesh: DeviceMesh) -> MXFP8Tensor:
+        """Co-shard ``weight``/``weight_scale`` along ``axis`` onto ``mesh``."""
+        mapping = DeviceMapping(mesh, (Sharded(axis=axis),))
+        return MXFP8Tensor(
+            weight=self.weight.to(mapping),
+            weight_scale=self.weight_scale.to(mapping),
+            block_size=self.block_size,
+        )
+
+    @property
+    def local_shards(self) -> tuple[MXFP8Tensor, ...]:
+        """Per-device shards, pairing each ``weight`` shard with its scales."""
+        return tuple(
+            MXFP8Tensor(
+                weight=self.weight.local_shards[i],
+                weight_scale=self.weight_scale.local_shards[i],
+                block_size=self.block_size,
+            )
+            for i in range(self.weight.num_shards)
+        )
+
+    @property
+    def mesh(self) -> DeviceMesh:
+        """Device mesh of the ``weight`` tensor."""
+        return self.weight.mesh
+
+    @property
+    def _mapping(self) -> DeviceMapping:
+        return self.weight.mapping
+
+    @_mapping.setter
+    def _mapping(self, mapping: DeviceMapping) -> None:
+        self.weight._mapping = mapping
+        self.weight_scale._mapping = mapping
+
+    def to(self, target: Device | DeviceMesh | DeviceMapping) -> MXFP8Tensor:
+        """Returns a copy with ``weight`` and ``weight_scale`` on ``target``."""
+        return MXFP8Tensor(
+            weight=self.weight.to(target),
+            weight_scale=self.weight_scale.to(target),
+            block_size=self.block_size,
+        )
+
+
 @module_dataclass(frozen=True)
 class NVFP4Activation(QTensor):
     """NVFP4-quantized activation tensor.
@@ -451,6 +549,7 @@ QuantAwareTensor: TypeAlias = (
     | FP8BlockTensor
     | NVFP4Tensor
     | NVFP4TensorQuantizer
+    | MXFP8Tensor
     | NVFP4Activation
     | FP8BlockActivation
 )
@@ -468,3 +567,10 @@ def all_nvfp4(
 ) -> TypeGuard[Sequence[NVFP4Tensor]]:
     """Narrow a sequence of mixed weights to a homogeneous NVFP4 sequence."""
     return all(isinstance(w, NVFP4Tensor) for w in weights)
+
+
+def all_mxfp8(
+    weights: Sequence[QuantAwareTensor],
+) -> TypeGuard[Sequence[MXFP8Tensor]]:
+    """Narrow a sequence of mixed weights to a homogeneous MXFP8 sequence."""
+    return all(isinstance(w, MXFP8Tensor) for w in weights)

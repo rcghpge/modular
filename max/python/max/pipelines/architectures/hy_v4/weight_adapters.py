@@ -15,9 +15,9 @@
 Beyond renames, the adapter changes storage in four places:
 
 * Every ``*weight_scale`` / ``*_scale`` (U8 E8M0, one per 32 elements along
-  K, ``[.., N, K/32]``) keeps its bits as ``float8_e8m0fnu`` and is
-  rearranged into the SM100 interleaved layout the block-scaled matmuls
-  read, the contract of ``MXFP8Tensor``. FP8 data passes through, routed
+  K, ``[.., N, K/32]``) keeps its bits and layout as ``float8_e8m0fnu``, the
+  contract of ``MXFP8Tensor``; the block-scaled matmuls interleave them for
+  the kernel. FP8 data passes through, routed
   experts included: ``gate_up_proj [E, 2I, H]`` (gate rows then up rows) and
   ``down_proj [E, H, I]`` are already the ``[E, N, K]`` layout the grouped
   matmul takes.
@@ -49,22 +49,16 @@ from max.pipelines.weights._fp8 import fp8_e4m3fn_to_float32
 from transformers.configuration_utils import PretrainedConfig
 
 _MXFP8_BLOCK = 32
-# SM100 scale granules: 128 rows by 4 columns, each a [32, 4, 4] atom.
-_SF_GRANULE_ROWS = 128
-_SF_ATOM_ROWS = 32
-_SF_ATOM_COLS = 4
 _PREFIX = "language_model."
 _DRAFT_PREFIX = "draft."
 
 _LAYER = re.compile(r"^model\.layers\.(\d+)\.(.+)$")
 _MTP_LAYER = re.compile(r"^model\.mtp_layers\.0\.(.+)$")
 
-# MLA projections stored as raw MXFP8 tensors on the attention module.
-_RAW_MXFP8 = r"self_attn\.(?:q_a_proj|q_b_proj|kv_a_proj_with_mqa)"
-# Projections behind an ``MXFP8Linear``.
-_LINEAR_MXFP8 = (
-    r"(?:self_attn\.o_proj|self_attn\.indexer\.(?:wq_b|wk)"
-    r"|mlp\.(?:shared_experts\.)?(?:gate_proj|up_proj|down_proj))"
+_MXFP8 = (
+    r"self_attn\.(?:q_a_proj|q_b_proj|kv_a_proj_with_mqa|o_proj"
+    r"|indexer\.(?:wq_b|wk))"
+    r"|mlp\.(?:shared_experts\.)?(?:gate_proj|up_proj|down_proj)"
 )
 
 _Rule = tuple[re.Pattern[str], str, bool]
@@ -99,17 +93,19 @@ _BLOCK_RULES = _rules(
         "self_attn.kv_a_proj_layernorm",
         False,
     ),
-    (rf"({_RAW_MXFP8})\.weight", r"\1.data", False),
-    (rf"({_RAW_MXFP8})\.weight_scale", r"\1.weight_scale", True),
-    (rf"({_LINEAR_MXFP8})\.weight", r"\1.weight.data", False),
-    (rf"({_LINEAR_MXFP8})\.weight_scale", r"\1.weight.weight_scale", True),
+    (rf"({_MXFP8})\.weight", r"\1.weight", False),
+    (rf"({_MXFP8})\.weight_scale", r"\1.weight_scale", True),
     (r"mlp\.gate\.weight", "mlp.gate.gate_score.weight", False),
     (
         r"mlp\.gate\.e_score_correction_bias",
         r"mlp.gate.e_score_correction_bias",
         False,
     ),
-    (r"mlp\.experts\.(gate_up_proj|down_proj)", r"mlp.experts.\1.data", False),
+    (
+        r"mlp\.experts\.(gate_up_proj|down_proj)",
+        r"mlp.experts.\1.weight",
+        False,
+    ),
     (
         r"mlp\.experts\.(gate_up_proj|down_proj)_scale",
         r"mlp.experts.\1.weight_scale",
@@ -138,37 +134,6 @@ def e8m0_to_float32(raw: npt.NDArray[np.uint8]) -> npt.NDArray[np.float32]:
     return np.ldexp(np.float32(1.0), raw.astype(np.int32) - 127)
 
 
-def e8m0_scales_interleaved(
-    raw: npt.NDArray[np.uint8],
-) -> npt.NDArray[np.uint8]:
-    """Rearranges ``[.., N, C]`` block scales into the SM100 layout.
-
-    The result is ``[.., ceil(N / 128), ceil(C / 4), 32, 4, 4]``: row ``r``,
-    column ``c`` goes to ``[r // 128, c // 4, r % 32, (r % 128) // 32, c % 4]``
-    (:func:`~max.nn.moe.interleaved_block_scales_shape`), and padding is code
-    0, as ``block_scales_interleave`` writes it. A range of whole row or column
-    granules is therefore the interleave of the matching slice of ``raw``,
-    which is what tensor parallelism splits.
-    """
-    *lead, n, c = raw.shape
-    rows = -(-n // _SF_GRANULE_ROWS) * _SF_GRANULE_ROWS
-    cols = -(-c // _SF_ATOM_COLS) * _SF_ATOM_COLS
-    padded = np.zeros((*lead, rows, cols), dtype=np.uint8)
-    padded[..., :n, :c] = raw
-    tiles = padded.reshape(
-        *lead,
-        rows // _SF_GRANULE_ROWS,
-        _SF_GRANULE_ROWS // _SF_ATOM_ROWS,
-        _SF_ATOM_ROWS,
-        cols // _SF_ATOM_COLS,
-        _SF_ATOM_COLS,
-    )
-    k = len(lead)
-    return np.ascontiguousarray(
-        tiles.transpose(*range(k), k, k + 3, k + 2, k + 1, k + 4)
-    )
-
-
 def _bits(weight: WeightData) -> np.ndarray:
     """The tensor's raw bits as an unsigned integer array of its shape."""
     buffer = weight.to_buffer()
@@ -184,10 +149,8 @@ def _from_bits(
     return WeightData(buffer, name, dtype, Shape(buffer.shape))
 
 
-def _interleaved_scale(scale: WeightData, name: str) -> WeightData:
-    return _from_bits(
-        e8m0_scales_interleaved(_bits(scale)), DType.float8_e8m0fnu, name
-    )
+def _e8m0_scale(scale: WeightData, name: str) -> WeightData:
+    return _from_bits(_bits(scale), DType.float8_e8m0fnu, name)
 
 
 def _dequantize_kv_b(
@@ -259,7 +222,7 @@ class _BlockConverter:
             groups = self.config.index_n_heads if indexer[1] == "wq_b" else 1
             data = _rope_first(data, groups, self.config)
         if is_scale:
-            return {name: _interleaved_scale(data, name)}
+            return {name: _e8m0_scale(data, name)}
         return {name: dataclasses.replace(data, name=name)}
 
     def check_done(self) -> None:

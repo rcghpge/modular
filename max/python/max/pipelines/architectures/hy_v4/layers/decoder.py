@@ -56,11 +56,15 @@ class HYV4DecoderLayer(Module[..., tuple[Tensor, Tensor]]):
         self.post_attention_layernorm = RMSNorm(
             config.hidden_size, config.rms_norm_eps
         )
-        self.self_attn = HYV4Attention(config, layer_idx, quantized=True)
+        self.self_attn = HYV4Attention(config, layer_idx)
         self.mlp: Module[[Tensor], Tensor] = (
             HYV4MoE(config)
             if config.mlp_layer_types[layer_idx] == "sparse"
-            else HYV4MLP(config.hidden_size, config.intermediate_size)
+            else HYV4MLP(
+                config.hidden_size,
+                config.intermediate_size,
+                config.quant_config,
+            )
         )
         if ihc:
             self.hc_attn = HYV4HyperConnection(config)

@@ -23,6 +23,7 @@ from max.experimental.tensor import default_device
 from max.pipelines.context import TextContext
 from max.pipelines.lib import ModuleV3PipelineModelWithKVCache, PipelineConfig
 from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
+from max.pipelines.weights.quant import parse_quant_config
 from typing_extensions import override
 
 from .batch_processor import HYV4BatchProcessor
@@ -59,7 +60,6 @@ class HYV4Model(
 
     @override
     def _create_model_config(self, state_dict: dict[str, Any]) -> HYV4Config:
-        del state_dict
         check_parallelism(self.pipeline_config, len(self.devices))
         config = HYV4Config.initialize(
             self.pipeline_config, max_seq_len=self.max_seq_len
@@ -67,6 +67,9 @@ class HYV4Model(
         config.max_batch_context_length = (
             self.planned_max_batch_total_tokens
             or config.max_batch_context_length
+        )
+        config.quant_config = parse_quant_config(
+            self.huggingface_config, state_dict, self.dtype
         )
         return config
 

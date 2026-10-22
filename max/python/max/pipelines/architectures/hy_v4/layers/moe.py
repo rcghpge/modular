@@ -15,29 +15,36 @@ an unclamped shared expert."""
 
 from __future__ import annotations
 
-import math
 from typing import TypeVar
 
 from max import tree
+from max.driver import Device
 from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn import Module
+from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.functional_kernels import (
     moe_create_indices,
     moe_finalize,
     moe_router_group_limited,
 )
 from max.experimental.nn.common_layers.mesh_axis import TP
-from max.experimental.sharding import DeviceMapping, Partial
+from max.experimental.nn.common_layers.quant_tensor import MXFP8Tensor
+from max.experimental.sharding import (
+    DeviceMapping,
+    DeviceMesh,
+    NamedMapping,
+    Partial,
+)
 from max.experimental.sharding.action import PerShard
 from max.experimental.tensor import Tensor
 from max.pipelines.architectures.deepseekV3_modulev3.layers.moe_gate import (
     DeepseekV3TopKRouter,
 )
+from typing_extensions import Self
 
 from ..model_config import HYV4Config
 from .mlp import HYV4MLP
-from .mxfp8 import MXFP8Tensor, grouped_matmul
 
 _M = TypeVar("_M", bound=Module[..., Tensor])
 
@@ -90,13 +97,19 @@ class HYV4Experts(Module[..., Tensor]):
         swiglu_limit: float,
     ) -> None:
         super().__init__()
-        self.moe_dim = moe_dim
         self.swiglu_limit = swiglu_limit
         # Gate rows [0, moe_dim) then up rows, as the checkpoint stores them.
         self.gate_up_proj = MXFP8Tensor.zeros(
             (num_experts, 2 * moe_dim, hidden_dim)
         )
         self.down_proj = MXFP8Tensor.zeros((num_experts, hidden_dim, moe_dim))
+
+    def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
+        """Moves the expert weights to ``target`` in place."""
+        super().to(target)
+        self.gate_up_proj = self.gate_up_proj.to(target)
+        self.down_proj = self.down_proj.to(target)
+        return self
 
     def forward(
         self,
@@ -105,25 +118,27 @@ class HYV4Experts(Module[..., Tensor]):
         expert_ids: Tensor,
         scales_offset: Tensor,
     ) -> Tensor:
-        gate_up = grouped_matmul(
-            x,
-            self.gate_up_proj,
+        # The block-scaled kernels pick their tile regime from the row count.
+        rows = F.shape_to_tensor(x.shape)[0].cast(DType.uint32)
+
+        def matmul(tokens: Tensor, weight: MXFP8Tensor) -> Tensor:
+            return quant_ops.grouped_matmul(
+                tokens,
+                weight,
+                expert_start_indices,
+                expert_ids,
+                None,
+                scales_offset=scales_offset,
+                estimated_total_m=rows,
+            )
+
+        hidden = quant_ops.grouped_silu(
+            matmul(x, self.gate_up_proj),
             expert_start_indices,
-            expert_ids,
-            scales_offset,
+            swiglu_limit=self.swiglu_limit,
         )
-        gate, up = F.split(gate_up, [self.moe_dim, self.moe_dim], axis=1)
-        limit = self.swiglu_limit
-        hidden = F.silu(F.clamp(gate, -math.inf, limit)) * F.clamp(
-            up, -limit, limit
-        )
-        return grouped_matmul(
-            hidden,
-            self.down_proj,
-            expert_start_indices,
-            expert_ids,
-            scales_offset,
-        )
+        assert isinstance(hidden, Tensor)
+        return matmul(hidden, self.down_proj)
 
 
 class HYV4MoE(Module[[Tensor], Tensor]):
@@ -157,6 +172,7 @@ class HYV4MoE(Module[[Tensor], Tensor]):
         self.shared_experts = HYV4MLP(
             config.hidden_size,
             config.moe_intermediate_size * config.n_shared_experts,
+            config.quant_config,
         )
 
     def shard_experts(self) -> None:
@@ -164,8 +180,10 @@ class HYV4MoE(Module[[Tensor], Tensor]):
 
         The router and the shared expert stay replicated.
         """
-        for weight in (self.experts.gate_up_proj, self.experts.down_proj):
-            weight.shard((TP, None, None))
+        experts = self.experts
+        spec = NamedMapping(experts.gate_up_proj.mesh, (TP, None, None))
+        experts.gate_up_proj = experts.gate_up_proj.to(spec)
+        experts.down_proj = experts.down_proj.to(spec)
 
     def routed(self, x: Tensor) -> Tensor:
         """The weighted sum of the routed experts, without the shared one."""
@@ -213,7 +231,7 @@ class HYV4MoE(Module[[Tensor], Tensor]):
         ids = F.reshape(topk_idx, [-1])
         if first_expert is not None:
             ids = ids - first_expert
-        num_local = int(experts.gate_up_proj.data.shape[0])
+        num_local = int(experts.gate_up_proj.weight.shape[0])
         order, start, restore, expert_ids, _, scales_offset = (
             moe_create_indices(ids, num_local, needs_scales_offset=True)
         )

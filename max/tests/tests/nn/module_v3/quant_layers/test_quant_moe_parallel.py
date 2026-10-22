@@ -36,6 +36,7 @@ from max.experimental.nn.common_layers.quant_moe import (
 )
 from max.experimental.nn.common_layers.quant_tensor import (
     FP8BlockTensor,
+    MXFP8Tensor,
     NVFP4Tensor,
 )
 from max.experimental.sharding import (
@@ -855,3 +856,135 @@ def test_glm_fp8_ep_router_and_shared_expert_in_float32(
         )
     assert isinstance(layer.gate, DeepseekV3_2TopKRouter)
     assert isinstance(layer.shared_experts, DeepseekV3_2MLP)
+
+
+# --------------------------------------------------------------------------- #
+# MXFP8
+# --------------------------------------------------------------------------- #
+
+
+def _mxfp8_tp_moe(
+    devices: list[Device], quant_config: QuantConfig
+) -> TensorParallelMoE:
+    mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
+    with default_device(mesh):
+        return TensorParallelMoE(
+            hidden_dim=_HIDDEN_DIM,
+            num_experts=_NUM_EXPERTS,
+            num_experts_per_token=_NUM_EXPERTS_PER_TOKEN,
+            moe_dim=_MOE_DIM,
+            quant_config=quant_config,
+        )
+
+
+def test_tensor_parallel_moe_mxfp8_weights(
+    mock_accelerator: MagicMock, mxfp8_quant_config: QuantConfig
+) -> None:
+    """MXFP8 TP co-shards the data and the 32-element block scales."""
+    with F.lazy():
+        devices = [mock_accelerator(0), mock_accelerator(1)]
+        n = len(devices)
+        layer = _mxfp8_tp_moe(devices, mxfp8_quant_config)
+
+        gate_up = layer.gate_up_proj
+        assert len(gate_up) == n
+        assert isinstance(gate_up[0], MXFP8Tensor)
+        assert list(gate_up[0].weight.shape) == [
+            _NUM_EXPERTS,
+            2 * _MOE_DIM // n,
+            _HIDDEN_DIM,
+        ]
+        assert list(gate_up[0].weight_scale.shape) == [
+            _NUM_EXPERTS,
+            2 * _MOE_DIM // n,
+            _HIDDEN_DIM // 32,
+        ]
+
+        down = layer.down_proj
+        assert len(down) == n
+        assert isinstance(down[0], MXFP8Tensor)
+        assert list(down[0].weight.shape) == [
+            _NUM_EXPERTS,
+            _HIDDEN_DIM,
+            _MOE_DIM // n,
+        ]
+        assert list(down[0].weight_scale.shape) == [
+            _NUM_EXPERTS,
+            _HIDDEN_DIM,
+            _MOE_DIM // 32 // n,
+        ]
+
+
+def test_tensor_parallel_moe_mxfp8_forward(
+    mock_accelerator: MagicMock,
+    mxfp8_quant_config: QuantConfig,
+    sm100_arch: None,
+) -> None:
+    """MXFP8 TP forward returns a Partial sum for the caller to all-reduce."""
+    with F.lazy():
+        devices = [mock_accelerator(0), mock_accelerator(1)]
+        layer = _mxfp8_tp_moe(devices, mxfp8_quant_config)
+        mesh = layer.mesh
+        x = Tensor.zeros(
+            [_SEQ_LEN, _HIDDEN_DIM],
+            dtype=DType.bfloat16,
+            device=DeviceMapping(mesh, (Replicated(),)),
+        )
+        out = layer(x)
+
+    assert list(out.shape) == [_SEQ_LEN, _HIDDEN_DIM]
+    assert out.mapping.placements == (Partial(),)
+
+
+@pytest.mark.parametrize(
+    ("quant_config_name", "moe_dim"),
+    [
+        # 176 columns per device: 5.5 MXFP8 blocks of 32.
+        ("mxfp8_quant_config", 1408),
+        # 24 columns per device: 1.5 NVFP4 blocks of 16.
+        ("nvfp4_quant_config", 192),
+    ],
+)
+def test_tensor_parallel_moe_rejects_split_scale_block(
+    mock_accelerator: MagicMock,
+    request: pytest.FixtureRequest,
+    quant_config_name: str,
+    moe_dim: int,
+) -> None:
+    """A TP slice of moe_dim that cuts a scale block would misalign the scales."""
+    quant_config = request.getfixturevalue(quant_config_name)
+    with F.lazy():
+        devices = [mock_accelerator(i) for i in range(8)]
+        mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
+        with (
+            default_device(mesh),
+            pytest.raises(ValueError, match="multiple of the weight scale"),
+        ):
+            TensorParallelMoE(
+                hidden_dim=_HIDDEN_DIM,
+                num_experts=_NUM_EXPERTS,
+                num_experts_per_token=_NUM_EXPERTS_PER_TOKEN,
+                moe_dim=moe_dim,
+                quant_config=quant_config,
+            )
+
+
+def test_expert_parallel_moe_rejects_mxfp8(
+    mock_accelerator: MagicMock, mxfp8_quant_config: QuantConfig
+) -> None:
+    """The EP dispatch has no MXFP8 path, so construction says so."""
+    with F.lazy():
+        devices = [mock_accelerator(0), mock_accelerator(1)]
+        mesh = DeviceMesh(tuple(devices), (len(devices),), (TP,))
+        ep_batch_manager, _ = _build_ep_batch_manager(
+            _ep_config(DType.bfloat16, len(devices)), devices
+        )
+        with default_device(mesh), pytest.raises(ValueError, match="MXFP8"):
+            ExpertParallelMoE(
+                hidden_dim=_HIDDEN_DIM,
+                num_experts=_NUM_EXPERTS,
+                num_experts_per_token=_NUM_EXPERTS_PER_TOKEN,
+                moe_dim=_MOE_DIM,
+                quant_config=mxfp8_quant_config,
+                ep_batch_manager=ep_batch_manager,
+            )

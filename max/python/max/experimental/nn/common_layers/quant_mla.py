@@ -43,12 +43,17 @@ from typing_extensions import Self
 
 from . import quant_ops
 from .quant_linear import QuantizedLinear
-from .quant_tensor import FP8BlockTensor, NVFP4Tensor, QuantAwareTensor
+from .quant_tensor import (
+    FP8BlockTensor,
+    MXFP8Tensor,
+    NVFP4Tensor,
+    QuantAwareTensor,
+)
 
 
 def _data(weight: QuantAwareTensor) -> Tensor:
     """The packed ``weight`` of a quantized weight, else the weight itself."""
-    if isinstance(weight, (FP8BlockTensor, NVFP4Tensor)):
+    if isinstance(weight, (FP8BlockTensor, NVFP4Tensor, MXFP8Tensor)):
         return weight.weight
     assert isinstance(weight, Tensor)
     return weight
@@ -58,7 +63,7 @@ def _scale(weight: QuantAwareTensor) -> Tensor | None:
     """Per-block weight scales, or ``None`` for bf16 weights."""
     if isinstance(weight, FP8BlockTensor):
         return weight.weight_scale_inv
-    if isinstance(weight, NVFP4Tensor):
+    if isinstance(weight, (NVFP4Tensor, MXFP8Tensor)):
         return weight.weight_scale
     return None
 
