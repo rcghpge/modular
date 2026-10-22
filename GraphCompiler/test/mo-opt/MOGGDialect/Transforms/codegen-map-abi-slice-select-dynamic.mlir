@@ -20,9 +20,9 @@
 // CHECK:      var [[OUT_COORD:var__+[0-9]+]] = layout.Coord(Scalar[DType.int]([[H]]), layout.Idx[8])
 // CHECK:      var [[IN_SHAPE:var__+[0-9]+]] = std.utils.coord.coord_to_index_list([[IN_COORD]])
 // CHECK-NEXT: var [[OUT_SHAPE:var__+[0-9]+]] = std.utils.coord.coord_to_index_list([[OUT_COORD]])
-// CHECK-NEXT: var {{var__+[0-9]+}} = EpilogueStoreFunctor_{{[0-9]+}}[{{.*}}]({{.*}}, [[IN_SHAPE]], [[OUT_SHAPE]])
+// CHECK-NEXT: var {{var__+[0-9]+}} = OutputStoreFunctor_{{[0-9]+}}[{{.*}}]({{.*}}, [[IN_SHAPE]], [[OUT_SHAPE]])
 
-// CHECK:      struct EpilogueStoreFunctor_{{[0-9]+}}[spec__0: {{.*}}, spec__1: {{.*}}]
+// CHECK:      struct OutputStoreFunctor_{{[0-9]+}}[spec__0: {{.*}}, spec__1: {{.*}}]
 // CHECK:      var [[IN_FIELD:var__[0-9]+]]: std.utils.IndexList[2]
 // CHECK-NEXT: var [[OUT_FIELD:var__[0-9]+]]: std.utils.IndexList[2]
 // CHECK:      comptime [[STARTS:param___[0-9]+]] = layout.IntTuple(1, 0)

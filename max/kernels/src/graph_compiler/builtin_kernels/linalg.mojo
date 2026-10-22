@@ -31,7 +31,7 @@ import extensibility
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
 
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from max.gpu.primitives.grid_controls import PDLLevel
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_gpu, _is_sm10x_gpu
@@ -105,8 +105,8 @@ from nn._ragged_utils import merge_ragged_tensors
 from nn.gemv_partial_norm import gemv_and_partial_norm
 from extensibility import InputTensor, OutputTensor
 from extensibility import Tensor, TileTensorable
+from extensibility import Fused, Input, Output, Storable, StoreAccess
 from extensibility import _FusedComputeOutputTensor
-from extensibility import _FusedOutputTensor as FusedOutputTensor
 from extensibility import (
     _FusedInputTensor as FusedInputTensor,
 )
@@ -116,6 +116,7 @@ comptime logger = Logger()
 
 from max.algorithm.functional import elementwise
 from std.utils import IndexList
+from std.utils.numerics import get_accum_type
 
 # ===-----------------------------------------------------------------------===#
 from .kernels import *
@@ -223,25 +224,42 @@ def composite_matmul_fused_partial_rms_norm_shape(
 
 @extensibility.register("mo.matmul", type="cpu")
 struct MatmulCPU:
-    """Registers the `mo.matmul` graph op for CPU devices."""
+    """Registers the `mo.matmul` graph op for CPU devices.
+
+    Two `execute` overloads under one registration: the graph compiler calls
+    the fused one when the output has a fused epilogue and the plain one when
+    it has none. The CPU kernel accumulates in its output buffer, so the fused
+    form lends it a buffer of its own, or only the output's shape when a
+    low-precision output accumulates in the kernel's f32 scratch, and the
+    epilogue stores each finished tile into the fused output, while the plain
+    form has the kernel write the output directly. The pair is
+    grandfathered on the graph compiler's allow list; new kernels declare one
+    `execute` with a `StoreAccess` output.
+    """
 
     @staticmethod
     def execute[
         transpose_b: Bool,
         packed_b: Bool,
-        has_epilogue_fusion: Bool,
         target: StaticString,
         _trace_name: StaticString,
     ](
-        c: FusedOutputTensor[rank=2, ...],
-        a: InputTensor[rank=2, ...],
-        b: InputTensor[rank=2, ...],
+        c: Some[Output & Fused & StoreAccess],
+        a: Some[Input & TileTensorable],
+        b: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime assert not (packed_b and transpose_b), (
             "transpose_b and b_packed cannot both be true because"
             " pre-packing transposes B"
         )
+        comptime assert conforms_to(type_of(c), Storable)
+        comptime assert type_of(c).rank == 2
+        comptime dtype = type_of(c).dtype
+
+        # The epilogue closure copies its capture into the kernel's loops, so
+        # refine the output to the register-passable value it arrives as.
+        comptime assert conforms_to(type_of(c), TrivialRegisterPassable)
 
         @inline(.always)
         def epilogue_fn[
@@ -250,38 +268,84 @@ struct MatmulCPU:
             comptime assert (
                 coords.rank == 2
             ), "the matmul epilogue contract is rank 2"
-            c._lambda_store[width=_width, element_alignment=alignment](
-                coords,
-                rebind[SIMD[c.dtype, _width]](val),
+            c.store[width=Int(_width), element_alignment=alignment](
+                coords, rebind[SIMD[dtype, Int(_width)]](val)
             )
 
-        comptime if has_epilogue_fusion:
-            matmul[
-                transpose_a=False,
-                transpose_b=transpose_b,
-                b_packed=packed_b,
-                _trace_description=_trace_name,
-                target=target,
-            ](
-                c.to_tile_tensor[.int64](),
-                a.to_tile_tensor[.int64](),
-                b.to_tile_tensor[.int64](),
-                epilogue_fn,
-                ctx,
+        # The CPU matmul accumulates its result in `c` and then hands each
+        # finished tile to `epilogue_fn`, which stores it into the fused
+        # output. The fused output has no buffer the kernel may use as `c`
+        # (writing through it would bypass the epilogue), so `c` is supplied
+        # here, depending on the output dtype:
+        #
+        # - f16/bf16/f8: the kernel already accumulates in its own f32 scratch
+        #   (KERN-2790 in `_matmul_cpu_dispatch`) and reads `c` only for its
+        #   shape, so `c` is a dangling pointer with the output's layout and
+        #   nothing is allocated. The condition below must stay in step with
+        #   the kernel's: if the kernel ever writes `c` for these dtypes, the
+        #   dangling pointer is undefined behavior.
+        # - Every other dtype accumulates in `c`, so `c` is a buffer of the
+        #   output's size from `ctx`, the allocator the graph's own output
+        #   buffer came from. Unlike that buffer, it is allocated on every
+        #   call and sits outside the graph's memory plan.
+        #
+        # TODO(GEX-4431): let kernels declare scratch to the graph so this
+        # buffer is memory planned instead of allocated on every call.
+        var c_layout = row_major(c.shape().tuple())
+        var c_ptr = MutPointer[
+            Scalar[dtype], MutUntrackedOrigin
+        ].unsafe_dangling()
+        var c_buf = Optional[DeviceBuffer[dtype]]()
+        comptime if get_accum_type[dtype]() == dtype:
+            c_buf = ctx.enqueue_create_buffer[dtype](c_layout.product())
+            c_ptr = (
+                c_buf.value()
+                .unsafe_ptr()
+                .unsafe_origin_cast[MutUntrackedOrigin]()
             )
-        else:
-            matmul[
-                transpose_a=False,
-                transpose_b=transpose_b,
-                b_packed=packed_b,
-                _trace_description=_trace_name,
-                target=target,
-            ](
-                c.to_tile_tensor[.int64](),
-                a.to_tile_tensor[.int64](),
-                b.to_tile_tensor[.int64](),
-                ctx,
-            )
+        matmul[
+            transpose_a=False,
+            transpose_b=transpose_b,
+            b_packed=packed_b,
+            _trace_description=_trace_name,
+            target=target,
+        ](
+            TileTensor(c_ptr, c_layout),
+            a.to_tile_tensor(),
+            b.to_tile_tensor(),
+            epilogue_fn,
+            ctx,
+        )
+        _ = c_buf^
+
+    @staticmethod
+    def execute[
+        transpose_b: Bool,
+        packed_b: Bool,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        c: Some[Output & TileTensorable],
+        a: Some[Input & TileTensorable],
+        b: Some[Input & TileTensorable],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert not (packed_b and transpose_b), (
+            "transpose_b and b_packed cannot both be true because"
+            " pre-packing transposes B"
+        )
+        matmul[
+            transpose_a=False,
+            transpose_b=transpose_b,
+            b_packed=packed_b,
+            _trace_description=_trace_name,
+            target=target,
+        ](
+            c.to_tile_tensor(),
+            a.to_tile_tensor(),
+            b.to_tile_tensor(),
+            ctx,
+        )
 
 
 @extensibility.register("mo.matmul", type="gpu")
