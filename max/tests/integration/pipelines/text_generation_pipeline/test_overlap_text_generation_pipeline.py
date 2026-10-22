@@ -41,10 +41,12 @@ from max.pipelines.lib.pipeline_variants.overlap_text_generation import (
     AsyncBatch,
     _host_mirror_realized_drafts,
     _should_verify_drafts,
+    in_flight_draft_placeholders,
 )
 from max.pipelines.lib.pipeline_variants.utils import (
     StructuredOutputHelper,
     _count_token_subsequence,
+    update_spec_decode_context_and_prepare_responses,
 )
 from max.pipelines.lib.registry import get_pipeline_for_task
 from max.pipelines.modeling.types import (
@@ -2791,3 +2793,52 @@ class TestHostMirrorRealizedDrafts:
         assert np.array_equal(
             out, np.array([[80, 81, 82], [4, 5, 6], [70, 71, 72]])
         )
+
+
+def test_intermediate_chunk_in_mixed_verify_step_counts_no_drafts() -> None:
+    """An intermediate chunk in a mixed verify step counts no drafts.
+
+    The next step's cache length is ``processed_length`` plus the drafts the
+    launched step counted as cached, and only a row that sampled a token is
+    rolled back to its accepted count. The chunk row samples nothing, so it
+    must count no drafts; the decode row counts every verified draft until
+    its step syncs.
+    """
+    k = 3
+    chunked = TextContext(
+        request_id=RequestID("chunked"),
+        max_length=1000,
+        tokens=TokenBuffer(np.arange(100, 110, dtype=np.int64)),
+    )
+    chunked.tokens.chunk(4)
+    decode = TextContext(
+        request_id=RequestID("decode"),
+        max_length=1000,
+        tokens=TokenBuffer(np.array([5, 6, 7], dtype=np.int64)),
+    )
+    decode.update(8)
+    batch = [chunked, decode]
+
+    for ctx in batch:
+        ctx.update_with_future_token()
+        ctx.spec_decoding_state.maybe_accepted_draft_tokens = (
+            in_flight_draft_placeholders(ctx, k)
+        )
+    assert chunked.tokens.generated_length == 0
+    assert len(decode.spec_decoding_state.maybe_accepted_draft_tokens) == k
+
+    update_spec_decode_context_and_prepare_responses(
+        draft_tokens=np.array(
+            [[MAGIC_DRAFT_TOKEN_ID] * k, [11, 12, 13]], dtype=np.int32
+        ),
+        next_draft_tokens=np.zeros((2, k), dtype=np.int32),
+        num_accepted_draft_tokens=np.array([0, 1], dtype=np.int32),
+        next_tokens=np.array([50, 60], dtype=np.int32),
+        context_batch=batch,
+        max_seq_len=1000,
+    )
+
+    cache_length = chunked.tokens.processed_length + len(
+        chunked.spec_decoding_state.maybe_accepted_draft_tokens
+    )
+    assert cache_length == 4

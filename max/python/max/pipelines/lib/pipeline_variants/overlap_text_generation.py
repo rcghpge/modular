@@ -385,6 +385,29 @@ def _host_mirror_realized_drafts(
     return realized
 
 
+def in_flight_draft_placeholders(
+    ctx: TextGenerationContextType, num_draft_tokens_to_verify: int
+) -> list[int]:
+    """The drafts a launched step counts as cached for a row until it syncs.
+
+    The cache length of a row's next step assumes every draft this step
+    verifies was accepted, and the next step rolls that back to the accepted
+    count once the row is realized. Only a row that samples a token this step
+    is realized. An intermediate prefill chunk in a mixed prefill and decode
+    step samples nothing and commits only its chunk, so it counts no drafts.
+
+    Args:
+        ctx: The row's context, after its future token was appended.
+        num_draft_tokens_to_verify: How many drafts this step verifies.
+
+    Returns:
+        One placeholder per counted draft.
+    """
+    if not ctx.tokens.generated_length:
+        return []
+    return [_OOB_IDX] * num_draft_tokens_to_verify
+
+
 def _is_constrained(ctx: TextGenerationContextType) -> bool:
     """Whether a request decodes under a grammar or JSON schema."""
     return (
@@ -4276,9 +4299,11 @@ class OverlapTextGenerationPipeline(
                     num_draft_tokens_to_verify = (
                         curr_batch.spec_decode.num_draft_tokens_to_verify
                     )
-                    context.spec_decoding_state.maybe_accepted_draft_tokens = [
-                        _OOB_IDX
-                    ] * num_draft_tokens_to_verify
+                    context.spec_decoding_state.maybe_accepted_draft_tokens = (
+                        in_flight_draft_placeholders(
+                            context, num_draft_tokens_to_verify
+                        )
+                    )
                     if (
                         context.tokens.generated_length
                         and not self._disable_overlap
