@@ -3166,6 +3166,33 @@ struct BuildGraphCapable:
         pass
 
 
+# Fused-output sibling of `imposter_build_graph_capable`: both entry points
+# declare the output `FusedOutputTensor` and take `has_epilogue_fusion`, so an
+# epilogue MAP fuses into the kernel records through `build_graph` the same
+# way it executes. Signature-only stub.
+@extensibility.register("imposter_fused_output_build_graph")
+struct FusedOutputBuildGraph:
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int, has_epilogue_fusion: Bool
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ):
+        pass
+
+    @staticmethod
+    def build_graph[
+        dtype: DType, rank: Int, has_epilogue_fusion: Bool
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        x: InputTensor[dtype=dtype, rank=rank, ...],
+        builder: DeviceGraphBuilder,
+    ):
+        pass
+
+
 # Kernel whose `build_graph` reads its variadic peers through stable address
 # slots (`StableInputVariadicTensors`) while `execute` takes the plain
 # pointer-backed pack. Mirrors the shape of the bundled collectives; the bodies

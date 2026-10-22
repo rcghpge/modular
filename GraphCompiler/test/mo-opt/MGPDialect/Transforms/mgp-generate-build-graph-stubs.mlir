@@ -475,3 +475,42 @@ mgp.model @dg_collective device_graph : mof devices [#M.device_ref<"gpu", 0>, #M
   }
   mef.output %ch0 : !mef.chain
 }
+
+// -----
+
+// A fused dispatch records through `build_graph` with the fusion flags copied
+// over, so emission sets the kernel's `has_epilogue_fusion` the way it does
+// for the `execute` call.
+
+#kf = #mogg.kernel_function<!lit.generator<() -> i1>, [], [], []>
+
+mogg.kernel.decl @k registration = "test.k" device_info = <"", "", "", ""> execute = #kf build_graph = #kf struct_params = [] is_user_defined = false
+
+// CHECK: mogg.func @stub_1_build_graph
+// CHECK-NEXT: mogg.call.build_graph["k"] inputs(%{{.*}}) outputs(%{{.*}}) builder(%{{.*}}) {{.*}}moOpName = "test.k" {{.*}}hasEpilogueFusion = true
+mogg.func @stub_1 private dispatch(deferred) (%in: !mogg.tensor, %out: !mogg.tensor, %ctx: !mogg.context) attributes {abi = #mogg.abi<MOGG>, constantResources = [], device = "gpu", fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"test.k">>} {
+  mogg.call.opaque @k inputs(%in : !mogg.tensor) outputs(%out : !mogg.tensor) context(%ctx : !mogg.context) hasEpilogueFusion = true
+  mogg.output
+}
+
+// CHECK-LABEL: mgp.model @dg_fused
+// CHECK: mogg.call @stub_1_build_graph
+mgp.model @dg_fused device_graph : mof devices [#M.device_ref<"gpu", 0>] init (%weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">, !mgp.device_context<<"gpu", 0>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">, %gpu: !mgp.device_context<<"gpu", 0>>) -> (!mef.chain) {
+  mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    %node = mgp.device_graph.dependencies builder(%b) dependencies() {
+    ^bb0(%dep_builder: !mgp.device_graph.builder):
+      %ctx_cast = builtin.unrealized_conversion_cast %dep_builder : !mgp.device_graph.builder to !mgp.device_context<<"gpu", 0>>
+      %ctx_h = mogg.rebind %ctx_cast : !mgp.device_context<<"gpu", 0>> to !mogg.context
+      %in = "test.tensor"() : () -> !mogg.tensor
+      %out = "test.tensor"() : () -> !mogg.tensor
+      mogg.call @stub_1 %in, %out, %ctx_h : !mogg.tensor, !mogg.tensor, !mogg.context
+      mgp.device_graph.dependencies.yield
+    }
+    mgp.device_graph.collective.yield
+  }
+  mef.output %ch0 : !mef.chain
+}

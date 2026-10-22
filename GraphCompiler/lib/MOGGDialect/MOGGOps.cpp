@@ -1134,8 +1134,13 @@ LogicalResult CallBuildGraphOp::emitMojo(EmitMojoState &state) {
   // The launch argument is the device-graph builder (not a context).
   kernelOperands.push_back(state.getMojoValueFor(getGraphBuilder()));
 
-  // Infer the kernel parameters against the `build_graph` function.
+  // Infer the kernel parameters against the `build_graph` function. The
+  // fusion flag was copied from the recorded dispatch, so they answer the
+  // fusion parameters the way `CallOpaqueOp::emitMojo` does.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
+    if (getHasEpilogueFusion() &&
+        paramName == MOGG::kMoggHasEpilogueFusionParameterName)
+      return MojoValue(true);
     return state.inferDefaultKernelParamValue(*this, paramName);
   };
   auto maybeParams = inferKernelParameters(

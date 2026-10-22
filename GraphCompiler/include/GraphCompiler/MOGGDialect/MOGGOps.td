@@ -248,6 +248,11 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
     `mgp.device_graph.dependencies` op orders nodes. Not a kernel terminator,
     and not wrapped in `mogg.with_trace`.
 
+    `$hasEpilogueFusion` mirrors `mogg.call.opaque`: it is copied from the
+    dispatch this call records and set the kernel's `has_epilogue_fusion`
+    parameter, so a fused body reaches `build_graph` the same way it reaches
+    `execute`.
+
     Example:
     ```mlir
     mogg.call.build_graph["linalg_kernels.__init__.Matmul"]
@@ -269,7 +274,8 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
     Variadic<AnyTypeOf<[MOGG_Tensor, MOGG_Buffer, MOGG_Scalar, MOGG_Tuple,
                         MO_Opaque]>>:$outputs,
     MGP_DeviceGraphBuilderType:$graphBuilder,
-    OptionalAttr<DictionaryAttr>:$kernel_param
+    OptionalAttr<DictionaryAttr>:$kernel_param,
+    DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion
   );
 
   let assemblyFormat = [{
@@ -278,7 +284,9 @@ def MOGG_CallBuildGraphOp : MOGG_Op<"call.build_graph", [
     (`outputs` `(` $outputs^ `:` qualified(type($outputs)) `)`)?
     `builder` `(` $graphBuilder `)`
     (`isThrows` $isThrows^)?
-    `moOpName` `=` $moOpName attr-dict
+    `moOpName` `=` $moOpName
+    (`hasEpilogueFusion` `=` $hasEpilogueFusion^)?
+    attr-dict
   }];
   let hasVerifier = 1;
 }

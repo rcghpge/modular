@@ -140,20 +140,13 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
     decl = symtab.lookup<KernelDeclOp>(opaque.getCallee());
   bool useBuildGraph = decl && decl.getBuildGraph().has_value();
 
-  // `mogg.call.build_graph` has no fusion flags and its emission never asks,
-  // so recording a fused kernel through it would drop the fusion silently.
-  if (useBuildGraph && opaque && opaque.getHasEpilogueFusion()) {
-    return original.emitError(
-        "device-graph recording stub generation: cannot record a fused "
-        "`mogg.call.opaque` through `mogg.call.build_graph`");
-  }
-
   // Snapshot before retyping the launch arg: `getKernelInputs()` drops the
   // context by its `!mogg.context` type.
   SmallVector<Value> kernelInputs, outputs;
   StringAttr kernelSymName, moOpName;
   UnitAttr isThrows;
   DictionaryAttr kernelParams;
+  bool hasEpilogueFusion = false;
   if (useBuildGraph) {
     // `useBuildGraph` implies a decl, which only an opaque resolves.
     assert(opaque && "a build_graph producer is an opaque");
@@ -169,6 +162,7 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
     auto buildGraphSignature = decl.getBuildGraph()->getSignature();
     isThrows = buildGraphSignature.isThrows() ? UnitAttr::get(ctx) : UnitAttr();
     kernelParams = opaque.getKernelParamAttr();
+    hasEpilogueFusion = opaque.getHasEpilogueFusion();
   }
   if (useBuildGraph)
     stampBuildGraphVariadicAbi(decl, kernelInputs, outputs);
@@ -190,7 +184,9 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
                              /*inputs=*/kernelInputs,
                              /*outputs=*/outputs,
                              /*graphBuilder=*/launchArg,
-                             /*kernel_param=*/kernelParams);
+                             /*kernel_param=*/kernelParams,
+                             /*hasEpilogueFusion=*/
+                             builder.getBoolAttr(hasEpilogueFusion));
     // Erasing a legacy `with_trace` also erases its producer; a MAP producer
     // stands alone.
     if (withTrace)
