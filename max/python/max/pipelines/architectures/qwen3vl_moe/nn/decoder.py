@@ -37,6 +37,7 @@ from max.graph import (
 from max.graph import Module as GraphModule
 from max.nn.comm.allreduce import Allreduce
 from max.nn.embedding import VocabParallelEmbedding
+from max.nn.graph_groups import MRoPEPositions, VisionMerge
 from max.nn.kv_cache import (
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
@@ -363,10 +364,10 @@ class Qwen3VLMoEDecoder(DistributedLogitsPostprocessMixin, Module):
             kv_params: The KV cache parameters.
 
         Returns:
-            The input types under ``batch``, ``row_offsets``,
-            ``image_embeddings``, ``deepstack_embeddings`` (per device within
-            each deepstack layer), ``image_token_indices``, ``position_ids``,
-            ``signals`` and ``kv``, in graph order.
+            The input types under ``batch`` (whose ``row_offsets`` are one
+            per device), ``vision`` (whose ``deepstack_embeddings`` are per
+            device within each deepstack layer), ``mrope``, ``signals`` and
+            ``kv``, in graph order.
         """
 
         def per_device(
@@ -382,19 +383,28 @@ class Qwen3VLMoEDecoder(DistributedLogitsPostprocessMixin, Module):
         embeddings_shape: list[int | str] = ["vision_merged_seq_len", self.dim]
         return OrderedDict(
             batch=ragged_batch_inputs(
-                self.devices[0], ("tokens", "return_n_logits")
+                self.devices[0],
+                ("tokens", "return_n_logits", "row_offsets"),
+                row_offsets_devices=self.devices,
             ),
-            row_offsets=per_device(DType.uint32, ["input_row_offsets_len"]),
-            image_embeddings=per_device(
-                self._image_embedding_dtype, embeddings_shape
+            vision=VisionMerge(
+                image_embeddings=per_device(
+                    self._image_embedding_dtype, embeddings_shape
+                ),
+                deepstack_embeddings=tuple(
+                    per_device(self._image_embedding_dtype, embeddings_shape)
+                    for _ in range(self._num_deepstack_layers)
+                ),
+                image_token_indices=per_device(
+                    DType.int32, ["total_image_tokens"]
+                ),
             ),
-            deepstack_embeddings=tuple(
-                per_device(self._image_embedding_dtype, embeddings_shape)
-                for _ in range(self._num_deepstack_layers)
-            ),
-            image_token_indices=per_device(DType.int32, ["total_image_tokens"]),
-            position_ids=TensorType(
-                DType.int64, shape=[3, "total_seq_len"], device=DeviceRef.CPU()
+            mrope=MRoPEPositions(
+                position_ids=TensorType(
+                    DType.int64,
+                    shape=[3, "total_seq_len"],
+                    device=DeviceRef.CPU(),
+                )
             ),
             signals=signal_inputs(list(self.devices)),
             kv=kv_params.get_symbolic_inputs(),
@@ -438,6 +448,7 @@ class Qwen3VLMoEDecoder(DistributedLogitsPostprocessMixin, Module):
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
             batch = named["batch"]
+            vision = named["vision"]
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(remaining),
                 leaf=KVCacheInputsPerDevice,
@@ -445,18 +456,18 @@ class Qwen3VLMoEDecoder(DistributedLogitsPostprocessMixin, Module):
             return self(
                 tokens=batch["tokens"].tensor,
                 return_n_logits=batch["return_n_logits"].tensor,
-                image_embeddings=[v.tensor for v in named["image_embeddings"]],
+                image_embeddings=[v.tensor for v in vision["image_embeddings"]],
                 image_token_indices=[
-                    v.tensor for v in named["image_token_indices"]
+                    v.tensor for v in vision["image_token_indices"]
                 ],
-                position_ids=named["position_ids"].tensor,
+                position_ids=named["mrope"]["position_ids"].tensor,
                 mrope_section=self.mrope_section,
                 kv_collections=kv_collections,
-                input_row_offsets=[v.tensor for v in named["row_offsets"]],
+                input_row_offsets=[v.tensor for v in batch["row_offsets"]],
                 signal_buffers=[v.buffer for v in named["signals"]["signal"]],
                 deepstack_visual_embeds=[
                     [v.tensor for v in layer]
-                    for layer in named["deepstack_embeddings"]
+                    for layer in vision["deepstack_embeddings"]
                 ],
             )
 

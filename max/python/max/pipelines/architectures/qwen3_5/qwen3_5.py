@@ -39,6 +39,7 @@ from max.graph import Module as GraphModule
 from max.graph.quantization import QuantizationEncoding
 from max.nn.comm import Allreduce
 from max.nn.embedding import VocabParallelEmbedding
+from max.nn.graph_groups import MRoPEPositions
 from max.nn.kv_cache import (
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
@@ -737,7 +738,7 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         if self.mrope_enabled:
             # One shared table drives every full-attention layer, so the
             # positions arrive once rather than per device.
-            inputs["mrope"] = OrderedDict(
+            inputs["mrope"] = MRoPEPositions(
                 position_ids=TensorType(
                     DType.int64,
                     shape=[3, "total_seq_len"],

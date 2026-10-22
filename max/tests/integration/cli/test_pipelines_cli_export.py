@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 
 from click.testing import CliRunner
+from max._artifact.batch_processor import BatchProcessorDims
 from max._artifact.serialization import deserialize
 from max._entrypoints import pipelines
 
@@ -57,6 +58,31 @@ def test_export_writes_the_graphs_by_role(tmp_path: Path) -> None:
     loaded = deserialize(dest).model
     assert loaded is not None
     assert set(loaded.roles) == {"decoder", "sampler"}
+
+
+def test_export_names_the_decoder_inputs_and_bounds_each_step(
+    tmp_path: Path,
+) -> None:
+    result = CliRunner().invoke(
+        pipelines.main, _export_args(tmp_path / "named"), catch_exceptions=False
+    )
+    assert result.exit_code == 0, result.output
+    dest = tmp_path / "named.m"
+    sections = json.loads((dest / "artifact.json").read_text())
+
+    in_tree = json.dumps(sections["model"]["decoder"]["in_tree"])
+    assert '"ragged_batch"' in in_tree
+    assert '"paged_kv"' in in_tree
+
+    dims = sections["batch_processor"]["dims"]
+    # The KV blocks are a buffer the cache sizes, so their pages get no bound.
+    assert set(dims) == {
+        "total_seq_len",
+        "replica_0_batch_size",
+        "replica_0_max_num_pages",
+    }
+    assert dims["replica_0_batch_size"] == 1
+    assert deserialize(dest).batch_processor == BatchProcessorDims(dims)
 
 
 def test_export_refuses_an_existing_output(tmp_path: Path) -> None:

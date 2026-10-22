@@ -33,6 +33,7 @@ from max.nn.kv_cache.cache_params import (
     KVCacheBufferInterface,
     KVCacheMemory,
     KVConnectorType,
+    max_pages_per_request,
     spec_decode_cache_slack,
 )
 from max.nn.kv_cache.data_parallelism_utils import split_into_groups
@@ -162,9 +163,7 @@ class JengaKVCacheManager(JengaBlockManager, PagedKVCacheManagerInterface):
         Raises:
             RuntimeError: If ``available_bytes`` cannot hold a single block.
         """
-        num_blocks = ceildiv(
-            max_seq_len + spec_decode_cache_slack(params), params.page_size
-        )
+        num_blocks = max_pages_per_request(params, max_seq_len)
         demand = {
             leaf_id: max_batch_size
             * leaf.blocks_to_reserve(
@@ -384,9 +383,7 @@ class JengaKVCacheManager(JengaBlockManager, PagedKVCacheManagerInterface):
         # LUT columns index logical sequence pages, not physical page IDs.
         # Tiny scale pages can give a slab millions of physical pages, but
         # a request still only addresses its sequence length plus slack.
-        max_num_blocks = ceildiv(
-            max_seq_len + spec_decode_cache_slack(params), params.page_size
-        )
+        max_num_blocks = max_pages_per_request(params, max_seq_len)
         # One instance across every leaf, shard and replica. Leaf ids are
         # already unique, a replica's shards are the destinations of one
         # name, and the replica scopes the name because two replicas can be

@@ -20,15 +20,22 @@ import pytest
 from max import tree
 from max._artifact.value_types import treedef_from_json, treedef_to_json
 from max.dtype import DType
-from max.graph import DeviceRef, Graph, TensorType, TensorValue
+from max.graph import BufferType, DeviceRef, Graph, TensorType, TensorValue
 from max.nn import graph_groups
 from max.nn.graph_groups import (
+    BatchContext,
     ConvStates,
     DecoderOutputs,
+    EPLBProfile,
+    EPPayload,
     GraphGroup,
     HiddenStates,
     Logits,
+    MRoPEPositions,
+    RaggedBatch,
     SparseIndices,
+    TPSignals,
+    VisionMerge,
 )
 from max.nn.transformer import ReturnHiddenStates, logits_outputs
 
@@ -42,7 +49,16 @@ def _values(n: int) -> list[TensorValue]:
 def _examples() -> list[GraphGroup[Any, Any]]:
     a, b = _values(2)
     logits = Logits(next_token_logits=a, logits=b, logit_offsets=a)
+    t = TensorType(DType.int64, ["total_seq_len"], device=DeviceRef.CPU())
+    buf = BufferType(DType.uint8, [8], device=DeviceRef.CPU())
     return [
+        RaggedBatch(tokens=t, row_offsets=t),
+        TPSignals(signal=(buf, buf)),
+        VisionMerge(image_embeddings=(t,), image_token_indices=(t,)),
+        MRoPEPositions(position_ids=t),
+        BatchContext(length=(t,)),
+        EPPayload(atomic_counters=(t,), send_buf_ptrs=(buf,)),
+        EPLBProfile(expert_counts=(buf,)),
         logits,
         HiddenStates(last=(a, b)),
         ConvStates(states=(a,)),

@@ -16,15 +16,22 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from max.experimental.compilation import CompiledCallable
+from max.experimental.sharding import BufferLayout, TensorLayout
+from max.graph import SymbolicDim
 from max.pipelines.lib.config import PipelineConfig
 from max.pipelines.lib.graph_specs import GraphRole, compile_roles_separately
+from max.pipelines.lib.interfaces import PipelineModelWithKVCache
+from max.pipelines.lib.pipeline_variants.text_generation import (
+    TextGenerationPipelineInterface,
+)
 from max.pipelines.lib.registry import PIPELINE_REGISTRY
 
+from .batch_processor import BatchProcessorDims
 from .model_artifact import ModelArtifact
 from .pipeline_modules import PipelineModules
 from .serialization import serialize
@@ -80,6 +87,47 @@ def pipeline_modules(
     )
 
 
+def batch_processor_dims(
+    model: PipelineModelWithKVCache[Any], decoder: CompiledCallable[..., Any]
+) -> BatchProcessorDims | None:
+    """Bounds each symbolic dim of the decoder's per-step inputs.
+
+    Buffers are the inputs an owner allocates once for the model's lifetime,
+    such as KV pages or a state pool, and sizes itself. Every other input is
+    staged each step, so the serving engine needs the largest size of its
+    dims, which :func:`per_step_dims` lists.
+
+    Args:
+        model: The built pipeline model.
+        decoder: Its compiled decoder.
+
+    Returns:
+        The bounds, or ``None`` when the model has not named its graph
+        inputs to its batch processor.
+    """
+    processor = model.batch_processor
+    if processor is None or processor.input_tree is None:
+        return None
+    return BatchProcessorDims(
+        processor.runtime.max_dims(
+            per_step_dims(decoder.in_layouts), model.kv_params
+        )
+    )
+
+
+def per_step_dims(layouts: Sequence[TensorLayout]) -> list[str]:
+    """Returns each symbolic dim of a non-buffer input, in first use."""
+    return list(
+        {
+            dim.name: None
+            for layout in layouts
+            if not isinstance(layout, BufferLayout)
+            for dim in layout.shape
+            if isinstance(dim, SymbolicDim)
+        }
+    )
+
+
 def export_pipeline(
     pipeline_config: PipelineConfig, path: str | os.PathLike[str]
 ) -> Path:
@@ -115,6 +163,12 @@ def export_pipeline(
             " not record its compiled graphs by role"
         )
     model = pipeline_modules(pipeline, architecture)
-    written = serialize(ModelArtifact(model=model), dest)
+    dims = (
+        batch_processor_dims(pipeline._pipeline_model, model.roles["decoder"])
+        if isinstance(pipeline, TextGenerationPipelineInterface)
+        and "decoder" in model.roles
+        else None
+    )
+    written = serialize(ModelArtifact(model=model, batch_processor=dims), dest)
     logger.info("Exported graphs %s to %s", sorted(model.roles), written)
     return written

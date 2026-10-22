@@ -86,7 +86,10 @@ class GraphSpec:
         module: The module whose ``__call__`` (``forward`` for a ModuleV3
             module) the graph traces.
         name: The graph's name. Graphs in one group need distinct names.
-        input_types: The type of each graph input.
+        input_types: The graph's input types: a sequence, or a named tree
+            such as a module's ``input_tree`` whose leaves are the inputs in
+            order. A ModuleV3 graph takes a sequence, one type per argument
+            of its ``forward``.
         weights: The weight values, keyed by name. Defaults to the module's
             :meth:`~max.nn.Module.state_dict` once traced, or a ModuleV3
             module's own parameters.
@@ -101,7 +104,7 @@ class GraphSpec:
 
     module: Module | ModuleV3[..., Any]
     name: str
-    input_types: Sequence[Type[Any]]
+    input_types: Sequence[Type[Any]] | Mapping[str, object]
     weights: Mapping[str, DLPackArray] | None = None
     group: str | None = None
     custom_extensions: Sequence[Path] = ()
@@ -122,7 +125,7 @@ class GraphSpec:
                 )
             return self._staged[0].graph
         return self.module.trace(
-            *self.input_types,
+            *tree.leaves(self.input_types),
             name=self.name,
             module=module,
             custom_extensions=self.custom_extensions,
@@ -142,6 +145,7 @@ class GraphSpec:
         # A ModuleV3 graph and its registry come from one trace, which
         # records the layout each checkpoint entry arrives in.
         assert isinstance(self.module, ModuleV3)
+        assert isinstance(self.input_types, Sequence)
         return self.module.stage(
             *self.input_types,
             weights=self.weights,
@@ -190,9 +194,9 @@ def compile_and_init_graphs(
     :func:`compile_roles_separately`, groups are ignored.
 
     Each callable is called with one argument per input type, positionally,
-    and returns the graph's outputs in the tree its ``forward`` returned. It
-    keeps no weight registry, so the host weights can be released after
-    initialization. A ModuleV3
+    or with the named input tree as its one argument, and returns the graph's
+    outputs in the tree its ``forward`` returned. It keeps no weight registry,
+    so the host weights can be released after initialization. A ModuleV3
     role's callable instead takes and returns what the module's ``forward``
     does, adds the signal buffers a multi-device graph takes, and keeps its
     weight registry.
@@ -278,8 +282,53 @@ def compile_and_init_graphs(
                 callables[role] = _callable(
                     compiled, model, spec.input_types, output_trees[role]
                 )
+                _check_inputs(role, callables[role].in_tree)
                 _check_outputs(role, callables[role].out_tree)
     return callables
+
+
+def _check_inputs(role: str, in_tree: tree.TreeDef) -> None:
+    """Fails a load whose decoder names inputs a serving engine can't place.
+
+    A decoder that names its inputs, rather than passing them positionally,
+    has a serving engine find each one by its group's kind, so every input
+    must sit inside a kinded group.
+
+    Raises:
+        ValueError: If a named decoder input is outside every kinded group.
+    """
+    args = in_tree.children[0]
+    if role != GraphRole.DECODER or all(
+        arg.kind == "leaf" for arg in args.children
+    ):
+        return
+    unkinded = [
+        path
+        for path, kinded in zip(
+            args.leaf_paths, _leaves_in_kinded_groups(args), strict=True
+        )
+        if not kinded
+    ]
+    if unkinded:
+        raise ValueError(
+            "the decoder graph's inputs "
+            + ", ".join(unkinded)
+            + " are in no kinded group: build them with a"
+            " max.nn.graph_groups group or a kinded KV cache input"
+        )
+
+
+def _leaves_in_kinded_groups(
+    treedef: tree.TreeDef, inside: bool = False
+) -> Iterator[bool]:
+    """Yields, per leaf in order, whether a kinded node encloses it."""
+    inside = inside or (
+        treedef.kind == "node" and tree.kind_of(treedef.meta[0]) is not None
+    )
+    if treedef.kind == "leaf":
+        yield inside
+    for child in treedef.children:
+        yield from _leaves_in_kinded_groups(child, inside)
 
 
 def _check_outputs(role: str, out_tree: tree.TreeDef) -> None:
@@ -312,16 +361,38 @@ def _has_kind(treedef: tree.TreeDef, cls: type) -> bool:
     return any(_has_kind(child, cls) for child in treedef.children)
 
 
+def _input_signature(
+    input_types: Sequence[Type[Any]] | Mapping[str, object],
+) -> tuple[list[TensorLayout], tree.TreeDef]:
+    """Returns the input layouts and call structure of a role's callable.
+
+    A sequence of input types is called positionally. A named tree, such as
+    a module's ``input_tree``, is the one argument, so its names and group
+    kinds reach the artifact.
+
+    Args:
+        input_types: A :class:`GraphSpec`'s input types.
+
+    Returns:
+        The layouts in graph order, and the structure of ``(args, kwargs)``.
+    """
+    args = (
+        (input_types,)
+        if isinstance(input_types, Mapping)
+        else tuple(input_types)
+    )
+    # TODO(MXSERV-766): as_layout opens each GPU DeviceRef as a device
+    # (DeviceRef.to_device), so building a layout needs the physical GPU.
+    return tree.flatten((tree.map(as_layout, args), {}), leaf=TensorLayout)
+
+
 def _callable(
     compiled: CompiledModel,
     model: Model,
-    input_types: Sequence[Type[Any]],
+    input_types: Sequence[Type[Any]] | Mapping[str, object],
     output_types: tree.Tree[Type[Any]],
 ) -> CompiledCallable[..., Any]:
-    # TODO(MXSERV-766): as_layout opens each GPU DeviceRef as a device
-    # (DeviceRef.to_device), so building a layout needs the physical GPU.
-    in_layouts = [as_layout(t) for t in input_types]
-    _, in_tree = tree.flatten((tuple(in_layouts), {}), leaf=TensorLayout)
+    in_layouts, in_tree = _input_signature(input_types)
     out_layouts, out_tree = tree.flatten(
         tree.map(as_layout, output_types), leaf=TensorLayout
     )

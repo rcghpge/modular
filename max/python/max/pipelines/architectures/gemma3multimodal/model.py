@@ -246,7 +246,7 @@ class Gemma3_MultiModalModel(
         return GraphSpec(
             language_model,
             getattr(self.huggingface_config, "model_type", "Gemma3"),
-            tuple(tree.leaves(language_model.input_tree(self.kv_params))),
+            language_model.input_tree(self.kv_params),
             weights=language_model.state_dict(),
             group=_COMPILE_GROUP,
         )

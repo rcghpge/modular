@@ -237,7 +237,7 @@ class InternVLModel(
         return GraphSpec(
             language_model,
             "internvl_language",
-            tuple(tree.leaves(language_model.input_tree(self.kv_params))),
+            language_model.input_tree(self.kv_params),
             weights=language_model.state_dict(),
             group=_COMPILE_GROUP,
         )

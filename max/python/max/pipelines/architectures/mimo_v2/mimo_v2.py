@@ -25,7 +25,6 @@ from max.graph import (
     DeviceRef,
     Graph,
     ShardingStrategy,
-    TensorType,
     TensorValue,
     Type,
     Value,
@@ -246,19 +245,15 @@ class MiMoV2(DistributedLogitsPostprocessMixin, Module):
         The order is GPT OSS's, so its batching feeds this graph.
 
         Returns:
-            The input types under ``batch``, ``row_offsets`` (one per
-            device), ``signals`` and ``kv``, in graph order.
+            The input types under ``batch`` (whose ``row_offsets`` are one
+            per device), ``signals`` and ``kv``, in graph order.
         """
         devices = list(self.devices)
         return OrderedDict(
             batch=ragged_batch_inputs(
-                devices[0], ("tokens", "return_n_logits")
-            ),
-            row_offsets=tuple(
-                TensorType(
-                    DType.uint32, shape=["input_row_offsets_len"], device=device
-                )
-                for device in devices
+                devices[0],
+                ("tokens", "return_n_logits", "row_offsets"),
+                row_offsets_devices=devices,
             ),
             signals=signal_inputs(devices),
             kv=self.kv_params.get_symbolic_inputs(),

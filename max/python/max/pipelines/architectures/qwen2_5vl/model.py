@@ -252,14 +252,14 @@ class Qwen2_5VLModel(
             GraphRole.VISION: GraphSpec(
                 vision_encoder,
                 "qwen2_5vl_vision",
-                tuple(tree.leaves(vision_encoder.input_tree())),
+                vision_encoder.input_tree(),
                 weights=self._vision_weights_dict,
                 group=_COMPILE_GROUP,
             ),
             GraphRole.DECODER: GraphSpec(
                 language_model,
                 "qwen2_5vl_language",
-                tuple(tree.leaves(language_model.input_tree(self.kv_params))),
+                language_model.input_tree(self.kv_params),
                 weights=self._language_weights_dict,
                 group=_COMPILE_GROUP,
             ),

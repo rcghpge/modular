@@ -26,7 +26,6 @@ from max.graph import (
     BufferValue,
     Graph,
     ShardingStrategy,
-    TensorType,
     TensorValue,
     Type,
     Value,
@@ -232,19 +231,15 @@ class GptOss(Module):
         """Names the graph's inputs; its leaves are its inputs.
 
         Returns:
-            The input types under ``batch``, ``row_offsets`` (one per
-            device), ``signals`` and ``kv``, in graph order.
+            The input types under ``batch`` (whose ``row_offsets`` are one
+            per device), ``signals`` and ``kv``, in graph order.
         """
         devices = list(self.language_model.devices)
         return OrderedDict(
             batch=ragged_batch_inputs(
-                devices[0], ("tokens", "return_n_logits")
-            ),
-            row_offsets=tuple(
-                TensorType(
-                    DType.uint32, shape=["input_row_offsets_len"], device=device
-                )
-                for device in devices
+                devices[0],
+                ("tokens", "return_n_logits", "row_offsets"),
+                row_offsets_devices=devices,
             ),
             signals=signal_inputs(devices),
             kv=self.language_model.kv_params.get_symbolic_inputs(),

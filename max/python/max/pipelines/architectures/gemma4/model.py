@@ -107,9 +107,7 @@ def language_spec(
     spec = GraphSpec(
         language_model,
         "gemma4_language",
-        tree.leaves(
-            stage_input_types(stage, tree.leaves(language_model.input_tree()))
-        ),
+        stage_input_types(stage, [language_model.input_tree()]),
         weights=language_model.state_dict(),
         group=_COMPILE_GROUP,
         is_device_graph=is_device_graph,

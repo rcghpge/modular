@@ -3776,6 +3776,26 @@ def spec_decode_cache_slack(params: KVCacheParamInterface) -> int:
     return 3 * params.num_draft_tokens + block_draft_extra + 1
 
 
+def max_pages_per_request(
+    params: KVCacheParamInterface, max_seq_len: int
+) -> int:
+    """Returns the most KV pages one request can address.
+
+    This is the width of a request's row in the page lookup table: its
+    longest sequence plus the speculative-decode slack, in pages.
+
+    Args:
+        params: The KV cache parameters.
+        max_seq_len: The longest request, before speculative slack.
+
+    Returns:
+        The page count.
+    """
+    return ceildiv(
+        max_seq_len + spec_decode_cache_slack(params), params.page_size
+    )
+
+
 def compute_num_device_blocks(
     params: KVCacheParamInterface,
     available_cache_memory: int,

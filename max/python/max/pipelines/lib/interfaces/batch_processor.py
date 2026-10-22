@@ -14,9 +14,10 @@
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -33,8 +34,16 @@ from max.driver import Buffer, Device, is_virtual_device_mode
 from max.dtype import DType
 from max.graph import BufferType, DeviceRef, TensorType
 from max.nn.comm import Signals
+from max.nn.graph_groups import (
+    RaggedBatch,
+    TPSignals,
+    VisionMerge,
+)
 from max.nn.kv_cache import KVCacheInputs
-from max.nn.kv_cache.cache_params import KVCacheParamInterface
+from max.nn.kv_cache.cache_params import (
+    KVCacheParamInterface,
+    max_pages_per_request,
+)
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import BaseContext, TextContext
 from max.pipelines.context.tokens import TokenBuffer
@@ -115,6 +124,62 @@ class BatchProcessorRuntime:
         into one ragged stream.
         """
         return self.max_batch_size * self.data_parallel_degree
+
+    def max_dims(
+        self, dims: Iterable[str], kv_params: KVCacheParamInterface
+    ) -> dict[str, int]:
+        """Returns the largest size each per-step input dim can take.
+
+        A serving engine allocates each per-step input once at these sizes and
+        slices it per batch, so each bound comes from the code that sizes the
+        same input for MAX's own staging.
+
+        Args:
+            dims: Symbolic dims of a graph's per-step inputs.
+            kv_params: The KV cache parameters, which bound a lookup table's
+                pages per context.
+
+        Returns:
+            Each dim's maximum, keyed by name.
+
+        Raises:
+            ValueError: If a dim is not one this runtime bounds, or is an image
+                row dim while the vision cache is off.
+        """
+        tokens = self.max_batch_active_tokens
+        exact = {
+            "total_seq_len": tokens,
+            "input_row_offsets_len": self.max_global_batch_size + 1,
+            "return_n_logits": 1,
+        }
+        image_rows = {
+            "num_image_tokens",
+            "total_image_tokens",
+            "vision_merged_seq_len",
+        }
+        bounds: dict[str, int] = {}
+        for dim in dims:
+            if dim in exact:
+                bounds[dim] = exact[dim]
+            elif dim in image_rows:
+                # The vision encoder cache stages only the rows inside each
+                # context's active window, which replace tokens of the step.
+                # Without it, a context that needs encoding stages every row
+                # of every image, which the step's tokens do not bound.
+                if self.pipeline_config.runtime.vision_cache_utilization == 0:
+                    raise ValueError(
+                        f"input dim {dim!r} has no per-step maximum with the"
+                        " vision cache off: enable it with"
+                        " --vision-cache-utilization"
+                    )
+                bounds[dim] = tokens
+            elif re.fullmatch(r"replica_\d+_batch_size", dim):
+                bounds[dim] = self.max_batch_size
+            elif re.fullmatch(r"replica_\d+_\w*max_num_pages", dim):
+                bounds[dim] = max_pages_per_request(kv_params, self.max_seq_len)
+            else:
+                raise ValueError(f"no maximum is known for input dim {dim!r}")
+        return bounds
 
     @property
     def max_batch_active_tokens(self) -> int:
@@ -477,11 +542,9 @@ def ragged_batch_inputs(
     *,
     data_parallel_degree: int = 1,
     hidden_states: tuple[DType, int] | None = None,
-) -> OrderedDict[str, TensorType]:
+    row_offsets_devices: Sequence[DeviceRef] | None = None,
+) -> RaggedBatch:
     """Returns the named per-batch graph inputs, in the order ``fields`` gives.
-
-    The result is an ``OrderedDict``, not a ``dict``: ``tree.flatten`` sorts a
-    plain dict's keys, and the graph declares its inputs in insertion order.
 
     Args:
         device_ref: The device that holds the token and row-offset tensors.
@@ -493,11 +556,14 @@ def ragged_batch_inputs(
         hidden_states: The ``(dtype, hidden_size)`` of the EAGLE draft's
             hidden-state input. Required when ``fields`` names
             ``hidden_states``.
+        row_offsets_devices: The devices that each take their own
+            ``row_offsets``, for a graph that does not broadcast them.
+            ``row_offsets`` is then a tuple with one type per device.
 
     Returns:
         The input types keyed by field name.
     """
-    available = {
+    available: dict[str, TensorType | tuple[TensorType, ...]] = {
         "tokens": TensorType(
             DType.int64, shape=["total_seq_len"], device=device_ref
         ),
@@ -518,17 +584,24 @@ def ragged_batch_inputs(
             device=DeviceRef.CPU(),
         ),
     }
+    if row_offsets_devices is not None:
+        available["row_offsets"] = tuple(
+            TensorType(
+                DType.uint32, shape=["input_row_offsets_len"], device=device
+            )
+            for device in row_offsets_devices
+        )
     if hidden_states is not None:
         dtype, hidden_size = hidden_states
         available["hidden_states"] = TensorType(
             dtype, shape=["total_seq_len", hidden_size], device=device_ref
         )
-    return OrderedDict((name, available[name]) for name in fields)
+    return RaggedBatch((name, available[name]) for name in fields)
 
 
 def signal_inputs(
     device_refs: list[DeviceRef],
-) -> OrderedDict[str, tuple[BufferType, ...]]:
+) -> TPSignals:
     """Returns the named per-device allreduce signal buffers.
 
     Args:
@@ -537,7 +610,7 @@ def signal_inputs(
     Returns:
         The signal buffer types, one per device, under ``signal``.
     """
-    return OrderedDict(signal=tuple(Signals(devices=device_refs).input_types()))
+    return TPSignals(signal=tuple(Signals(devices=device_refs).input_types()))
 
 
 def vision_merge_inputs(
@@ -546,7 +619,7 @@ def vision_merge_inputs(
     hidden_size: int,
     *,
     rows_dim: str,
-) -> OrderedDict[str, tuple[TensorType, ...]]:
+) -> VisionMerge:
     """Returns the per-device vision embeddings and where they merge.
 
     Args:
@@ -561,7 +634,7 @@ def vision_merge_inputs(
         token stream that their rows replace under ``image_token_indices``,
         one of each per device.
     """
-    return OrderedDict(
+    return VisionMerge(
         image_embeddings=tuple(
             TensorType(dtype, shape=[rows_dim, hidden_size], device=device)
             for device in device_refs

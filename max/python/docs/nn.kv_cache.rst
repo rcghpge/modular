@@ -117,6 +117,7 @@ Functions
    compute_max_seq_len_fitting_in_cache
    compute_num_device_blocks
    estimated_memory_size
+   max_pages_per_request
    packed_page_stride
    padded_lut_cols
    recurrent_leaf

@@ -228,21 +228,17 @@ def dataclass(
         # The init fields, to fall back to None when absent at rebuild.
         init_fields = tuple(f.name for f in fields(typed_cls) if f.init)
 
-        def __tree_flatten__(
-            self: Any,
-        ) -> tuple[tuple[Any, ...], tuple[str, ...]]:
-            present = [
-                (f.name, value)
+        def __tree_flatten__(self: Any) -> tuple[dict[str, Any], None]:
+            return {
+                f.name: value
                 for f in fields(self)
                 if (value := getattr(self, f.name)) is not None
-            ]
-            meta, children = zip(*present, strict=True) if present else ((), ())
-            return children, meta
+            }, None
 
         def __tree_unflatten__(
-            cls_: type[_T], meta: tuple[str, ...], children: Sequence[Any]
+            cls_: type[_T], meta: None, children: Mapping[str, Any]
         ) -> _T:
-            values = dict(zip(meta, children, strict=True))
+            values = dict(children)
             # Flatten drops a field only when it is None, so an absent field was
             # None: restore that rather than a non-None default it never held.
             for name in init_fields:

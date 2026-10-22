@@ -246,7 +246,7 @@ class PixtralModel(
         return GraphSpec(
             language_nn,
             "pixtral_language",
-            tuple(tree.leaves(language_nn.input_tree(self.kv_params))),
+            language_nn.input_tree(self.kv_params),
             weights=language_nn.state_dict(),
             group=_COMPILE_GROUP,
         )

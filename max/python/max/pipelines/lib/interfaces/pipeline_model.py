@@ -610,18 +610,19 @@ class PipelineModel(
 
     def _bind_graph_inputs(
         self, input_tree: OrderedDict[str, object]
-    ) -> tuple[Any, ...]:
+    ) -> OrderedDict[str, object]:
         """Binds a graph's named inputs to the batch processor.
 
         Args:
             input_tree: The named inputs the graph is about to be built from.
 
         Returns:
-            The tree's leaves, the graph's input types in declaration order.
+            ``input_tree``, to pass on as the graph's
+            :attr:`~max.pipelines.lib.graph_specs.GraphSpec.input_types`.
         """
         if self._batch_processor is not None:
             self._batch_processor.bind_input_tree(input_tree)
-        return tuple(tree.leaves(input_tree))
+        return input_tree
 
     def arch_config_as(self, cls: type[ArchConfigT]) -> ArchConfigT:
         """Returns the built-once arch config, narrowed to ``cls``."""

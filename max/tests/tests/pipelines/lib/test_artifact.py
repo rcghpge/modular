@@ -30,6 +30,7 @@ from max._artifact import (
     ArtifactType,
     HuggingFaceRef,
 )
+from max._artifact.batch_processor import BatchProcessorDims
 from max._artifact.codec import encode, prefix_files
 from max._artifact.metadata import ARTIFACT_VERSION
 from max._artifact.model_artifact import ModelArtifact
@@ -430,10 +431,12 @@ def test_component_types() -> None:
     assert ModelArtifact.component_types() == {
         **dict.fromkeys(ModelArtifact.component_slots()),
         "model": PipelineModules,
+        "batch_processor": BatchProcessorDims,
     }
     assert FakeArtifact.component_types() == {
         **dict.fromkeys(ModelArtifact.component_slots()),
         "model": PipelineModules,
+        "batch_processor": BatchProcessorDims,
         "engine_config": FakeComponent,
         "tokenizer": FakeComponent,
     }
@@ -471,3 +474,23 @@ def test_prefix_files_moves_every_file() -> None:
         "mef": ArtifactFile("decoder/model.mef", b"mef"),
         "nested": [{"graph": ArtifactFile("decoder/graph.mlir", "graph")}, 1],
     }
+
+
+def test_batch_processor_dims_round_trip(tmp_path: Path) -> None:
+    dims = BatchProcessorDims(
+        {"total_seq_len": 8192, "replica_0_batch_size": 64}
+    )
+    dest = serialize(ModelArtifact(batch_processor=dims), tmp_path / "a")
+    sections = json.loads((dest / "artifact.json").read_text())
+    assert sections["batch_processor"] == {
+        "dims": {"replica_0_batch_size": 64, "total_seq_len": 8192}
+    }
+    assert deserialize(dest).batch_processor == dims
+
+
+@pytest.mark.parametrize("size", [0, -1, True, 1.5, "8"])
+def test_batch_processor_dims_must_be_positive_integers(
+    size: ArtifactType,
+) -> None:
+    with pytest.raises(ArtifactError, match="total_seq_len"):
+        BatchProcessorDims.__deserialize__({"dims": {"total_seq_len": size}})

@@ -16,14 +16,21 @@ from __future__ import annotations
 
 import itertools
 import json
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from max._artifact import ArtifactError
-from max._artifact.export import SupportsCompiledModules, pipeline_modules
+from max._artifact.batch_processor import BatchProcessorDims
+from max._artifact.export import (
+    SupportsCompiledModules,
+    batch_processor_dims,
+    pipeline_modules,
+)
 from max._artifact.model_artifact import ModelArtifact
 from max._artifact.pipeline_modules import PipelineModules
 from max._artifact.serialization import deserialize, serialize
@@ -31,10 +38,11 @@ from max.driver import CPU
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.experimental.compilation import CompiledCallable
-from max.graph import DeviceRef, TensorType, TensorValue
+from max.experimental.sharding.types import as_layout
+from max.graph import BufferType, DeviceRef, TensorType, TensorValue
 from max.nn import Module
 from max.nn.graph_groups import Logits
-from max.nn.transformer import DecoderOutputs
+from max.nn.transformer import DecoderOutputs, ReturnLogits
 from max.pipelines.lib import (
     GraphRole,
     GraphSpec,
@@ -44,6 +52,7 @@ from max.pipelines.lib import (
     compile_and_init_graphs,
 )
 from max.pipelines.lib.graph_specs import compile_roles_separately
+from max.pipelines.lib.interfaces import BatchProcessorRuntime
 
 X = TensorType(DType.float32, ["batch", 4], device=DeviceRef.CPU())
 
@@ -184,3 +193,39 @@ def test_spec_decoder_pipeline_is_exported() -> None:
 def test_no_roles_are_refused() -> None:
     with pytest.raises(ArtifactError, match="no graphs"):
         PipelineModules({})
+
+
+def _fake(**attrs: object) -> Any:
+    """Stands in for an object that exposes only ``attrs``."""
+    return SimpleNamespace(**attrs)
+
+
+def test_batch_processor_dims_bound_a_bound_decoders_per_step_dims() -> None:
+    runtime = BatchProcessorRuntime(
+        pipeline_config=_fake(),
+        devices=[],
+        return_logits=ReturnLogits.LAST_TOKEN,
+        max_batch_size=4,
+        max_seq_len=256,
+        max_batch_input_tokens=64,
+    )
+    processor = _fake(input_tree=OrderedDict(), runtime=runtime)
+    model = _fake(
+        batch_processor=processor,
+        kv_params=_fake(page_size=128, num_draft_tokens=0),
+    )
+    tokens = TensorType(DType.int64, ["total_seq_len"], device=DeviceRef.CPU())
+    # Pages are sized by the KV cache, so their dim gets no bound here.
+    pages = BufferType(
+        DType.bfloat16, ["total_num_pages", 2], device=DeviceRef.CPU()
+    )
+    decoder = _fake(in_layouts=[as_layout(tokens), as_layout(pages)])
+
+    assert batch_processor_dims(model, decoder) == BatchProcessorDims(
+        {"total_seq_len": runtime.max_batch_active_tokens}
+    )
+
+    processor.input_tree = None
+    assert batch_processor_dims(model, decoder) is None
+    model.batch_processor = None
+    assert batch_processor_dims(model, decoder) is None

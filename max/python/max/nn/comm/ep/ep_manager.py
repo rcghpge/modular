@@ -22,7 +22,6 @@ from __future__ import annotations
 import functools
 import logging
 import os
-from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from typing import Any, TypeVar, overload
 
@@ -55,6 +54,7 @@ from max.support.math import ceildiv
 from numpy.typing import NDArray
 
 from ...activation import GatedActivation
+from ...graph_groups import EPPayload
 from ...layer import Module
 from .ep_config import (
     _EP_LOCAL_SYNC_RESERVED_WORDS,
@@ -410,9 +410,7 @@ class EPBatchManager:
             )
         return self._atomic_counters
 
-    def input_tree(
-        self,
-    ) -> OrderedDict[str, tuple[TensorType | BufferType, ...]]:
+    def input_tree(self) -> EPPayload:
         """Names the EP graph inputs, in the order the graph declares them.
 
         ``atomic_counters`` is group-major (``[NUM_GROUPS][n_gpus_per_node]``);
@@ -442,13 +440,11 @@ class EPBatchManager:
                 for _ in range(NUM_GROUPS)
             )
 
-        inputs: OrderedDict[str, tuple[TensorType | BufferType, ...]] = (
-            OrderedDict(
-                atomic_counters=counters,
-                send_buf_ptrs=ptrs(),
-                recv_buf_ptrs=ptrs(),
-                recv_count_ptrs=ptrs(),
-            )
+        inputs = EPPayload(
+            atomic_counters=counters,
+            send_buf_ptrs=ptrs(),
+            recv_buf_ptrs=ptrs(),
+            recv_count_ptrs=ptrs(),
         )
         if self.config.eplb_enabled:
             shape = [

@@ -225,20 +225,14 @@ class Gemma3LanguageModel(DistributedLogitsPostprocessMixin, Module):
             kv_params: The KV cache parameters.
 
         Returns:
-            The input types under ``batch``, ``row_offsets``, ``vision``,
-            ``signals`` and ``kv``, in graph order.
+            The input types under ``batch`` (whose ``row_offsets`` are one
+            per device), ``vision``, ``signals`` and ``kv``, in graph order.
         """
         return OrderedDict(
             batch=ragged_batch_inputs(
-                self.devices[0], ("tokens", "return_n_logits")
-            ),
-            row_offsets=tuple(
-                TensorType(
-                    DType.uint32,
-                    shape=["input_row_offsets_len"],
-                    device=device,
-                )
-                for device in self.devices
+                self.devices[0],
+                ("tokens", "return_n_logits", "row_offsets"),
+                row_offsets_devices=self.devices,
             ),
             vision=vision_merge_inputs(
                 self.devices,
@@ -296,7 +290,7 @@ class Gemma3LanguageModel(DistributedLogitsPostprocessMixin, Module):
             return self(
                 tokens=batch["tokens"].tensor,
                 return_n_logits=batch["return_n_logits"].tensor,
-                input_row_offsets=[v.tensor for v in named["row_offsets"]],
+                input_row_offsets=[v.tensor for v in batch["row_offsets"]],
                 image_embeddings=[v.tensor for v in vision["image_embeddings"]],
                 image_token_indices=[
                     v.tensor for v in vision["image_token_indices"]

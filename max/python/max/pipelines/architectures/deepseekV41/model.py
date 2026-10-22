@@ -877,11 +877,14 @@ class DeepseekV41BatchProcessor(
         dp = self.config.data_parallel_degree
         if dp > 1:
             extra.extend(
-                ragged_batch_inputs(
-                    device_refs[0],
-                    ("host_row_offsets", "data_parallel_splits"),
-                    data_parallel_degree=dp,
-                ).values()
+                tree.leaves(
+                    ragged_batch_inputs(
+                        device_refs[0],
+                        ("host_row_offsets", "data_parallel_splits"),
+                        data_parallel_degree=dp,
+                    ),
+                    leaf=TensorType,
+                )
             )
         if self.config.ep_config is not None:
             extra.extend(EPBatchManager(self.config.ep_config).input_types())

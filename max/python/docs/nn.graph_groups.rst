@@ -19,10 +19,17 @@ Graph groups
    :toctree: generated
    :template: autosummary/class.rst
 
+   BatchContext
    ConvStates
    DecoderOutputs
+   EPLBProfile
+   EPPayload
    GraphGroup
    HiddenStates
    Logits
    LogitsName
+   MRoPEPositions
+   RaggedBatch
    SparseIndices
+   TPSignals
+   VisionMerge

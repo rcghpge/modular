@@ -31,6 +31,7 @@ _Tensor = TypeVar("_Tensor", TensorValue, TensorType, Buffer, Tensor)
 _Buffer = TypeVar("_Buffer", BufferValue, BufferType, Buffer, Tensor)
 
 
+@tree.kind("paged_kv")
 @tree.dataclass
 class KVCacheInputsPerDevice(Generic[_Tensor, _Buffer]):
     """Symbolic graph input types for a single device's paged KV cache."""
@@ -173,6 +174,7 @@ as graph values."""
 # ===--------------------------------------------------------------------=== #
 
 
+@tree.kind("recurrent_leaf")
 @tree.dataclass(frozen=True)
 class RecurrentLeafInputs(Generic[_Tensor, _Buffer]):
     """One state leaf's graph inputs on one device."""
@@ -196,6 +198,7 @@ def _layer_row_ids(ids: Any, layer: int) -> TensorValue:
     return ids[layer]
 
 
+@tree.kind("recurrent_state")
 @tree.dataclass
 class RecurrentStateInputsPerDevice(Generic[_Tensor, _Buffer]):
     """One device's recurrent-state leaves."""

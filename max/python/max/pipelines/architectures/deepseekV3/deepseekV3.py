@@ -49,6 +49,7 @@ from max.nn.attention.multi_latent_attention_fp8 import (
 from max.nn.comm.ep import EPBatchManager, EPConfig
 from max.nn.data_parallelism import split_batch_replicated
 from max.nn.embedding import VocabParallelEmbedding
+from max.nn.graph_groups import BatchContext, EPLBProfile
 from max.nn.kv_cache import (
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
@@ -733,7 +734,7 @@ def deepseekV3_input_tree(
         ),
         signals=signal_inputs(device_refs),
         kv=kv_params.get_symbolic_inputs(),
-        batch_context=OrderedDict(
+        batch_context=BatchContext(
             length=tuple(
                 TensorType(DType.int32, shape=[1], device=DeviceRef.CPU())
                 for _ in device_refs
@@ -744,7 +745,7 @@ def deepseekV3_input_tree(
         inputs["ep"] = EPBatchManager(ep_config).input_tree()
     if eplb_profile is not None:
         num_layers, n_experts = eplb_profile
-        inputs["eplb_profile"] = OrderedDict(
+        inputs["eplb_profile"] = EPLBProfile(
             expert_counts=tuple(
                 BufferType(DType.int64, shape=[n_experts], device=device)
                 for _ in range(num_layers)

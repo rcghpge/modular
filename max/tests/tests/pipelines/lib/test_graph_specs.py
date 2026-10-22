@@ -14,13 +14,14 @@
 
 from __future__ import annotations
 
+import json
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from typing import Any
 
 import numpy as np
 import pytest
-from max._artifact.value_types import ArtifactError
+from max._artifact.value_types import ArtifactError, treedef_to_json
 from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession, Model
@@ -31,7 +32,7 @@ from max.experimental.sharding.types import as_layout
 from max.experimental.tensor import Tensor
 from max.graph import DeviceRef, TensorType, TensorValue, Weight
 from max.nn import Module
-from max.nn.graph_groups import HiddenStates, Logits
+from max.nn.graph_groups import HiddenStates, Logits, RaggedBatch
 from max.nn.transformer import DecoderOutputs
 from max.pipelines.lib import GraphRole, GraphSpec, compile_and_init_graphs
 
@@ -184,6 +185,41 @@ def test_a_decoder_without_named_logits_fails_to_compile(
     with pytest.raises(ValueError, match=r"decoder.*logits"):
         compile_and_init_graphs(
             session, {GraphRole.DECODER: _spec("positional", 1.0)}
+        )
+
+
+def _named_decoder(inputs: Mapping[str, object]) -> GraphSpec:
+    scale = Scale("named_weight")
+    return GraphSpec(
+        Outputs(scale, _logits),
+        "named",
+        inputs,
+        weights={"named_weight": np.full(2, 1.0, dtype=np.float32)},
+    )
+
+
+def test_a_decoder_records_its_named_input_tree(
+    session: InferenceSession,
+) -> None:
+    graphs = compile_and_init_graphs(
+        session,
+        {
+            GraphRole.DECODER: _named_decoder(
+                OrderedDict(batch=RaggedBatch(x=X))
+            )
+        },
+    )
+    in_tree = graphs[GraphRole.DECODER].in_tree
+    assert in_tree.leaf_paths == ("0.0.batch.x",)
+    assert '"ragged_batch"' in json.dumps(treedef_to_json(in_tree))
+
+
+def test_a_named_decoder_input_outside_a_kinded_group_fails_to_compile(
+    session: InferenceSession,
+) -> None:
+    with pytest.raises(ValueError, match=r"0\.x .*kinded group"):
+        compile_and_init_graphs(
+            session, {GraphRole.DECODER: _named_decoder(OrderedDict(x=X))}
         )
 
 

@@ -23,6 +23,7 @@ modular_py_library(
 modular_py_library(
     name = "model_artifact",
     srcs = [
+        "batch_processor.py",
         "model_artifact.py",
         "pipeline_modules.py",
         "serialization.py",
@@ -44,6 +45,7 @@ modular_py_library(
         ":_artifact",
         ":model_artifact",
         "//max/python/max/experimental",
+        "//max/python/max/graph",
         "//max/python/max/pipelines/lib",
     ],
 )

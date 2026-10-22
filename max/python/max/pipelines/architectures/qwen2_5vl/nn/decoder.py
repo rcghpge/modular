@@ -44,6 +44,7 @@ from max.graph import Module as GraphModule
 from max.nn.attention.attention_with_rope import _compute_shard_range
 from max.nn.comm.allreduce import Allreduce
 from max.nn.embedding import VocabParallelEmbedding
+from max.nn.graph_groups import MRoPEPositions
 from max.nn.kernels import (
     MHAMaskVariant,
     flash_attention_ragged,
@@ -614,18 +615,15 @@ class Qwen25VLDecoder(DistributedLogitsPostprocessMixin, Module):
             kv_params: The KV cache parameters.
 
         Returns:
-            The input types under ``batch``, ``row_offsets``, ``vision``,
-            ``position_ids``, ``signals`` and ``kv``, in graph order.
+            The input types under ``batch`` (whose ``row_offsets`` are one
+            per device), ``vision``, ``mrope``, ``signals`` and ``kv``, in
+            graph order.
         """
         return OrderedDict(
             batch=ragged_batch_inputs(
-                self.devices[0], ("tokens", "return_n_logits")
-            ),
-            row_offsets=tuple(
-                TensorType(
-                    DType.uint32, shape=["input_row_offsets_len"], device=device
-                )
-                for device in self.devices
+                self.devices[0],
+                ("tokens", "return_n_logits", "row_offsets"),
+                row_offsets_devices=self.devices,
             ),
             vision=vision_merge_inputs(
                 self.devices,
@@ -633,10 +631,12 @@ class Qwen25VLDecoder(DistributedLogitsPostprocessMixin, Module):
                 self.dim,
                 rows_dim="vision_seq_len",
             ),
-            position_ids=TensorType(
-                DType.uint32,
-                shape=[len(self.mrope_section), "total_seq_len"],
-                device=self.devices[0],
+            mrope=MRoPEPositions(
+                position_ids=TensorType(
+                    DType.uint32,
+                    shape=[len(self.mrope_section), "total_seq_len"],
+                    device=self.devices[0],
+                )
             ),
             signals=signal_inputs(list(self.devices)),
             kv=kv_params.get_symbolic_inputs(),
@@ -691,10 +691,10 @@ class Qwen25VLDecoder(DistributedLogitsPostprocessMixin, Module):
                 image_token_indices=[
                     v.tensor for v in vision["image_token_indices"]
                 ],
-                position_ids=named["position_ids"].tensor,
+                position_ids=named["mrope"]["position_ids"].tensor,
                 signal_buffers=[v.buffer for v in named["signals"]["signal"]],
                 kv_collections=kv_collections,
-                input_row_offsets=[v.tensor for v in named["row_offsets"]],
+                input_row_offsets=[v.tensor for v in batch["row_offsets"]],
                 mrope_section=self.mrope_section,
             )
 

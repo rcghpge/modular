@@ -12,10 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 """Graph groups: the named inputs or outputs one model feature brings.
 
-A graph's output tree is a handful of groups, such as the logits or the
-hidden states a drafter reads. Each group draws its fields from a fixed set,
-whatever model it appears in, so the serving engine learns to read a group
-once, by its :attr:`GraphGroup.kind`, rather than once per model.
+A graph's input tree is a handful of groups, such as the ragged token batch,
+the allreduce signal buffers, or the vision embeddings, and its output tree
+likewise, such as the logits. Each group draws its fields from a fixed set,
+whatever model it appears in, so the serving engine learns to feed or read a
+group once, by its :attr:`GraphGroup.kind`, rather than once per model.
 """
 
 from __future__ import annotations
@@ -25,17 +26,24 @@ from collections.abc import Mapping
 from typing import ClassVar, Literal, TypeVar
 
 from max import tree
-from max.graph import TensorValue
+from max.graph import BufferType, TensorType, TensorValue
 from typing_extensions import Self
 
 __all__ = [
+    "BatchContext",
     "ConvStates",
     "DecoderOutputs",
+    "EPLBProfile",
+    "EPPayload",
     "GraphGroup",
     "HiddenStates",
     "Logits",
     "LogitsName",
+    "MRoPEPositions",
+    "RaggedBatch",
     "SparseIndices",
+    "TPSignals",
+    "VisionMerge",
 ]
 
 _K = TypeVar("_K", bound=str)
@@ -77,6 +85,58 @@ class GraphGroup(OrderedDict[_K, _V]):
         group = cls.__new__(cls)
         OrderedDict.update(group, children)
         return group
+
+
+class RaggedBatch(GraphGroup[str, TensorType | tuple[TensorType, ...]]):
+    """The step's ragged token stream: tokens, row offsets, and friends.
+
+    A model whose devices each take their own row offsets holds them as a
+    tuple, one per device.
+    """
+
+    kind = "ragged_batch"
+
+
+class TPSignals(GraphGroup[str, tuple[BufferType, ...]]):
+    """The allreduce signal buffers, one per device."""
+
+    kind = "tp_signals"
+
+
+class VisionMerge(
+    GraphGroup[str, tuple[TensorType, ...] | tuple[tuple[TensorType, ...], ...]]
+):
+    """Image embeddings per device and the token positions they replace.
+
+    A model that injects image features into later layers, such as
+    Qwen3-VL's deepstack, holds one per-device tuple per layer.
+    """
+
+    kind = "vision_merge"
+
+
+class MRoPEPositions(GraphGroup[str, TensorType]):
+    """The 3D position ids of an M-RoPE model."""
+
+    kind = "mrope_positions"
+
+
+class BatchContext(GraphGroup[str, tuple[TensorType, ...]]):
+    """Per-device host scalars summarizing the batch's context lengths."""
+
+    kind = "batch_context"
+
+
+class EPPayload(GraphGroup[str, tuple[TensorType | BufferType, ...]]):
+    """Expert-parallel communication state, built once at startup."""
+
+    kind = "ep_payload"
+
+
+class EPLBProfile(GraphGroup[str, tuple[BufferType, ...]]):
+    """Per-layer expert counters an EPLB-profiling graph writes in place."""
+
+    kind = "eplb_profile"
 
 
 LogitsName = Literal["next_token_logits", "logits", "logit_offsets"]
