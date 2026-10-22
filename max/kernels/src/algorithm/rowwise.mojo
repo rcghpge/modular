@@ -457,10 +457,9 @@ def strided_load[
 # `cache`, and `emit` aren't phase-aware, so a body using them must leave
 # `dtype_size = 0` (asserted). Asserted `> 0`; a reduce-shaped body's
 # `num_phases == 1` never reaches the phase-aware split-K branch (that branch
-# is gated on `num_phases > 1`), so `associative` (reduce-shaped's CPU-only
-# accumulator knob) and `dtype_size` (normalize-shaped's split-K byte gate)
-# are each meaningless — and simply left at their defaults — for the other
-# shape.
+# is gated on `num_phases > 1`), so `dtype_size` (normalize-shaped's split-K
+# byte gate) is meaningless — and simply left at its default — for a
+# reduce-shaped body.
 # (`BLOCK_SIZE` / `COOPERATIVE_BLOCK_SIZE` / `WARP_BLOCK_WARPS` are internal
 # GPU launch-geometry constants, not part of the public signature — no caller
 # anywhere in the repo has ever overridden them. `supports_tiled` is likewise
@@ -639,7 +638,6 @@ def launch[
     target: StaticString,
     num_phases: Int,
     computationally_expensive: Bool = False,
-    associative: Bool = False,
     dtype_size: Int = 0,
     name: StaticString = "rowwise",
 ](body: Body, shape: Coord, ctx: Optional[DeviceContext] = None) raises:
@@ -662,15 +660,6 @@ def launch[
             Asserted `> 0`.
         computationally_expensive: GPU author hint — flips the block tier's
             SIMD-full threshold for compute-heavy bodies. CPU ignores.
-        associative: Reduce-shaped (`num_phases == 1`) only, CPU-only. Set
-            `True` to widen the accumulator on long rows so the running
-            total doesn't serialize into one add-per-element chain
-            (recovers memory bandwidth). Only correct when reordering the
-            accumulation doesn't change the result — additive reductions
-            like `reduce_sum` / `reduce_mean`. Leave `False` for anything
-            where element order matters (`product`'s narrower-dtype
-            rounding, tie-breaking in `arg_max` / `arg_min`, ...). Ignored
-            on GPU and meaningless for normalize-shaped bodies.
         dtype_size: Normalize-shaped (`num_phases > 1`) only. Byte size
             of the body's primary dtype (`size_of[dtype]()`), used by the
             GPU phase-aware split-K byte gate; any value `> 0` also opts
@@ -703,7 +692,7 @@ def launch[
                 axis=axis,
                 simd_width=simd_width,
                 supports_tiled=True,
-                associative=associative,
+                reduce_shaped=True,
                 supports_splitk=True,
             ](body, shape)
         else:

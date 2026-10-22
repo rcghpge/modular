@@ -117,7 +117,6 @@ def reduce_sum[
         simd_width=simd_width,
         target=target,
         num_phases=1,
-        associative=True,
         name=op_name,
     ](body, input_shape, context)
 
@@ -476,7 +475,6 @@ def reduce_mean[
         simd_width=simd_width,
         target=target,
         num_phases=1,
-        associative=True,
         name=op_name,
     ](body, input_shape, context)
 

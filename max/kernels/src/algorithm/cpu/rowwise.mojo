@@ -84,18 +84,17 @@ comptime _CPU_SPLITK_MIN_SPLITS = 2
 comptime _CPU_POINTWISE_SPLIT_MAX_SPLITS = 8
 
 
-# Inner-axis cooperative tier, wide-accumulator (opt-in via `associative`).
+# Inner-axis cooperative tier, wide-accumulator (reduce-shaped bodies).
 # The `reduce` else-branch issues `UNROLL` `state.accumulate` calls per block
 # into ONE monoid state, forming a depth-`UNROLL` serial `acc += v_u`
 # dependency chain (add-latency-bound → ~half bandwidth on large contiguous
 # rows). Widening the monoid *width* (NOT its dtype — accumulation stays in the
 # input dtype) to `_CPU_ILP_ACCUMULATORS * simd_width` makes each link
 # `_CPU_ILP_ACCUMULATORS`-way lane-parallel, recovering the ILP the legacy
-# inner reducer got from its `SIMD[dtype, UNROLL*simd_width]` fat vector. Only
-# additive reductions (sum/mean) opt in — the wider bf16 reassociation stays in
-# tolerance (and is closer to legacy's own wide bf16 accumulator); product's
-# bf16 numerics can't widen safely, and max/min gain nothing. Row-size gated so
-# small rows keep native width; decoupled from the non-inner tiled tier.
+# inner reducer got from its `SIMD[dtype, UNROLL*simd_width]` fat vector. Every
+# monoid is already reordered across its `simd_width` lanes, so a wider one
+# reorders no differently. Row-size gated so small rows keep native width;
+# decoupled from the non-inner tiled tier.
 comptime _CPU_ILP_ACCUMULATORS = 4
 comptime _CPU_WIDE_ACC_MIN_ROW = 2048
 
@@ -569,7 +568,7 @@ def launch[
     axis: Int,
     simd_width: Int,
     supports_tiled: Bool = False,
-    associative: Bool = False,
+    reduce_shaped: Bool = False,
     supports_splitk: Bool = False,
     num_phases: Int = 0,
 ](body: Body, shape: Coord) raises:
@@ -596,12 +595,11 @@ def launch[
             (`emit_tile_width > 1`). Single-output reductions (`reduce_sum`,
             …) set this `True`; multi-output kernels (softmax,
             layernorm) set it `False`.
-        associative: Opt in the inner-axis cooperative tier's wide
-            (`_CPU_ILP_ACCUMULATORS * simd_width`) same-dtype accumulator
-            for rows `>= _CPU_WIDE_ACC_MIN_ROW`, breaking the serial
-            accumulate dependency chain. Additive reductions
-            (`reduce_sum`, `reduce_mean`) set this `True`; everything
-            else keeps the native width.
+        reduce_shaped: Whether the body is reduce-shaped (one output per
+            row). Only then does the inner-axis cooperative tier widen the
+            accumulator to `_CPU_ILP_ACCUMULATORS * simd_width` lanes for
+            rows `>= _CPU_WIDE_ACC_MIN_ROW`, breaking the serial accumulate
+            dependency chain.
         supports_splitk: Whether the body can run in the inner-axis
             split-axis tier, where only the last worker to arrive sees the
             joined state. Reduce-shaped bodies set this `True`;
@@ -819,12 +817,11 @@ def launch[
 
                 sync_parallelize(row_worker, actual_workers)
 
-            # Opt-in wide-bf16-accumulator path for large rows (`associative`,
-            # sum/mean only): a `_CPU_ILP_ACCUMULATORS * simd_width`-wide monoid
-            # (same dtype) breaks the serial `acc += v_u` chain into lane-
-            # parallel adds, recovering bandwidth. Small rows and non-opted-in
-            # ops (product/max/min/arg) run the native `params_scalar` width.
-            comptime if associative and effective_simd > 1 and _CPU_ILP_ACCUMULATORS > 1:
+            # Wide-accumulator path for large rows: a
+            # `_CPU_ILP_ACCUMULATORS * simd_width`-wide monoid (same dtype)
+            # breaks the serial accumulate chain into lane-parallel steps,
+            # recovering bandwidth. Small rows run the native width.
+            comptime if reduce_shaped and effective_simd > 1 and _CPU_ILP_ACCUMULATORS > 1:
                 comptime params_wide = ContextParams(
                     axis=axis,
                     emit_tile_width=1,
