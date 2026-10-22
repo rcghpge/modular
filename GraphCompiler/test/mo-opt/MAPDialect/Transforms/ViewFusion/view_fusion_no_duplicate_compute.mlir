@@ -8,13 +8,13 @@
 // It must be materialized once and shared, as the legacy fuser does.
 
 // CHECK-LABEL: mo.graph @residualThroughReshape
-// CHECK:       %[[H1:.*]] = map.iter.foreach<[2, 64, 256]>
+// CHECK:       %[[H1:.*]] = map.iter.elementwise<[2, 64, 256]>
 // CHECK:       map.index.reshape
 // CHECK:       map.call.elementwise @{{.*}}.Add
-// CHECK:       map.iter.foreach<[2, 64, 256]>
+// CHECK:       map.iter.elementwise<[2, 64, 256]>
 // CHECK-NEXT:  inputs (%[[H1]]: {{.*}})
 // CHECK:       map.call.elementwise @{{.*}}.Exp
-// CHECK:       map.iter.foreach<[2, 64, 256]>
+// CHECK:       map.iter.elementwise<[2, 64, 256]>
 // CHECK-NEXT:  inputs (%[[H1]]: {{.*}}, %{{.*}}: {{.*}})
 // CHECK:       map.call.elementwise @{{.*}}.Add
 mo.graph @residualThroughReshape(%h0: !mo.tensor<[2, 64, 256], f32>, %m1: !mo.tensor<[128, 256], f32>, %m2: !mo.tensor<[128, 256], f32>) -> (!mo.tensor<[2, 64, 256], f32>, !mo.tensor<[2, 64, 256], f32>) {
@@ -30,13 +30,13 @@ mo.graph @residualThroughReshape(%h0: !mo.tensor<[2, 64, 256], f32>, %m1: !mo.te
 // is free, so each consumer reads m through its own reshape.
 
 // CHECK-LABEL: mo.graph @pureViewStillDuplicated
-// CHECK:       map.iter.foreach<[2, 64, 256]>
+// CHECK:       map.iter.elementwise<[2, 64, 256]>
 // CHECK:       map.index.reshape
 // CHECK:       map.call.elementwise @{{.*}}.Exp
-// CHECK:       map.iter.foreach<[2, 64, 256]>
+// CHECK:       map.iter.elementwise<[2, 64, 256]>
 // CHECK:       map.index.reshape
 // CHECK:       map.call.elementwise @{{.*}}.Add
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @pureViewStillDuplicated(%m: !mo.tensor<[128, 256], f32>, %x: !mo.tensor<[2, 64, 256], f32>) -> (!mo.tensor<[2, 64, 256], f32>, !mo.tensor<[2, 64, 256], f32>) {
   %r = mo.static.reshape(%m) : !mo.tensor<[128, 256], f32> -> !mo.tensor<[2, 64, 256], f32>
   %e = mo.exp(%r) : !mo.tensor<[2, 64, 256], f32>

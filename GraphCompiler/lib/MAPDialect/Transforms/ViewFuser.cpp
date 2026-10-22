@@ -49,7 +49,7 @@ struct FuseViewsPass : public MAP::impl::FuseViewsBase<FuseViewsPass> {
     // (h = h + reshape(matmul(h))) that recomputes every earlier layer in each
     // later one, so it is held to the elementwise duplication rule
     // (GEX-4234).
-    config.canDuplicate = [](IterForeachOp src) {
+    config.canDuplicate = [](IterElementwiseOp src) {
       return isPureViewForeach(src) || isCheapToDuplicate(src);
     };
     numKernelsFused = fuseInput(getOperation(), config);

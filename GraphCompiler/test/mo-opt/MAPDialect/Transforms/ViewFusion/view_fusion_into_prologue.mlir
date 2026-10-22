@@ -18,7 +18,7 @@ mogg.kernel.decl @kernels.consumer registration = "kernels.consumer" device_info
 
 // CHECK-LABEL: mo.graph @sliceIntoExistingPrologue
 // CHECK-SAME:  (%[[IN:.*]]: !mo.tensor<[10, 64], f32>, %[[STARTS:.*]]: !mo.tensor<[2], si64>, %[[STOPS:.*]]: !mo.tensor<[2], si64>, %[[STEPS:.*]]: !mo.tensor<[2], si64>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       %[[RES:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[IN]]: !mo.tensor<[10, 64], f32>, %[[STARTS]]: !mo.tensor<[2], si64>, %[[STOPS]]: !mo.tensor<[2], si64>, %[[STEPS]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[3, 32], f32>) {
@@ -40,7 +40,7 @@ mo.graph @sliceIntoExistingPrologue(
     %stops: !mo.tensor<[2], si64>,
     %steps: !mo.tensor<[2], si64>
 ) -> !mo.tensor<[3, 32], f32> {
-  %ew = map.iter.foreach<[3, 32]>
+  %ew = map.iter.elementwise<[3, 32]>
       inputs  (%input: !mo.tensor<[10, 64], f32>, %starts: !mo.tensor<[2], si64>,
                %stops: !mo.tensor<[2], si64>, %steps: !mo.tensor<[2], si64>)
       outputs (%ewout: !mo.tensor<[3, 32], f32>)
@@ -68,7 +68,7 @@ mo.graph @sliceIntoExistingPrologue(
 // graph, but the producer has no IndexTransformOpInterface op in its body.
 
 // CHECK-LABEL: mo.graph @elementwiseIntoExistingPrologue_noFuse
-// CHECK:       %[[EW:.*]] = map.iter.foreach<[4]>
+// CHECK:       %[[EW:.*]] = map.iter.elementwise<[4]>
 // CHECK:       map.iter.opaque
 // CHECK-NEXT:  inputs (%[[EW]]: !mo.tensor<[4], f32>)
 // CHECK:       map.iter.prologue
@@ -79,7 +79,7 @@ mo.graph @elementwiseIntoExistingPrologue_noFuse(
     %a: !mo.tensor<[4], f32>,
     %b: !mo.tensor<[4], f32>
 ) -> !mo.tensor<[4], f32> {
-  %ew = map.iter.foreach<[4]>
+  %ew = map.iter.elementwise<[4]>
       inputs  (%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
       outputs (%ewout: !mo.tensor<[4], f32>)
       index   (%i: !map.index<1>)

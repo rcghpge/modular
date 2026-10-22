@@ -35,57 +35,57 @@ namespace M::MAP {
 #define GEN_PASS_DEF_FUSEMUTABLELOADS
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
-// Bridges the `map.iter.foreach` / `map.iter.opaque` accessors so the fusion
-// logic is written once against `Operation *`.
+// Bridges the `map.iter.elementwise` / `map.iter.opaque` accessors so the
+// fusion logic is written once against `Operation *`.
 
 bool isFusibleKernel(Operation *op) {
-  return isa_and_present<MAP::IterForeachOp, MAP::IterOpaqueOp>(op);
+  return isa_and_present<MAP::IterElementwiseOp, MAP::IterOpaqueOp>(op);
 }
 
 Value getKernelInputChain(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.getInputChain();
   return cast<MAP::IterOpaqueOp>(kernelOp).getInputChain();
 }
 
 Value getKernelOutputChain(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.getOutputChain();
   return cast<MAP::IterOpaqueOp>(kernelOp).getOutputChain();
 }
 
 void setKernelChain(Operation *kernelOp, Value chain) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.setChain(chain);
   return cast<MAP::IterOpaqueOp>(kernelOp).setChain(chain);
 }
 
 void insertKernelInputAt(Operation *kernelOp, unsigned idx, Value val) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.insertInputsAt(idx, val);
   return cast<MAP::IterOpaqueOp>(kernelOp).insertInputsAt(idx, val);
 }
 
 void eraseKernelInputAt(Operation *kernelOp, unsigned idx) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.eraseInputsAt(idx);
   return cast<MAP::IterOpaqueOp>(kernelOp).eraseInputsAt(idx);
 }
 
 Block &getKernelBody(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.getBody().front();
   return cast<MAP::IterOpaqueOp>(kernelOp).getBody().front();
 }
 
 void setKernelFusionInfo(Operation *kernelOp, MOGG::FusionInfoAttr fusionInfo) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.setFusionInfoAttr(fusionInfo);
   return cast<MAP::IterOpaqueOp>(kernelOp).setFusionInfoAttr(fusionInfo);
 }
 
 bool kernelHasWriteEffect(Operation *kernelOp) {
-  if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+  if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
     return foreachOp.getHasWriteEffect();
   if (auto opaqueOp = dyn_cast<MAP::IterOpaqueOp>(kernelOp))
     return opaqueOp.getHasWriteEffect();
@@ -119,7 +119,7 @@ Operation *maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
     return nullptr;
 
   // Reading the buffer in place of the load's snapshot is only sound if the
-  // kernel writes only the element it reads, as map.iter.foreach does. An
+  // kernel writes only the element it reads, as map.iter.elementwise does. An
   // in-place map.iter.opaque may write any element.
   if (isa<MAP::IterOpaqueOp>(kernelOp) &&
       llvm::is_contained(kernelOp->getOperands(), loadOp.getInBuffer())) {
@@ -132,9 +132,9 @@ Operation *maybeGetCompatibleKernel(MO::MutableLoadOp loadOp) {
   return kernelOp;
 }
 
-IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
-                                      MO::MutableLoadOp loadOp,
-                                      IterForeachOp kernelOp) {
+IterElementwiseOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
+                                          MO::MutableLoadOp loadOp,
+                                          IterElementwiseOp kernelOp) {
   MLIRContext *ctx = rewriter.getContext();
 
   auto chainType = MO::ChainType::get(ctx);
@@ -150,17 +150,17 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
 
   rewriter.setInsertionPointAfter(kernelOp);
 
-  auto newKernelOp =
-      IterForeachOp::create(rewriter, kernelOp->getLoc(),
-                            /*resultTypes=*/newResultTypes,
-                            /*shape=*/kernelOp.getShape(),
-                            /*inputs=*/newInputs,
-                            /*chain=*/loadOp.getInChain(),
-                            /*fusionInfo=*/
-                            MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
-                                kernelOp->getContext(), {loadOp, kernelOp}),
-                            /*hasReadEffect=*/true,
-                            /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
+  auto newKernelOp = IterElementwiseOp::create(
+      rewriter, kernelOp->getLoc(),
+      /*resultTypes=*/newResultTypes,
+      /*shape=*/kernelOp.getShape(),
+      /*inputs=*/newInputs,
+      /*chain=*/loadOp.getInChain(),
+      /*fusionInfo=*/
+      MOGG::createFusionInfo<MOGG::FusionMutableLoadAttr>(
+          kernelOp->getContext(), {loadOp, kernelOp}),
+      /*hasReadEffect=*/true,
+      /*hasWriteEffect=*/kernelOp.getHasWriteEffect());
 
   // Inherent, so `setDiscardableAttrs` below does not carry it.
   newKernelOp.setDispatch(kernelOp.getDispatch());
@@ -215,7 +215,7 @@ IterForeachOp fuseLoadBufferAndChains(PatternRewriter &rewriter,
 // AFTER DETACHMENT (fusion enabled):
 //   %t, %outCh = mo.mutable.load(buf, %inCh)   // %outCh becomes dead
 //   %merged = mo.chain.create(%other, %inCh)   // %outCh -> %inCh
-//   %result = map.iter.foreach(buf, ..., %merged)  // fused!
+//   %result = map.iter.elementwise(buf, ..., %merged)  // fused!
 //     fusionInfo = MutableLoad(...)
 //
 // Requires: %outCh and %merged have single use (exclusivity constraint).
@@ -569,7 +569,7 @@ struct FuseMutableLoads : public impl::FuseMutableLoadsBase<FuseMutableLoads> {
         //
         // TODO(GEX-1031): Split into adding the chain, then the
         // mo.tensor -> mo.buffer rewrite.
-        if (auto foreachOp = dyn_cast<MAP::IterForeachOp>(kernelOp))
+        if (auto foreachOp = dyn_cast<MAP::IterElementwiseOp>(kernelOp))
           fuseLoadBufferAndChains(rewriter, loadOp, foreachOp);
         else
           fuseLoadBufferAndChains(rewriter, loadOp,

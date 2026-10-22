@@ -4,7 +4,7 @@
 // NanCheckPass runs at the MAP level: after fusion (so a check kernel is never
 // fused into the kernel it checks) and before `--map-to-mogg`, which then
 // compiles the injected `mo.custom` checks alongside the graph's own kernels.
-// It walks `map.iter.foreach` / `map.iter.opaque`, whose float results are the
+// It walks `map.iter.elementwise` / `map.iter.opaque`, whose float results are the
 // compiled-region boundaries; after `--map-to-mogg` every kernel here (the
 // checked region and the two check kernels) is a `mogg.routine`.
 //===----------------------------------------------------------------------===//

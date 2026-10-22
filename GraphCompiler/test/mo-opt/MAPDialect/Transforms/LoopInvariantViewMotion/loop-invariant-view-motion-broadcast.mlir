@@ -16,7 +16,7 @@ module {
 // CHECK-NEXT:    inputs ([[INPUT:%[^ :,]+]]: !mo.tensor<[1, 64], f32>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[8, 64], f32>) {
 // CHECK-NEXT:      [[STRIDED:%[^ ]+]] = map.index.broadcast.stride<#map.index.broadcast.spec<[1, 64] -> [8, 64]>> ([[INPUT]])
-// CHECK-NEXT:      map.iter.foreach.body<[8, 64]>
+// CHECK-NEXT:      map.iter.elementwise.body<[8, 64]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {{{.*}}[[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[8, 64], f32>, [[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[8, 64], f32>} {
 // CHECK-NOT:       map.index.broadcast
@@ -28,7 +28,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
   %output = map.iter.opaque
       inputs (%input : !mo.tensor<[1, 64], f32>)
       outputs (%out : !mo.tensor<[8, 64], f32>) {
-    map.iter.foreach.body<[8, 64]>
+    map.iter.elementwise.body<[8, 64]>
         index (%idx: !map.index<2>)
         capturing {%input0 = %input : !mo.tensor<[1, 64], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[1, 64] -> [8, 64]>> (%idx)
@@ -49,7 +49,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
 // CHECK-NEXT:    inputs ([[INPUT2:%[^ :,]+]]: !mo.tensor<[64], f32>)
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[8, 64], f32>) {
 // CHECK-NEXT:      [[STRIDED2:%[^ ]+]] = map.index.broadcast.stride<#map.index.broadcast.spec<[64] -> [8, 64]>> ([[INPUT2]])
-// CHECK-NEXT:      map.iter.foreach.body<[8, 64]>
+// CHECK-NEXT:      map.iter.elementwise.body<[8, 64]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {{{.*}}[[OUT02:%[^ ,]+]] = [[OUT2]] : !mo.tensor<[8, 64], f32>, [[NEWCAP2:%[^ ]+]] = [[STRIDED2]] : !mo.tensor<[8, 64], f32>} {
 // CHECK-NOT:       map.index.broadcast
@@ -61,7 +61,7 @@ mo.graph @broadcastRankExpanding(%input: !mo.tensor<[64], f32>)
   %output = map.iter.opaque
       inputs (%input : !mo.tensor<[64], f32>)
       outputs (%out : !mo.tensor<[8, 64], f32>) {
-    map.iter.foreach.body<[8, 64]>
+    map.iter.elementwise.body<[8, 64]>
         index (%idx: !map.index<2>)
         capturing {%input0 = %input : !mo.tensor<[64], f32>, %out0 = %out : !mo.tensor<[8, 64], f32>} {
       %idx_ = map.index.broadcast<#map.index.broadcast.spec<[64] -> [8, 64]>> (%idx)

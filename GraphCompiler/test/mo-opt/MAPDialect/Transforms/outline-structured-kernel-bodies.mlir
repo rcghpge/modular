@@ -14,7 +14,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK:         [[RESULT:%[^ ]+]] = map.iter.opaque
 // CHECK-NEXT:    inputs ([[X:%[^ :,]+]]: !mo.tensor<[256, 256], f32>, [[Y:%[^ :,]+]]: !mo.tensor<[256, 256], f32>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[256, 256], f32>) {
-// CHECK-NEXT:      map.iter.foreach.body<[256, 256]>
+// CHECK-NEXT:      map.iter.elementwise.body<[256, 256]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {[[X0:%[^ ,]+]] = [[X]] : !mo.tensor<[256, 256], f32>, [[Y0:%[^ ,]+]] = [[Y]] : !mo.tensor<[256, 256], f32>, [[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[256, 256], f32>} {
 // CHECK-NEXT:      [[XV:%[^ ]+]] = map.load [[X0]][[[IDX]]] : !mo.tensor<[256, 256], f32>
@@ -25,7 +25,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.add">>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output [[RESULT]] : !mo.tensor<[256, 256], f32>
 mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], f32>) -> !mo.tensor<[256, 256], f32> {
-  %0 = map.iter.foreach<[256, 256]>
+  %0 = map.iter.elementwise<[256, 256]>
       inputs  (%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], f32>)
       outputs (%out: !mo.tensor<[256, 256], f32>)
       index   (%idx: !map.index<2>)
@@ -44,7 +44,7 @@ mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], 
 // CHECK:         [[RESULT2:%[^ ]+]] = map.iter.opaque
 // CHECK-NEXT:    inputs ([[X2:%[^ :,]+]]: !mo.tensor<[M, N], f32>, [[Y2:%[^ :,]+]]: !mo.tensor<[M, N], f32>)
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[M, N], f32>) {
-// CHECK-NEXT:      map.iter.foreach.body<[M, N]>
+// CHECK-NEXT:      map.iter.elementwise.body<[M, N]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {[[X02:%[^ ,]+]] = [[X2]] : !mo.tensor<[M, N], f32>, [[Y02:%[^ ,]+]] = [[Y2]] : !mo.tensor<[M, N], f32>, [[OUT02:%[^ ,]+]] = [[OUT2]] : !mo.tensor<[M, N], f32>} {
 // CHECK-NEXT:      [[XV2:%[^ ]+]] = map.load [[X02]][[[IDX2]]] : !mo.tensor<[M, N], f32>
@@ -55,7 +55,7 @@ mo.graph @add(%arg0: !mo.tensor<[256, 256], f32>, %arg1: !mo.tensor<[256, 256], 
 // CHECK-NEXT:  } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_leaf<"mo.add">>, hasReadEffect = false, hasWriteEffect = false}
 // CHECK-NEXT:  mo.output [[RESULT2]] : !mo.tensor<[M, N], f32>
 mo.graph @addDynamic<M, N>(%arg0: !mo.tensor<[M, N], f32>, %arg1: !mo.tensor<[M, N], f32>) -> !mo.tensor<[M, N], f32> {
-  %0 = map.iter.foreach<[M, N]>
+  %0 = map.iter.elementwise<[M, N]>
       inputs  (%arg0: !mo.tensor<[M, N], f32>, %arg1: !mo.tensor<[M, N], f32>)
       outputs (%out: !mo.tensor<[M, N], f32>)
       index   (%idx: !map.index<2>)

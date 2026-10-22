@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: mo.graph @rank1
 // CHECK-SAME:  (%[[X:.*]]: !mo.tensor<[8], f32>, %[[Y:.*]]: !mo.tensor<[8], f32>)
-// CHECK:       %[[OUT:.*]] = map.iter.foreach<[8]>
+// CHECK:       %[[OUT:.*]] = map.iter.elementwise<[8]>
 // CHECK-NEXT:  inputs  (%[[X]]: !mo.tensor<[8], f32>, %[[Y]]: !mo.tensor<[8], f32>)
 // CHECK:       index   (%[[IDX:.*]]: !map.index<1>) -> !mo.tensor<[8], f32> {
 // CHECK-NEXT:  %[[XV:.*]] = map.load %[[X]][%[[IDX]]] : !mo.tensor<[8], f32>
@@ -16,7 +16,7 @@ mo.graph @rank1(%x: !mo.tensor<[8], f32>, %y: !mo.tensor<[8], f32>) -> !mo.tenso
 
 // CHECK-LABEL: mo.graph @symbolic
 // CHECK-SAME:  (%[[X2:.*]]: !mo.tensor<[D0, D1], f32>, %[[Y2:.*]]: !mo.tensor<[D0, D1], f32>)
-// CHECK:       %[[OUT2:.*]] = map.iter.foreach<[D0, D1]>
+// CHECK:       %[[OUT2:.*]] = map.iter.elementwise<[D0, D1]>
 // CHECK-NEXT:  inputs  (%[[X2]]: !mo.tensor<[D0, D1], f32>, %[[Y2]]: !mo.tensor<[D0, D1], f32>)
 // CHECK:       index   (%[[IDX2:.*]]: !map.index<2>) -> !mo.tensor<[D0, D1], f32> {
 // CHECK-NEXT:  %[[X2V:.*]] = map.load %[[X2]][%[[IDX2]]] : !mo.tensor<[D0, D1], f32>
@@ -30,7 +30,7 @@ mo.graph @symbolic<D0, D1>(%x: !mo.tensor<[D0, D1], f32>, %y: !mo.tensor<[D0, D1
 
 // CHECK-LABEL: mo.graph @custom_kernel
 // CHECK-SAME:  (%[[X3:.*]]: !mo.tensor<[8, 8], f32>, %[[Y3:.*]]: !mo.tensor<[8, 8], f32>)
-// CHECK:       %[[OUT3:.*]] = map.iter.foreach<[8, 8]>
+// CHECK:       %[[OUT3:.*]] = map.iter.elementwise<[8, 8]>
 // CHECK-NEXT:  inputs  (%[[X3]]: !mo.tensor<[8, 8], f32>, %[[Y3]]: !mo.tensor<[8, 8], f32>)
 // CHECK:       index   (%[[IDX3:.*]]: !map.index<2>) -> !mo.tensor<[8, 8], f32> {
 // CHECK-NEXT:  %[[X3V:.*]] = map.load %[[X3]][%[[IDX3]]] : !mo.tensor<[8, 8], f32>
@@ -44,7 +44,7 @@ mo.graph @custom_kernel(%x: !mo.tensor<[8, 8], f32>, %y: !mo.tensor<[8, 8], f32>
 
 // CHECK-LABEL: mo.graph @gpu_device
 // CHECK-SAME:  (%[[X4:.*]]: !mo.tensor<[8, 8], f32, gpu:0>, %[[Y4:.*]]: !mo.tensor<[8, 8], f32, gpu:0>)
-// CHECK:       %[[OUT4:.*]] = map.iter.foreach<[8, 8]>
+// CHECK:       %[[OUT4:.*]] = map.iter.elementwise<[8, 8]>
 // CHECK-NEXT:  inputs  (%[[X4]]: !mo.tensor<[8, 8], f32, gpu:0>, %[[Y4]]: !mo.tensor<[8, 8], f32, gpu:0>)
 // CHECK:       index   (%[[IDX4:.*]]: !map.index<2>) -> !mo.tensor<[8, 8], f32, gpu:0> {
 // CHECK-NEXT:  %[[X4V:.*]] = map.load %[[X4]][%[[IDX4]]] : !mo.tensor<[8, 8], f32, gpu:0>
@@ -58,7 +58,7 @@ mo.graph @gpu_device(%x: !mo.tensor<[8, 8], f32, gpu:0>, %y: !mo.tensor<[8, 8], 
 
 // CHECK-LABEL: mo.graph @relu_unary
 // CHECK-SAME:  (%[[X5:.*]]: !mo.tensor<[8, 8], f16>)
-// CHECK:       %[[OUT5:.*]] = map.iter.foreach<[8, 8]>
+// CHECK:       %[[OUT5:.*]] = map.iter.elementwise<[8, 8]>
 // CHECK-NEXT:  inputs  (%[[X5]]: !mo.tensor<[8, 8], f16>)
 // CHECK:       index   (%[[IDX5:.*]]: !map.index<2>) -> !mo.tensor<[8, 8], f16> {
 // CHECK-NEXT:  %[[X5V:.*]] = map.load %[[X5]][%[[IDX5]]] : !mo.tensor<[8, 8], f16>
@@ -71,7 +71,7 @@ mo.graph @relu_unary(%x: !mo.tensor<[8, 8], f16>) -> !mo.tensor<[8, 8], f16> {
 
 // CHECK-LABEL: mo.graph @select_ternary
 // CHECK-SAME:  (%[[COND:.*]]: !mo.tensor<[8, 8], bool>, %[[X6:.*]]: !mo.tensor<[8, 8], f32>, %[[Y6:.*]]: !mo.tensor<[8, 8], f32>)
-// CHECK:       %[[OUT6:.*]] = map.iter.foreach<[8, 8]>
+// CHECK:       %[[OUT6:.*]] = map.iter.elementwise<[8, 8]>
 // CHECK-NEXT:  inputs  (%[[COND]]: !mo.tensor<[8, 8], bool>, %[[X6]]: !mo.tensor<[8, 8], f32>, %[[Y6]]: !mo.tensor<[8, 8], f32>)
 // CHECK:       index   (%[[IDX6:.*]]: !map.index<2>) -> !mo.tensor<[8, 8], f32> {
 // CHECK-NEXT:  %[[CONDV:.*]] = map.load %[[COND]][%[[IDX6]]] : !mo.tensor<[8, 8], bool>
@@ -86,7 +86,7 @@ mo.graph @select_ternary(%cond: !mo.tensor<[8, 8], bool>, %x: !mo.tensor<[8, 8],
 
 // CHECK-LABEL: mo.graph @cast_unary
 // CHECK-SAME:  (%[[X7:.*]]: !mo.tensor<[8], f32>)
-// CHECK:       %[[OUT7:.*]] = map.iter.foreach<[8]>
+// CHECK:       %[[OUT7:.*]] = map.iter.elementwise<[8]>
 // CHECK-NEXT:  inputs  (%[[X7]]: !mo.tensor<[8], f32>)
 // CHECK:       index   (%[[IDX7:.*]]: !map.index<1>) -> !mo.tensor<[8], si32> {
 // CHECK-NEXT:  %[[X7V:.*]] = map.load %[[X7]][%[[IDX7]]] : !mo.tensor<[8], f32>
@@ -99,7 +99,7 @@ mo.graph @cast_unary(%x: !mo.tensor<[8], f32>) -> !mo.tensor<[8], si32> {
 
 // CHECK-LABEL: mo.graph @custom_kernel_with_param
 // CHECK-SAME:  (%[[X8:.*]]: !mo.tensor<[4, 3], f32>)
-// CHECK:       %[[OUT8:.*]] = map.iter.foreach<[4, 3]>
+// CHECK:       %[[OUT8:.*]] = map.iter.elementwise<[4, 3]>
 // CHECK-NEXT:  inputs  (%[[X8]]: !mo.tensor<[4, 3], f32>)
 // CHECK:       index   (%[[IDX8:.*]]: !map.index<2>) -> !mo.tensor<[4, 3], f32> {
 // CHECK-NEXT:  %[[X8V:.*]] = map.load %[[X8]][%[[IDX8]]] : !mo.tensor<[4, 3], f32>
@@ -112,9 +112,9 @@ mo.graph @custom_kernel_with_param(%x: !mo.tensor<[4, 3], f32>) -> !mo.tensor<[4
 
 // CHECK-LABEL: mo.graph @mutable_store
 // CHECK-SAME:  (%[[BUF9:.*]]: !mo.buffer<[2, 2], f32>, %[[A9:.*]]: !mo.tensor<[2, 2], f32>, %[[B9:.*]]: !mo.tensor<[2, 2], f32>)
-// CHECK:       %[[ADD9:.*]] = map.iter.foreach<[2, 2]>
+// CHECK:       %[[ADD9:.*]] = map.iter.elementwise<[2, 2]>
 // CHECK:       map.call.elementwise @{{.*}}.Add(%{{.*}}, %{{.*}}, %{{.*}})
-// CHECK:       %[[OUT9:.*]] = map.iter.foreach<[2, 2]>
+// CHECK:       %[[OUT9:.*]] = map.iter.elementwise<[2, 2]>
 // CHECK-NEXT:  inputs  (%[[ADD9]]: !mo.tensor<[2, 2], f32>, %[[BUF9]]: !mo.buffer<[2, 2], f32>)
 // CHECK-NEXT:  outputs ()
 // CHECK:       index   (%[[IDX9:.*]]: !map.index<2>) chain(%{{.*}}) -> !mo.chain {

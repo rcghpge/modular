@@ -41,18 +41,18 @@ namespace M::MAP {
 
 namespace {
 
-bool isPlainForeach(IterForeachOp op) {
+bool isPlainForeach(IterElementwiseOp op) {
   return op.getNumResults() == 1 && !op.getInputChain() && !op.getOutputChain();
 }
 
-bool sameDevice(IterForeachOp foreachOp, IterRowwiseOp rowwiseOp) {
+bool sameDevice(IterElementwiseOp foreachOp, IterRowwiseOp rowwiseOp) {
   return MO::getDeviceOrDefault(
              cast<MO::MOHasDeviceInterface>(foreachOp.getOperation())) ==
          MO::getDeviceOrDefault(
              cast<MO::MOHasDeviceInterface>(rowwiseOp.getOperation()));
 }
 
-void stampFusion(IterRowwiseOp dst, IterForeachOp src) {
+void stampFusion(IterRowwiseOp dst, IterElementwiseOp src) {
   MLIRContext *ctx = dst->getContext();
   dst.setFusionInfoAttr(
       MOGG::createFusionInfo<MOGG::FusionRowwiseAttr>(ctx, {src, dst}));
@@ -63,7 +63,7 @@ void stampFusion(IterRowwiseOp dst, IterForeachOp src) {
 
 // TODO(GEX-3348): a producer other kernels also read stays materialized;
 // duplicate it once shared reduction inputs are common.
-bool canFuseProducer(IterRowwiseOp dst, IterForeachOp src) {
+bool canFuseProducer(IterRowwiseOp dst, IterElementwiseOp src) {
   if (!isPlainForeach(src) || src->getBlock() != dst->getBlock() ||
       !sameDevice(src, dst))
     return false;
@@ -95,7 +95,7 @@ void mergeRedundantLoads(BlockArgument tensor, RewriterBase &rewriter) {
   }
 }
 
-void fuseProducer(IterRowwiseOp dst, IterForeachOp src,
+void fuseProducer(IterRowwiseOp dst, IterElementwiseOp src,
                   RewriterBase &rewriter) {
   Block &dstBody = dst.getBody().front();
   unsigned numSrcInputs = src.getInputs().size();
@@ -169,7 +169,7 @@ bool canSinkTo(IterRowwiseOp dst, Operation *consumer) {
 }
 
 // Whether one of `consumer`'s other inputs is defined after `dst`.
-bool needsSink(IterRowwiseOp dst, IterForeachOp consumer) {
+bool needsSink(IterRowwiseOp dst, IterElementwiseOp consumer) {
   return llvm::any_of(consumer.getInputs(), [&](Value input) {
     Operation *def = input.getDefiningOp();
     return def && def != dst && def->getBlock() == dst->getBlock() &&
@@ -177,7 +177,7 @@ bool needsSink(IterRowwiseOp dst, IterForeachOp consumer) {
   });
 }
 
-bool canFuseConsumer(IterRowwiseOp dst, IterForeachOp consumer) {
+bool canFuseConsumer(IterRowwiseOp dst, IterElementwiseOp consumer) {
   if (!isPlainForeach(consumer) || dst.getInputChain() ||
       consumer->getBlock() != dst->getBlock() || !sameDevice(consumer, dst) ||
       !isPerRowShape(dst, consumer.getShape()))
@@ -237,7 +237,7 @@ IterRowwiseOp rebuildResults(IterRowwiseOp op, ArrayRef<unsigned> kept,
   return newOp;
 }
 
-IterRowwiseOp fuseConsumer(IterRowwiseOp dst, IterForeachOp consumer,
+IterRowwiseOp fuseConsumer(IterRowwiseOp dst, IterElementwiseOp consumer,
                            RewriterBase &rewriter) {
   if (needsSink(dst, consumer))
     dst->moveBefore(consumer);
@@ -303,18 +303,18 @@ IterRowwiseOp fuseConsumer(IterRowwiseOp dst, IterForeachOp consumer,
   return rebuildResults(newDst, kept, TypeRange{}, rewriter);
 }
 
-IterForeachOp findProducer(IterRowwiseOp dst) {
+IterElementwiseOp findProducer(IterRowwiseOp dst) {
   for (Value input : dst.getInputs())
-    if (auto src = input.getDefiningOp<IterForeachOp>())
+    if (auto src = input.getDefiningOp<IterElementwiseOp>())
       if (canFuseProducer(dst, src))
         return src;
   return nullptr;
 }
 
-IterForeachOp findConsumer(IterRowwiseOp dst) {
+IterElementwiseOp findConsumer(IterRowwiseOp dst) {
   for (Value result : dst.getResults())
     for (Operation *user : result.getUsers())
-      if (auto consumer = dyn_cast<IterForeachOp>(user))
+      if (auto consumer = dyn_cast<IterElementwiseOp>(user))
         if (canFuseConsumer(dst, consumer))
           return consumer;
   return nullptr;
@@ -337,14 +337,14 @@ struct FuseReductionsPass
       bool changed = true;
       while (changed) {
         changed = false;
-        while (IterForeachOp src = findProducer(dst)) {
+        while (IterElementwiseOp src = findProducer(dst)) {
           fuseProducer(dst, src, rewriter);
           rewriter.eraseOp(src);
           IterOpInterface(dst).dedupeInputs(rewriter);
           ++numKernelsFused;
           changed = true;
         }
-        if (IterForeachOp consumer = findConsumer(dst)) {
+        if (IterElementwiseOp consumer = findConsumer(dst)) {
           dst = fuseConsumer(dst, consumer, rewriter);
           ++numKernelsFused;
           changed = true;

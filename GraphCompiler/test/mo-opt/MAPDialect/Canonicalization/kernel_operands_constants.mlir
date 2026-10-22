@@ -34,7 +34,7 @@ mo.graph @folds_constant_into_opaque_call(
 // The body is a closure, so the rematerialized constant reaches it the same way
 // the kernel's own operands do -- as a capture, replacing the one that used to
 // bind the dropped input.
-// CHECK-NEXT:    map.iter.foreach.body<[2, 2]>
+// CHECK-NEXT:    map.iter.elementwise.body<[2, 2]>
 // CHECK-NEXT:      index   ([[IDX:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:      capturing {[[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[2, 2], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[2, 2], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[2, 2], f32>} {
 // CHECK-NEXT:      [[AV:%[^ ]+]] = map.load [[ACAP]][[[IDX]]]
@@ -48,7 +48,7 @@ mo.graph @folds_constant_into_foreach(
   %r = map.iter.opaque
       inputs (%a : !mo.tensor<[2, 2], f32>, %bias as %b : !mo.tensor<[2, 2], f32>)
       outputs (%out : !mo.tensor<[2, 2], f32>) {
-    map.iter.foreach.body<[2, 2]>
+    map.iter.elementwise.body<[2, 2]>
         index (%idx: !map.index<2>)
         capturing {%a0 = %a : !mo.tensor<[2, 2], f32>,
                    %b0 = %b : !mo.tensor<[2, 2], f32>,
@@ -75,7 +75,7 @@ mo.graph @folds_constant_into_foreach(
 // The rematerialized constant carries the dropped input's type rather than the
 // constant's own `[4]`, so the body's captures and loads stay well typed.
 // CHECK-NEXT:    [[B:%[^ ]+]] = map.constant {{.*}} : tensor<4xf32> : <[D0], f32>
-// CHECK-NEXT:    map.iter.foreach.body<[D0]>
+// CHECK-NEXT:    map.iter.elementwise.body<[D0]>
 // CHECK-NEXT:      index   ([[IDX:%[^ :,]+]]: !map.index<1>)
 // CHECK-NEXT:      capturing {[[ACAP:%[^ ]+]] = [[A]] : !mo.tensor<[D0], f32>, [[BCAP:%[^ ]+]] = [[B]] : !mo.tensor<[D0], f32>, [[OCAP:%[^ ]+]] = [[OUT]] : !mo.tensor<[D0], f32>} {
 mo.graph @folds_constant_through_rebind<D0>(
@@ -86,7 +86,7 @@ mo.graph @folds_constant_through_rebind<D0>(
   %r = map.iter.opaque
       inputs (%a : !mo.tensor<[D0], f32>, %rb as %b : !mo.tensor<[D0], f32>)
       outputs (%out : !mo.tensor<[D0], f32>) {
-    map.iter.foreach.body<[D0]>
+    map.iter.elementwise.body<[D0]>
         index (%idx: !map.index<1>)
         capturing {%a0 = %a : !mo.tensor<[D0], f32>,
                    %b0 = %b : !mo.tensor<[D0], f32>,
@@ -116,7 +116,7 @@ mo.graph @keeps_non_constant_through_rebind<D0>(
   %r = map.iter.opaque
       inputs (%a : !mo.tensor<[D0], f32>, %rb as %b1 : !mo.tensor<[D0], f32>)
       outputs (%out : !mo.tensor<[D0], f32>) {
-    map.iter.foreach.body<[D0]>
+    map.iter.elementwise.body<[D0]>
         index (%idx: !map.index<1>)
         capturing {%a0 = %a : !mo.tensor<[D0], f32>,
                    %b0 = %b1 : !mo.tensor<[D0], f32>,

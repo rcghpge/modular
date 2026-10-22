@@ -29,10 +29,10 @@ mo.graph @residual_chain(%a: !mo.tensor<[64], f32, gpu:0>) -> (!mo.tensor<[64], 
 
 // Uncapped: one foreach per output, with the residual adds duplicated well
 // beyond the five in the source.
-// UNCAPPED:          map.iter.foreach<
-// UNCAPPED:          map.iter.foreach<
+// UNCAPPED:          map.iter.elementwise<
+// UNCAPPED:          map.iter.elementwise<
 // UNCAPPED-COUNT-10: map.call.elementwise @{{.*}}.Add
-// UNCAPPED-NOT:      map.iter.foreach<
+// UNCAPPED-NOT:      map.iter.elementwise<
 
 // Capped: the cap forces the chain across several kernels.
-// CAPPED-COUNT-6: map.iter.foreach<
+// CAPPED-COUNT-6: map.iter.elementwise<

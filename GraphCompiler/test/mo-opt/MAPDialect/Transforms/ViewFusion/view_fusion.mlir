@@ -10,14 +10,14 @@
 // index, composing the two transforms in the right order.
 
 // CHECK-LABEL: mo.graph @sliceIntoTranspose
-// CHECK:       %{{.*}} = map.iter.foreach<[32, 3]>
+// CHECK:       %{{.*}} = map.iter.elementwise<[32, 3]>
 // CHECK:       index   (%[[IDX:.*]]: !map.index<2>) -> !mo.tensor<[32, 3], f32> {
 // CHECK-NEXT:  %[[TIDX:.*]] = map.index.transpose<{{.*}}> (%[[IDX]], %{{.*}})
 // CHECK-NEXT:  %[[SIDX:.*]] = map.index.slice<{{.*}}> (%[[TIDX]], %{{.*}})
 // CHECK-NEXT:  %[[VAL:.*]] = map.load %{{.*}}[%[[SIDX]]]
 // CHECK-NEXT:  map.store %{{.*}}[%[[IDX]]] = %[[VAL]]
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.transpose"{{.*}}]>>
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @sliceIntoTranspose(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[32, 3], f32> {
   %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -35,7 +35,7 @@ mo.graph @sliceIntoTranspose(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3
 // directly -- the trivial case of the same general mechanism.
 
 // CHECK-LABEL: mo.graph @sliceIntoElementwise
-// CHECK:       %{{.*}} = map.iter.foreach<[3, 32]>
+// CHECK:       %{{.*}} = map.iter.elementwise<[3, 32]>
 // CHECK:       index   (%[[IDX2:.*]]: !map.index<2>) -> !mo.tensor<[3, 32], f32> {
 // CHECK-NEXT:  %[[SIDX2:.*]] = map.index.slice<{{.*}}> (%[[IDX2]], %{{.*}})
 // CHECK-NEXT:  %[[SV:.*]] = map.load %{{.*}}[%[[SIDX2]]]
@@ -43,7 +43,7 @@ mo.graph @sliceIntoTranspose(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3
 // CHECK-NEXT:  %[[ADD:.*]] = map.call.elementwise @{{.*}}.Add(%[[IDX2]], %[[SV]], %[[OV]])
 // CHECK-NEXT:  map.store
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @sliceIntoElementwise(%input: !mo.tensor<[10, 64], f32>, %other: !mo.tensor<[3, 32], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -60,7 +60,7 @@ mo.graph @sliceIntoElementwise(%input: !mo.tensor<[10, 64], f32>, %other: !mo.te
 // the top, exposing the next, until nothing more fuses.
 
 // CHECK-LABEL: mo.graph @chainedViews
-// CHECK:       %{{.*}} = map.iter.foreach<[1, 32, 3]>
+// CHECK:       %{{.*}} = map.iter.elementwise<[1, 32, 3]>
 // CHECK:       index   (%[[IDX3:.*]]: !map.index<3>) -> !mo.tensor<[1, 32, 3], f32> {
 // CHECK-NEXT:  %[[BIDX:.*]] = map.index.broadcast<{{.*}}> (%[[IDX3]])
 // CHECK-NEXT:  %[[TIDX2:.*]] = map.index.transpose<{{.*}}> (%[[BIDX]], %{{.*}})
@@ -68,7 +68,7 @@ mo.graph @sliceIntoElementwise(%input: !mo.tensor<[10, 64], f32>, %other: !mo.te
 // CHECK-NEXT:  %[[VAL3:.*]] = map.load %{{.*}}[%[[SIDX3]]]
 // CHECK-NEXT:  map.store %{{.*}}[%[[IDX3]]] = %[[VAL3]]
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.transpose"{{.*}}, #mogg.fusion_leaf<"mo.static.broadcast_to"{{.*}}]>>
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @chainedViews(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[1, 32, 3], f32> {
   %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -87,7 +87,7 @@ mo.graph @chainedViews(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[1, 32, 
 // own convention for a duplicated operand.
 
 // CHECK-LABEL: mo.graph @sliceUsedTwice
-// CHECK:       %{{.*}} = map.iter.foreach<[3, 32]>
+// CHECK:       %{{.*}} = map.iter.elementwise<[3, 32]>
 // CHECK:       index   (%[[IDX4:.*]]: !map.index<2>) -> !mo.tensor<[3, 32], f32> {
 // CHECK-NEXT:  %[[SIDX4A:.*]] = map.index.slice<{{.*}}> (%[[IDX4]], %{{.*}})
 // CHECK-NEXT:  %[[VAL4A:.*]] = map.load %{{.*}}[%[[SIDX4A]]]
@@ -95,7 +95,7 @@ mo.graph @chainedViews(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[1, 32, 
 // CHECK-NEXT:  %[[VAL4B:.*]] = map.load %{{.*}}[%[[SIDX4B]]]
 // CHECK-NEXT:  map.call.elementwise @{{.*}}.Add(%[[IDX4]], %[[VAL4A]], %[[VAL4B]])
 // CHECK-NEXT:  map.store
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @sliceUsedTwice(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant <#M.dense_array<1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<4, 64> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -114,7 +114,7 @@ mo.graph @sliceUsedTwice(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32
 // real compute. No standalone slice kernel survives.
 
 // CHECK-LABEL: mo.graph @sliceFeedsTwoConsumers
-// CHECK:       %[[R1:.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       %[[R1:.*]] = map.iter.elementwise<[3, 32]>
 // CHECK:       index   (%[[IDX6:.*]]: !map.index<2>) -> !mo.tensor<[3, 32], f32> {
 // CHECK-NEXT:  %[[SIDX6A:.*]] = map.index.slice<{{.*}}> (%[[IDX6]], %{{.*}})
 // CHECK-NEXT:  %[[SV6A:.*]] = map.load %{{.*}}[%[[SIDX6A]]]
@@ -122,7 +122,7 @@ mo.graph @sliceUsedTwice(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32
 // CHECK-NEXT:  map.call.elementwise @{{.*}}.Add(%[[IDX6]], %[[SV6A]], %[[YV]])
 // CHECK-NEXT:  map.store
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>>
-// CHECK:       %[[R2:.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       %[[R2:.*]] = map.iter.elementwise<[3, 32]>
 // CHECK:       index   (%[[IDX7:.*]]: !map.index<2>) -> !mo.tensor<[3, 32], f32> {
 // CHECK-NEXT:  %[[SIDX6B:.*]] = map.index.slice<{{.*}}> (%[[IDX7]], %{{.*}})
 // CHECK-NEXT:  %[[SV6B:.*]] = map.load %{{.*}}[%[[SIDX6B]]]
@@ -147,9 +147,9 @@ mo.graph @sliceFeedsTwoConsumers(%input: !mo.tensor<[10, 64], f32>, %y: !mo.tens
 // completely untouched -- that edge is ElementwiseFuser's job exclusively.
 
 // CHECK-LABEL: mo.graph @pureElementwiseChain
-// CHECK:       map.iter.foreach<[3, 32]>
+// CHECK:       map.iter.elementwise<[3, 32]>
 // CHECK:       map.call.elementwise @{{.*}}.Add
-// CHECK:       map.iter.foreach<[3, 32]>
+// CHECK:       map.iter.elementwise<[3, 32]>
 // CHECK:       map.call.elementwise @{{.*}}.ReLU
 mo.graph @pureElementwiseChain(%x: !mo.tensor<[3, 32], f32>, %y: !mo.tensor<[3, 32], f32>) -> !mo.tensor<[3, 32], f32> {
   %added = mo.add(%x, %y) : !mo.tensor<[3, 32], f32>
@@ -162,9 +162,9 @@ mo.graph @pureElementwiseChain(%x: !mo.tensor<[3, 32], f32>, %y: !mo.tensor<[3, 
 // yet, so a slice feeding a reshape stays two separate kernels.
 
 // CHECK-LABEL: mo.graph @sliceIntoReshapeStaysUnfused
-// CHECK:       [[SLICED:%.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       [[SLICED:%.*]] = map.iter.elementwise<[3, 32]>
 // CHECK:       map.index.slice<{{.*}}>
-// CHECK:       map.iter.foreach<[96]>
+// CHECK:       map.iter.elementwise<[96]>
 // CHECK:       inputs  ([[SLICED]]: !mo.tensor<[3, 32], f32>)
 // CHECK:       map.index.reshape<{{.*}}>
 mo.graph @sliceIntoReshapeStaysUnfused(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[96], f32> {
@@ -182,9 +182,9 @@ mo.graph @sliceIntoReshapeStaysUnfused(%input: !mo.tensor<[10, 64], f32>) -> !mo
 // so it stays its own kernel rather than being re-derived in the consumer.
 
 // CHECK-LABEL: mo.graph @sliceEscapingOutput
-// CHECK:       [[SLICED:%.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       [[SLICED:%.*]] = map.iter.elementwise<[3, 32]>
 // CHECK:       map.index.slice<{{.*}}>
-// CHECK:       map.iter.foreach<[3, 32]>
+// CHECK:       map.iter.elementwise<[3, 32]>
 // CHECK:       inputs  ([[SLICED]]: !mo.tensor<[3, 32], f32>
 // CHECK-NOT:   map.index.slice<{{.*}}>
 // CHECK:       map.call.elementwise @{{.*}}.Add

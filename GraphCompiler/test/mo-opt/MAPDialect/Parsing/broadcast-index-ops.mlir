@@ -14,7 +14,7 @@ module {
 
 // Rank-preserving broadcast: in-shape dim 0 (size 1) broadcasts to 8.
 // CHECK-LABEL: mo.graph @broadcastSameRank
-// CHECK:         [[RESULT:%[^ ]+]] = map.iter.foreach<[8, 64]>
+// CHECK:         [[RESULT:%[^ ]+]] = map.iter.elementwise<[8, 64]>
 // CHECK-NEXT:    inputs  ([[INPUT:%[^ :,]+]]: !mo.tensor<[1, 64], f32>)
 // CHECK-NEXT:    outputs ([[OUTARG:%[^ :,]+]]: !mo.tensor<[8, 64], f32>)
 // CHECK-NEXT:    index   ([[IDX:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[8, 64], f32> {
@@ -25,7 +25,7 @@ module {
 // CHECK-NEXT:   mo.output [[RESULT]] : !mo.tensor<[8, 64], f32>
 mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
     -> !mo.tensor<[8, 64], f32> {
-  %output = map.iter.foreach<[8, 64]>
+  %output = map.iter.elementwise<[8, 64]>
       inputs  (%input: !mo.tensor<[1, 64], f32>)
       outputs (%out: !mo.tensor<[8, 64], f32>)
       index   (%idx: !map.index<2>)
@@ -43,7 +43,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
 // the leading output dim is entirely replicated, dropped from the projected
 // index).
 // CHECK-LABEL: mo.graph @broadcastRankExpanding
-// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.foreach<[8, 64]>
+// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.elementwise<[8, 64]>
 // CHECK-NEXT:    inputs  ([[INPUT2:%[^ :,]+]]: !mo.tensor<[64], f32>)
 // CHECK-NEXT:    outputs ([[OUTARG2:%[^ :,]+]]: !mo.tensor<[8, 64], f32>)
 // CHECK-NEXT:    index   ([[IDX2:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[8, 64], f32> {
@@ -54,7 +54,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>)
 // CHECK-NEXT:   mo.output [[RESULT2]] : !mo.tensor<[8, 64], f32>
 mo.graph @broadcastRankExpanding(%input: !mo.tensor<[64], f32>)
     -> !mo.tensor<[8, 64], f32> {
-  %output = map.iter.foreach<[8, 64]>
+  %output = map.iter.elementwise<[8, 64]>
       inputs  (%input: !mo.tensor<[64], f32>)
       outputs (%out: !mo.tensor<[8, 64], f32>)
       index   (%idx: !map.index<2>)

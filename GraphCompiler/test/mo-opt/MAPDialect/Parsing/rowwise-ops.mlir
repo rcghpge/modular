@@ -137,7 +137,7 @@ mo.graph @rowwiseBody<M, N>(%x: !mo.tensor<[M, N], f32>)
 }
 
 // An in-place kernel: the fold's result is stored into a buffer, and the chain
-// orders it like `map.iter.foreach`'s. The chain has no block argument and is
+// orders it like `map.iter.elementwise`'s. The chain has no block argument and is
 // the only result; `dispatch(immediate)` prints because it isn't the default.
 // CHECK-LABEL: mo.graph @rowwiseChain
 // CHECK:         [[OUTCHAIN:%[^ ]+]] = map.iter.rowwise<[8, 128], axis = 1> dispatch(immediate)

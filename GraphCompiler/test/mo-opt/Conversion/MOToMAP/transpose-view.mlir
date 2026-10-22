@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
-// Verify that mo.transpose lowers to a standalone (unfused) map.iter.foreach
+// Verify that mo.transpose lowers to a standalone (unfused) map.iter.elementwise
 // over the output shape, with a map.index.transpose op computing the input
 // index -- not map.iter.opaque. The perm rides in as an operand (like slice's
 // bounds): a mo.constant perm is also baked into the spec as literals, and a
@@ -11,7 +11,7 @@
 // CHECK-LABEL: mo.graph @transposeSwap
 // CHECK-NOT:     map.iter.opaque
 // mo.transpose is sync-launch, so the foreach runs immediately.
-// CHECK:         [[OUT:%.*]] = map.iter.foreach<[3, 2]> dispatch(immediate)
+// CHECK:         [[OUT:%.*]] = map.iter.elementwise<[3, 2]> dispatch(immediate)
 // CHECK:         inputs  ([[INPUT:%.*]]: !mo.tensor<[2, 3], f32>, [[PERM:%.*]]: !mo.tensor<[2], si64>)
 // CHECK:         outputs ([[OUTARG:%.*]]: !mo.tensor<[3, 2], f32>)
 // CHECK:         index   ([[IDX:%.*]]: !map.index<2>) -> !mo.tensor<[3, 2], f32> {
@@ -30,7 +30,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[3, 2], f
 
 // CHECK-LABEL: mo.graph @transpose3D
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         [[OUT2:%.*]] = map.iter.foreach<[4, 2, 3]>
+// CHECK:         [[OUT2:%.*]] = map.iter.elementwise<[4, 2, 3]>
 // CHECK:         inputs  ([[INPUT2:%.*]]: !mo.tensor<[2, 3, 4], f32>, [[PERM2:%.*]]: !mo.tensor<[3], si64>)
 // CHECK:         outputs ([[OUTARG2:%.*]]: !mo.tensor<[4, 2, 3], f32>)
 // CHECK:         index   ([[IDX2:%.*]]: !map.index<3>) -> !mo.tensor<[4, 2, 3], f32> {
@@ -50,7 +50,7 @@ mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>) -> !mo.tensor<[4, 2, 3
 
 // CHECK-LABEL: mo.graph @transposeSymbolicDim
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[64, N]>
+// CHECK:         map.iter.elementwise<[64, N]>
 // CHECK:         map.index.transpose<#map.index.transpose.spec<[N, 64] -> [64, N], perm = [1, 0]>>
 mo.graph @transposeSymbolicDim<N>(%input: !mo.tensor<[N, 64], f32>) -> !mo.tensor<[64, N], f32> {
   %perm = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -68,7 +68,7 @@ mo.graph @transposeSymbolicDim<N>(%input: !mo.tensor<[N, 64], f32>) -> !mo.tenso
 
 // CHECK-LABEL: mo.graph @transposeDynamicPerm
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach
+// CHECK:         map.iter.elementwise
 // CHECK:         [[IDXD_:%.*]] = map.index.transpose<#map.index.transpose.spec<[D0, D1, D2, D3] -> [{{.*}}], perm = [?, ?, ?, ?]>> ({{.*}})
 mo.graph @transposeDynamicPerm<D0, D1, D2, D3 -> D4, D5, D6, D7>(
     %input: !mo.tensor<[D0, D1, D2, D3], f32>,

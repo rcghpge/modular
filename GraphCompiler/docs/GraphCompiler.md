@@ -173,9 +173,9 @@ Fusion eligibility is a function of kernel structure, not op identity: a kernel
 is fusable when it uses the proper Mojo types for its inputs and outputs and
 implements the relevant fusion interfaces (for example elementwise or
 prologue/epilogue). MAP has two op families: `map.iter.opaque` wraps a
-hand-written Mojo kernel with a fusible store epilogue, while `map.iter.foreach`
-expresses the loop body explicitly as per-index `map.load` / `map.store` /
-`map.call.elementwise` ops.
+hand-written Mojo kernel with a fusible store epilogue, while
+`map.iter.elementwise` expresses the loop body explicitly as per-index
+`map.load` / `map.store` / `map.call.elementwise` ops.
 
 The dialect is defined in
 [`MAPDialect/Dialect`](../include/GraphCompiler/MAPDialect/Dialect);

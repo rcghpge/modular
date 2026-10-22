@@ -787,8 +787,8 @@ LogicalResult TransposeStrideOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-// map.iter.foreach.body -> mogg.call.foreach.
-LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
+// map.iter.elementwise.body -> mogg.call.foreach.
+LogicalResult IterElementwiseBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();
   Location loc = getLoc();
   // From `$shape`, not an I/O tensor: they can differ (e.g. a broadcast).

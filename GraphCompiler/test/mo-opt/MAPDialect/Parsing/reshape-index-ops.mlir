@@ -13,7 +13,7 @@ module {
 
 // Rank-reducing reshape: flatten [4, 6] into [24].
 // CHECK-LABEL: mo.graph @reshapeFlatten
-// CHECK:         [[RESULT:%[^ ]+]] = map.iter.foreach<[24]>
+// CHECK:         [[RESULT:%[^ ]+]] = map.iter.elementwise<[24]>
 // CHECK-NEXT:    inputs  ([[INPUT:%[^ :,]+]]: !mo.tensor<[4, 6], f32>)
 // CHECK-NEXT:    outputs ([[OUTARG:%[^ :,]+]]: !mo.tensor<[24], f32>)
 // CHECK-NEXT:    index   ([[IDX:%[^ :,]+]]: !map.index<1>) -> !mo.tensor<[24], f32> {
@@ -24,7 +24,7 @@ module {
 // CHECK-NEXT:   mo.output [[RESULT]] : !mo.tensor<[24], f32>
 mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>)
     -> !mo.tensor<[24], f32> {
-  %output = map.iter.foreach<[24]>
+  %output = map.iter.elementwise<[24]>
       inputs  (%input: !mo.tensor<[4, 6], f32>)
       outputs (%out: !mo.tensor<[24], f32>)
       index   (%idx: !map.index<1>)
@@ -40,7 +40,7 @@ mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>)
 
 // Rank-expanding reshape: unflatten [24] into [4, 6].
 // CHECK-LABEL: mo.graph @reshapeExpand
-// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.foreach<[4, 6]>
+// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.elementwise<[4, 6]>
 // CHECK-NEXT:    inputs  ([[INPUT2:%[^ :,]+]]: !mo.tensor<[24], f32>)
 // CHECK-NEXT:    outputs ([[OUTARG2:%[^ :,]+]]: !mo.tensor<[4, 6], f32>)
 // CHECK-NEXT:    index   ([[IDX2:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[4, 6], f32> {
@@ -51,7 +51,7 @@ mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>)
 // CHECK-NEXT:   mo.output [[RESULT2]] : !mo.tensor<[4, 6], f32>
 mo.graph @reshapeExpand(%input: !mo.tensor<[24], f32>)
     -> !mo.tensor<[4, 6], f32> {
-  %output = map.iter.foreach<[4, 6]>
+  %output = map.iter.elementwise<[4, 6]>
       inputs  (%input: !mo.tensor<[24], f32>)
       outputs (%out: !mo.tensor<[4, 6], f32>)
       index   (%idx: !map.index<2>)

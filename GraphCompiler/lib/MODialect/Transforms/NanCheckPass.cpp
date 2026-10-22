@@ -84,11 +84,11 @@ struct NanCheckPass : public impl::NanCheckPassBase<NanCheckPass> {
         ctx, ArrayRef<int64_t>{1}, M::DType::si32, hostDevice, emptyMetadata);
     assert(countTypeHost && "Failed to create count tensor type");
 
-    // Before `map-to-mogg`, compiled regions are still `map.iter.foreach` /
+    // Before `map-to-mogg`, compiled regions are still `map.iter.elementwise` /
     // `map.iter.opaque` ops.
     SmallVector<Operation *> kernelOps;
     graphOp->walk([&kernelOps](Operation *op) {
-      if (isa<MAP::IterForeachOp, MAP::IterOpaqueOp>(op))
+      if (isa<MAP::IterElementwiseOp, MAP::IterOpaqueOp>(op))
         kernelOps.push_back(op);
     });
 

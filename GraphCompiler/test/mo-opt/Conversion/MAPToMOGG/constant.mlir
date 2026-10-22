@@ -27,7 +27,7 @@ mo.graph @constant() -> !mo.tensor<[2, 2], f32> {
       inputs ()
       outputs (%out : !mo.tensor<[2, 2], f32>) {
     %c = map.constant #M.dense_array<1.0, 2.0, 3.0, 4.0> : tensor<2x2xf32> : !mo.tensor<[2, 2], f32>
-    map.iter.foreach.body<[2, 2]>
+    map.iter.elementwise.body<[2, 2]>
         index (%idx: !map.index<2>)
         capturing {%c0 = %c : !mo.tensor<[2, 2], f32>, %out0 = %out : !mo.tensor<[2, 2], f32>} {
       %cv = map.load %c0[%idx] : !mo.tensor<[2, 2], f32>

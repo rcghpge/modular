@@ -12,7 +12,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // loads read the surviving arg (foreach analog of the opaque case in
 // kernel_operands_basic.mlir).
 // CHECK-LABEL: mo.graph @dedupes_repeated_foreach_input
-// CHECK:       map.iter.foreach<[4]>
+// CHECK:       map.iter.elementwise<[4]>
 // CHECK-NEXT:  inputs ([[A:%[^ :]+]]: !mo.tensor<[4], f32>)
 // CHECK-NEXT:  outputs
 // CHECK:         map.load [[A]][
@@ -20,7 +20,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 mo.graph @dedupes_repeated_foreach_input(
   %x: !mo.tensor<[4], f32>
 ) -> !mo.tensor<[4], f32> {
-  %y = map.iter.foreach<[4]>
+  %y = map.iter.elementwise<[4]>
       inputs  (%x as %a: !mo.tensor<[4], f32>, %x as %b: !mo.tensor<[4], f32>)
       outputs (%out: !mo.tensor<[4], f32>)
       index   (%i: !map.index<1>)

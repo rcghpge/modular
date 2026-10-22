@@ -17,7 +17,7 @@
 // CHECK:       #mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.add"
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.gather"
 // CHECK-SAME:  operandIndices = [0]
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]] : !mo.tensor<[2, 2, 3], f32>
 mo.graph @add_gather(
   %a: !mo.tensor<[3, 3], f32>,
@@ -38,7 +38,7 @@ mo.graph @add_gather(
 // CHECK:       map.call.opaque @{{.*}}.Gather{{.*}} inputs(%[[PD]], %[[PI]])
 // CHECK:       #mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.add"
 // CHECK-SAME:  operandIndices = [1]
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output
 mo.graph @add_gather_indices(
   %data: !mo.tensor<[3, 3], f32>,
@@ -64,7 +64,7 @@ mo.graph @add_gather_indices(
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.cast"
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.reduce.softmax"
 // CHECK-SAME:  operandIndices = [0]
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]] : !mo.tensor<[2, 3], f64>
 mo.graph @chain(%a: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64> {
   %add = mo.add(%a, %a) : !mo.tensor<[2, 3], f32>
@@ -83,7 +83,7 @@ mo.graph @chain(%a: !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 3], f64> {
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.mul"
 // CHECK-SAME:  #mogg.fusion_leaf<"custom__map_lower_two_fused_inputs"
 // CHECK-SAME:  operandIndices = [0, 1]
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output
 mo.graph @two_fused_inputs(
   %a: !mo.tensor<[2, 2], f32>,
@@ -98,7 +98,7 @@ mo.graph @two_fused_inputs(
 }
 
 // CHECK-LABEL: mo.graph @partial_fused_inputs
-// CHECK:       %[[EW:.*]] = map.iter.foreach
+// CHECK:       %[[EW:.*]] = map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}.Mul
 // CHECK:       map.iter.opaque
 // CHECK:       %[[P:.*]] = map.iter.prologue
@@ -125,12 +125,12 @@ mo.graph @partial_fused_inputs(
 // CHECK:       map.iter.opaque
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       #mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.add"
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       } else {
 // CHECK:       map.iter.opaque
 // CHECK:       map.call.elementwise @{{.*}}.Mul
 // CHECK:       #mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.mul"
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output
 mo.graph @fuse_in_if(
   %a: !mo.tensor<[3, 3], f32>,
@@ -151,7 +151,7 @@ mo.graph @fuse_in_if(
 }
 
 // CHECK-LABEL: mo.graph @no_fuse_across_blocks
-// CHECK:       %[[EW:.*]] = map.iter.foreach
+// CHECK:       %[[EW:.*]] = map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       mo.if
 // CHECK:       map.iter.opaque
@@ -176,7 +176,7 @@ mo.graph @no_fuse_across_blocks(
 }
 
 // CHECK-LABEL: mo.graph @no_fuse_multi_use
-// CHECK:       %[[EW:.*]] = map.iter.foreach
+// CHECK:       %[[EW:.*]] = map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       %[[G:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[EW]]: !mo.tensor<[3, 3], f32>, %{{.*}}: !mo.tensor<[2, 2], si32>)
@@ -195,7 +195,7 @@ mo.graph @no_fuse_multi_use(
 
 // Feeds both operands, so not fused; the duplicate inputs are `--canonicalize`'s.
 // CHECK-LABEL: mo.graph @no_fuse_same_producer_twice
-// CHECK:       %[[EW:.*]] = map.iter.foreach
+// CHECK:       %[[EW:.*]] = map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.iter.opaque
 // CHECK-NEXT:  inputs (%[[EW]] as %{{.*}}: !mo.tensor<[2, 2], f32>, %[[EW]] as %{{.*}}: !mo.tensor<[2, 2], f32>)
@@ -211,7 +211,7 @@ mo.graph @no_fuse_same_producer_twice(
 }
 
 // CHECK-LABEL: mo.graph @no_fuse_plain_input
-// CHECK:       %[[EW:.*]] = map.iter.foreach
+// CHECK:       %[[EW:.*]] = map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.iter.opaque
 // CHECK-NOT:   map.iter.prologue

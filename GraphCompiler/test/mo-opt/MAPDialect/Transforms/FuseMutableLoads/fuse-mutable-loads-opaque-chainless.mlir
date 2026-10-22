@@ -3,7 +3,7 @@
 // GEX-4230 / GEX-3962: a mutable load feeding a *chainless* opaque kernel -- a
 // gather that indexes a whole buffer -- must fuse. The pass used to skip an
 // opaque kernel that had no chain to sequence the load against (only a
-// chainless map.iter.foreach was handled), leaving the mo.mutable.load behind.
+// chainless map.iter.elementwise was handled), leaving the mo.mutable.load behind.
 // Every read of a large buffer (e.g. a KV-cache leaf gathered by row) then
 // materialized a full-buffer copy before the gather. Fusing gives the kernel a
 // chain in/out pair and lets it read the buffer directly -- an indexed read,

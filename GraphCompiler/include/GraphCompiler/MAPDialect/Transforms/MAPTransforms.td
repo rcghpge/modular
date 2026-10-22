@@ -57,7 +57,7 @@ def FuseEpilogue : Pass<"map-fuse-epilogue", "MO::GraphOp"> {
 def FuseHorizontal : Pass<"map-fuse-horizontal", "MO::GraphOp"> {
   let summary = "Fuse sibling MAP kernels that share an input.";
   let description = [{
-    Merges two `map.iter.foreach` ops over the same index space that share an
+    Merges two `map.iter.elementwise` ops over the same index space that share an
     input into one multi-output kernel, so the shared operand is loaded once
     rather than by each kernel. Pairs siblings, where the other fusers pair a
     producer with its consumer. Also moves a consumer into its producer's
@@ -195,10 +195,10 @@ def OutlineStructuredKernelBodies
   let summary =
       "Outline structured MAP kernel bodies into `map.iter.opaque` regions.";
   let description = [{
-    Wraps each structured MAP loop (`map.iter.foreach`, `map.iter.rowwise`) in
+    Wraps each structured MAP loop (`map.iter.elementwise`, `map.iter.rowwise`) in
     a `map.iter.opaque` region so sequential setup (e.g. strided-view lifting)
     can live outside the structured loop body. The loop's own shape and body
-    move into a nested `map.iter.foreach.body` or `map.iter.rowwise.body`,
+    move into a nested `map.iter.elementwise.body` or `map.iter.rowwise.body`,
     which reaches the wrapper's inputs/outputs through its captures.
     After outlining, nothing inspects the inside of the `map.iter.opaque` again.
   }];
@@ -219,7 +219,7 @@ def LoopInvariantViewMotion : Pass<"map-livm", "MO::GraphOp"> {
     index-transform op has no `LowerableToMOGGInterface` and strands
     `map-to-mogg`.
 
-    For each `map.load` in a `map.iter.foreach.body`, walks back from its index
+    For each `map.load` in a `map.iter.elementwise.body`, walks back from its index
     through any chain of `MAP::IndexTransformOpInterface` ops (today:
     `map.index.slice`) to the loop's own index, hoists each hop into a "stride"
     op (today: `map.index.slice.stride`) in the enclosing `map.iter.opaque`, so
@@ -240,7 +240,7 @@ def RaiseBackContiguousViews
   let summary = "Raise unfused slice/reshape view kernels back to MO/MOGG ops.";
   let description = [{
     Runs after `FuseKernels`, before `OutlineStructuredKernelBodies`. Raises
-    unfused `map.iter.foreach` view kernels back into ops `MOGGToMGP` lowers
+    unfused `map.iter.elementwise` view kernels back into ops `MOGGToMGP` lowers
     without a copy: a contiguous slice becomes `mogg.slice`
     (`mgp.tensor.slice`), and a reshape becomes `mo.static.reshape`. Like
     `mogg-fuse-views`, only slice and reshape, not broadcast/transpose.
@@ -260,16 +260,16 @@ def RaiseBackContiguousViews
 }
 
 def FuseMutableLoads : Pass<"map-fuse-mutable-loads", "MO::GraphOp"> {
-  let summary = "'Fuse' mo.mutable.load ops with map.iter.foreach ops.";
+  let summary = "'Fuse' mo.mutable.load ops with map.iter.elementwise ops.";
   let description = [{
-    Will perform 'fusion' of a mo.mutable.load op with a map.iter.foreach op.
+    Will perform 'fusion' of a mo.mutable.load op with a map.iter.elementwise op.
     This amounts to:
       1. Replacing the value semantic tensor created by the mutable.load op
          with the buffer semantic tensor
       2. Making the input chain of the load op an input of the
-         map.iter.foreach op
+         map.iter.elementwise op
       3. Adding the output chain of the mutable.load op to the output of the
-         map.iter.foreach op
+         map.iter.elementwise op
   }];
   let dependentDialects = ["M::MAP::MAPDialect"];
 }

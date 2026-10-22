@@ -21,7 +21,7 @@
 // to survive DCE -- without it the store is dropped and the buffer never
 // written, which is what used to happen.
 // CHECK:       hasWriteEffect = true
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @mutable_store_consumer_fused(
   %buf: !mo.buffer<[4], f32>,
   %a: !mo.tensor<[4], f32>
@@ -41,7 +41,7 @@ mo.graph @mutable_store_consumer_fused(
 // CHECK-SAME:  %[[CAP:[a-zA-Z0-9_]+]] = %[[OUT:[a-zA-Z0-9_]+]] : !mo.tensor<[4], f32>}
 // CHECK:       map.store %[[CAP]][%{{.*}}] = %{{.*}} : !mo.tensor<[4], f32>
 // The store stays a separate kernel, writing the buffer itself.
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}MutableStore
 mo.graph @chain_consumed_not_fused(
   %buf: !mo.buffer<[4], f32>,

@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
-// Verify that mo.slice lowers to a standalone (unfused) map.iter.foreach over
+// Verify that mo.slice lowers to a standalone (unfused) map.iter.elementwise over
 // the output shape, with a map.index.slice op computing the input index --
 // not map.iter.opaque. Each of starts/stops/steps independently shows up as a
 // literal in the map.index.slice.spec when it's a compile-time constant (a
@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: mo.graph @sliceStaticBounds
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         [[OUT:%.*]] = map.iter.foreach<[3, 32]>
+// CHECK:         [[OUT:%.*]] = map.iter.elementwise<[3, 32]>
 // CHECK:         inputs  ([[INPUT:%.*]]: !mo.tensor<[10, 64], f32>, [[STARTS:%.*]]: !mo.tensor<[2], si64>, [[STOPS:%.*]]: !mo.tensor<[2], si64>, [[STEPS:%.*]]: !mo.tensor<[2], si64>)
 // CHECK:         outputs ([[OUTARG:%.*]]: !mo.tensor<[3, 32], f32>)
 // CHECK:         index   ([[IDX:%.*]]: !map.index<2>) -> !mo.tensor<[3, 32], f32> {
@@ -32,7 +32,7 @@ mo.graph @sliceStaticBounds(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3,
 
 // CHECK-LABEL: mo.graph @sliceDynamicBounds
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[3, 32]>
+// CHECK:         map.iter.elementwise<[3, 32]>
 // CHECK:         map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [?, ?], stops = [?, ?], steps = [?, ?]>>
 mo.graph @sliceDynamicBounds(
     %input: !mo.tensor<[10, 64], f32>,
@@ -53,7 +53,7 @@ mo.graph @sliceDynamicBounds(
 
 // CHECK-LABEL: mo.graph @sliceNonConstantStep
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[3, 32]>
+// CHECK:         map.iter.elementwise<[3, 32]>
 // CHECK:         map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [1, 32], stops = [4, 64], steps = [?, ?]>>
 mo.graph @sliceNonConstantStep(
     %input: !mo.tensor<[10, 64], f32>,
@@ -74,7 +74,7 @@ mo.graph @sliceNonConstantStep(
 
 // CHECK-LABEL: mo.graph @sliceReverseStep
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[3, 32]>
+// CHECK:         map.iter.elementwise<[3, 32]>
 // CHECK:         map.index.slice<#map.index.slice.spec<[10, 64] -> [3, 32], starts = [9, 32], stops = [3, 64], steps = [-2, 1]>>
 mo.graph @sliceReverseStep(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[3, 32], f32> {
   %start = mo.constant <#M.dense_array<-1, 32> : tensor<2xsi64>> : !mo.tensor<[2], si64>

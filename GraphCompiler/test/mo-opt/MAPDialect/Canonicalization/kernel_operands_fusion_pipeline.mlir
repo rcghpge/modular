@@ -9,7 +9,7 @@
 // CHECK-NEXT:  %[[OUT:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[X]]: !mo.tensor<[8], f32>, %[[Y]]: !mo.tensor<[8], f32>)
 // CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[8], f32>) {
-// CHECK-NEXT:    map.iter.foreach.body<[8]>
+// CHECK-NEXT:    map.iter.elementwise.body<[8]>
 // CHECK-NEXT:      index (%[[IDX:.*]]: !map.index<1>)
 // CHECK-NEXT:      capturing {%[[X_IN:.*]] = %[[X]] : !mo.tensor<[8], f32>, %[[Y_IN:.*]] = %[[Y]] : !mo.tensor<[8], f32>, %[[O_IN:.*]] = %[[O]] : !mo.tensor<[8], f32>} {
 // CHECK-NEXT:    %[[XV:.*]] = map.load %[[X_IN]][%[[IDX]]] : !mo.tensor<[8], f32>

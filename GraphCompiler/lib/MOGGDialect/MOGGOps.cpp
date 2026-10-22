@@ -462,7 +462,7 @@ ParseResult RoutineOp::parse(OpAsmParser &parser, OperationState &result) {
   int32_t numInputOperands = static_cast<int32_t>(result.operands.size());
 
   // Optional chain (%c) clause -- a plain operand, never a body block
-  // argument (mirrors `map.iter.foreach`'s `chain(...)`).
+  // argument (mirrors `map.iter.elementwise`'s `chain(...)`).
   int32_t numChainOperands = 0;
   if (succeeded(parser.parseOptionalKeyword("chain"))) {
     OpAsmParser::UnresolvedOperand chainOperand;
@@ -544,7 +544,7 @@ void RoutineOp::print(OpAsmPrinter &p) {
   p << ")";
 
   // chain (%c) -- optional plain operand, no block arg (mirrors
-  // `map.iter.foreach`'s `chain(...)`).
+  // `map.iter.elementwise`'s `chain(...)`).
   if (Value chain = getChain())
     p << " chain(" << chain << ")";
 
@@ -607,8 +607,8 @@ void RoutineOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult RoutineOp::verify() {
-  // A chain result, if present, is last (mirrors `IterForeachOp::verify()` /
-  // `RoutineOp::maybeGetOutChain()`) and never gets a body block argument.
+  // A chain result, if present, is last (mirrors `IterElementwiseOp::verify()`
+  // / `RoutineOp::maybeGetOutChain()`) and never gets a body block argument.
   mlir::ResultRange outputs = getOutputs();
   for (auto [i, output] : llvm::enumerate(outputs))
     if (isa<MO::ChainType>(output.getType()) && i + 1 != outputs.size())
@@ -674,7 +674,7 @@ LogicalResult RoutineOp::verify() {
   // One kernel, one call -- counting the `mogg.call` outlining leaves.
   size_t numCalls = 0;
   for (Operation &bodyOp : getBody().front())
-    if (bodyOp.hasTrait<RoutineCall>())
+    if (bodyOp.hasTrait<CallLike>())
       ++numCalls;
   if (numCalls != 1)
     return emitOpError() << "expected exactly one call in the body, got "

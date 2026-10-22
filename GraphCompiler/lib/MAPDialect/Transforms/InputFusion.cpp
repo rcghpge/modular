@@ -34,7 +34,7 @@ namespace M::MAP {
 #define GEN_PASS_DEF_FUSEINPUT
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
-bool isViewForeach(IterForeachOp op) {
+bool isViewForeach(IterElementwiseOp op) {
   return op.getBody()
       .walk([&](IndexTransformOpInterface) { return WalkResult::interrupt(); })
       .wasInterrupted();
@@ -46,7 +46,7 @@ bool producesThroughView(StoreOp store) {
       [](Operation *o) { return isa<IndexTransformOpInterface>(o); });
 }
 
-bool isPureViewForeach(IterForeachOp op) {
+bool isPureViewForeach(IterElementwiseOp op) {
   return isViewForeach(op) &&
          !op.getBody()
               .walk([&](CallElementwiseOp) { return WalkResult::interrupt(); })
@@ -65,7 +65,7 @@ static bool isLargeTensorOperand(Type type) {
          *numElements > kLargeTensorElementThreshold;
 }
 
-bool isCheapToDuplicate(IterForeachOp op) {
+bool isCheapToDuplicate(IterElementwiseOp op) {
   int numLargeOperands = 0;
   for (Value input : op.getInputs())
     if (isLargeTensorOperand(input.getType()))
@@ -78,7 +78,7 @@ namespace {
 
 // TODO(GEX-4184): support multiple stores/outputs, which only arise via
 // sibling fusion.
-StoreOp producerStoreOf(IterForeachOp src) {
+StoreOp producerStoreOf(IterElementwiseOp src) {
   return getUniqueStore(src.getBody().front());
 }
 
@@ -137,16 +137,16 @@ ClosureCapture findExistingPrologueCapture(IterOpaqueOp dst, unsigned argIdx) {
 }
 
 // An opaque consumer carries no device, so the result's tensor type stands in.
-bool sameDevice(IterForeachOp src, Operation *dst) {
+bool sameDevice(IterElementwiseOp src, Operation *dst) {
   auto srcDev = MO::getDeviceOrDefault(src);
-  if (auto dstForeach = dyn_cast<IterForeachOp>(dst))
+  if (auto dstForeach = dyn_cast<IterElementwiseOp>(dst))
     return MO::getDeviceOrDefault(dstForeach) == srcDev;
   auto tensorTy = dyn_cast<MO::TensorType>(src.getResult(0).getType());
   return tensorTy && MO::getDeviceOrDefault(tensorTy) == srcDev;
 }
 
 // The first load of `src`'s result in `dst`, the site `shouldFuse` inspects.
-LoadOp firstConsumerLoad(IterForeachOp dst, IterForeachOp src) {
+LoadOp firstConsumerLoad(IterElementwiseOp dst, IterElementwiseOp src) {
   Block &body = dst.getBody().front();
   for (auto [i, input] : llvm::enumerate(dst.getInputs())) {
     if (input != src.getResult(0))
@@ -179,7 +179,7 @@ void mergeRedundantLoads(BlockArgument tensor, PatternRewriter &rewriter) {
 
 // Splices `src`'s body into `dst` at each load site, at the load's own
 // (possibly transformed) index.
-void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
+void spliceIntoForeach(IterElementwiseOp dst, IterElementwiseOp src,
                        PatternRewriter &rewriter) {
   bool isView = producesThroughView(producerStoreOf(src));
   Block &dstBody = dst.getBody().front();
@@ -240,7 +240,7 @@ void spliceIntoForeach(IterForeachOp dst, IterForeachOp src,
 
 // Splices `src`'s body into `dst`'s existing prologue behind the captures
 // `src` feeds.
-void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
+void spliceIntoClosure(IterOpaqueOp dst, IterElementwiseOp src,
                        PatternRewriter &rewriter) {
   SmallVector<unsigned> fusionIndices;
   for (auto [i, input] : llvm::enumerate(dst.getInputs()))
@@ -302,12 +302,12 @@ void spliceIntoClosure(IterOpaqueOp dst, IterForeachOp src,
 // accepts it. Without the latter, duplication would clone `src` into some users
 // while another (e.g. an opaque, for the elementwise fuser) keeps it
 // materialized -- pure recomputation.
-bool hasFusionSite(IterForeachOp src, Operation *dstOp,
+bool hasFusionSite(IterElementwiseOp src, Operation *dstOp,
                    const InputFusionConfig &config) {
   if (src->getBlock() != dstOp->getBlock())
     return false;
 
-  if (auto dst = dyn_cast<IterForeachOp>(dstOp)) {
+  if (auto dst = dyn_cast<IterElementwiseOp>(dstOp)) {
     LoadOp load = firstConsumerLoad(dst, src);
     return load && config.shouldFuse(producerStoreOf(src), load);
   }
@@ -337,7 +337,8 @@ bool hasFusionSite(IterForeachOp src, Operation *dstOp,
 // Duplication pays only by removing the materialization, so every user must
 // absorb the clone; `mo.output`, or an opaque with no prologue on that input,
 // keeps it in memory anyway.
-bool duplicationAllowed(IterForeachOp src, const InputFusionConfig &config) {
+bool duplicationAllowed(IterElementwiseOp src,
+                        const InputFusionConfig &config) {
   if (src.getResult(0).hasOneUse())
     return true;
   for (Operation *user : src.getResult(0).getUsers())
@@ -348,18 +349,18 @@ bool duplicationAllowed(IterForeachOp src, const InputFusionConfig &config) {
 
 // An eligible producer feeding `dstOp`, or null. A producer feeding several
 // inputs must clear all of them, since the splice fuses them all.
-IterForeachOp findEligibleProducer(Operation *dstOp,
-                                   const InputFusionConfig &config) {
-  if (auto dst = dyn_cast<IterForeachOp>(dstOp)) {
+IterElementwiseOp findEligibleProducer(Operation *dstOp,
+                                       const InputFusionConfig &config) {
+  if (auto dst = dyn_cast<IterElementwiseOp>(dstOp)) {
     Block &body = dst.getBody().front();
     DenseSet<Operation *> tried;
     // Fusing a producer moves it when `dst` is its only reader and copies it
     // otherwise. Take the single-use ones first: once `d = tanh(r)` is in,
     // `dst` is `r`'s only reader and `r` moves too. Taking `r` first copies it,
     // then copies it again inside `d`, doubling per level of such a chain.
-    IterForeachOp duplicable;
+    IterElementwiseOp duplicable;
     for (Value input : dst.getInputs()) {
-      auto src = input.getDefiningOp<IterForeachOp>();
+      auto src = input.getDefiningOp<IterElementwiseOp>();
       if (!src || src.getNumResults() != 1 || !tried.insert(src).second)
         continue;
       // Fusion stays within a block: never across a control-flow boundary.
@@ -402,7 +403,7 @@ IterForeachOp findEligibleProducer(Operation *dstOp,
   // Highest operand index first, so erasing a fused input never shifts an
   // index still to be stamped into `operandIndices`.
   for (Value input : llvm::reverse(dst.getInputs())) {
-    auto src = input.getDefiningOp<IterForeachOp>();
+    auto src = input.getDefiningOp<IterElementwiseOp>();
     if (!src || src.getNumResults() != 1 || !tried.insert(src).second)
       continue;
     if (src->getBlock() != dstOp->getBlock())
@@ -444,7 +445,7 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
   // `mo.if`'s branches); a producer/consumer edge is always within one block.
   llvm::SmallSetVector<Block *, 8> blocks;
   graphOp.getBody().walk([&](Operation *op) {
-    if (isa<IterForeachOp, IterOpaqueOp>(op))
+    if (isa<IterElementwiseOp, IterOpaqueOp>(op))
       blocks.insert(op->getBlock());
   });
 
@@ -459,16 +460,16 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
     topo.computeTopologicalSorting(ops);
 
     for (Operation *op : llvm::reverse(ops)) {
-      if (erased.contains(op) || !isa<IterForeachOp, IterOpaqueOp>(op))
+      if (erased.contains(op) || !isa<IterElementwiseOp, IterOpaqueOp>(op))
         continue;
       uint64_t fusedIntoConsumer = 0;
-      while (IterForeachOp src = findEligibleProducer(op, config)) {
+      while (IterElementwiseOp src = findEligibleProducer(op, config)) {
         // The cap bounds duplication; moving a sole-use producer adds no work.
         bool duplicates = !src.getResult(0).hasOneUse();
         if (duplicates && fusedIntoConsumer >= config.maxFusionSetSize)
           break;
-        if (isa<IterForeachOp>(op))
-          spliceIntoForeach(cast<IterForeachOp>(op), src, rewriter);
+        if (isa<IterElementwiseOp>(op))
+          spliceIntoForeach(cast<IterElementwiseOp>(op), src, rewriter);
         else
           spliceIntoClosure(cast<IterOpaqueOp>(op), src, rewriter);
         if (src.getResult(0).use_empty()) {
@@ -495,7 +496,7 @@ struct FuseInputPass : public MAP::impl::FuseInputBase<FuseInputPass> {
   void runOnOperation() override {
     InputFusionConfig config;
     config.shouldFuse = [](StoreOp, LoadOp) { return true; };
-    config.canDuplicate = [](IterForeachOp) { return true; };
+    config.canDuplicate = [](IterElementwiseOp) { return true; };
     fuseInput(getOperation(), config);
   }
 };

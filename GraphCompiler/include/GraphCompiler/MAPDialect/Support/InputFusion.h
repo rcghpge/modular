@@ -11,12 +11,12 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 //
-// Generic input fusion: inline a producer `map.iter.foreach` body at the load
-// site(s) where a consumer reads its result, replacing the producer's store.
-// The load site is either in a consumer foreach body or behind an existing
-// `map.iter.prologue` capture of a `map.iter.opaque` consumer. The generic
-// enforces every correctness constraint; a wrapper narrows which edges fuse
-// with a `shouldFuse` predicate over the producer store and consumer load.
+// Generic input fusion: inline a producer `map.iter.elementwise` body at the
+// load site(s) where a consumer reads its result, replacing the producer's
+// store. The load site is either in a consumer foreach body or behind an
+// existing `map.iter.prologue` capture of a `map.iter.opaque` consumer. The
+// generic enforces every correctness constraint; a wrapper narrows which edges
+// fuse with a `shouldFuse` predicate over the producer store and consumer load.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +33,7 @@ namespace M::MAP {
 
 /// Whether `op`'s body contains any `IndexTransformOpInterface` op. A pure
 /// elementwise kernel has none.
-bool isViewForeach(IterForeachOp op);
+bool isViewForeach(IterElementwiseOp op);
 
 /// Whether `store`'s value flows from a transformed load, i.e. its kernel is a
 /// view producer. Follows the store's dataflow, not mere presence of a
@@ -43,12 +43,12 @@ bool producesThroughView(StoreOp store);
 /// Whether `op` is a view and nothing else: it has an index transform but no
 /// elementwise compute. Once a view fuses into an elementwise kernel the result
 /// still reads through a transform, but it is no longer free to re-derive.
-bool isPureViewForeach(IterForeachOp op);
+bool isPureViewForeach(IterElementwiseOp op);
 
 /// Whether duplicating `op` into each of its consumers is not a net
 /// memory-traffic loss: at most one of its inputs is a large tensor, since
 /// every extra copy re-reads all of them (JSC-30 / MSTDL-2759).
-bool isCheapToDuplicate(IterForeachOp op);
+bool isCheapToDuplicate(IterElementwiseOp op);
 
 /// The policy a wrapper supplies to narrow generic input fusion.
 struct InputFusionConfig {
@@ -58,7 +58,7 @@ struct InputFusionConfig {
   std::function<bool(StoreOp producerStore, LoadOp consumerLoad)> shouldFuse;
   /// Whether a producer with more than one use may be duplicated (the splice
   /// clones it into each consumer). A single-use producer always fuses.
-  std::function<bool(IterForeachOp src)> canDuplicate;
+  std::function<bool(IterElementwiseOp src)> canDuplicate;
   /// Cap on kernels fused into one consumer. Duplication clones a cheap
   /// multi-use producer into every consumer, so an elementwise chain with
   /// fan-out could otherwise grow a few enormous kernels. Unbounded by default

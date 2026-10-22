@@ -18,7 +18,7 @@ module {
 // CHECK-NEXT:    inputs ([[INPUT:%[^ :,]+]]: !mo.tensor<[2, 3], f32>, [[PERM:%[^ :,]+]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[3, 2], f32>) {
 // CHECK-NEXT:      [[STRIDED:%[^ ]+]] = map.index.transpose.stride<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>> ([[INPUT]], [[PERM]])
-// CHECK-NEXT:      map.iter.foreach.body<[3, 2]>
+// CHECK-NEXT:      map.iter.elementwise.body<[3, 2]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {{{.*}}[[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[3, 2], f32>, [[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[3, 2], f32>} {
 // CHECK-NOT:       map.index.transpose
@@ -30,7 +30,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>, %perm: !mo.tensor<[2], 
   %output = map.iter.opaque
       inputs (%input : !mo.tensor<[2, 3], f32>, %perm : !mo.tensor<[2], si64>)
       outputs (%out : !mo.tensor<[3, 2], f32>) {
-    map.iter.foreach.body<[3, 2]>
+    map.iter.elementwise.body<[3, 2]>
         index (%idx: !map.index<2>)
         capturing {%input0 = %input : !mo.tensor<[2, 3], f32>, %perm0 = %perm : !mo.tensor<[2], si64>, %out0 = %out : !mo.tensor<[3, 2], f32>} {
       %idx_ = map.index.transpose<#map.index.transpose.spec<[2, 3] -> [3, 2], perm = [1, 0]>> (%idx, %perm0)
@@ -49,7 +49,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>, %perm: !mo.tensor<[2], 
 // CHECK-NEXT:    inputs ([[INPUT2:%[^ :,]+]]: !mo.tensor<[2, 3, 4], f32>, [[PERM2:%[^ :,]+]]: !mo.tensor<[3], si64>)
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[4, 2, 3], f32>) {
 // CHECK-NEXT:      [[STRIDED2:%[^ ]+]] = map.index.transpose.stride<#map.index.transpose.spec<[2, 3, 4] -> [4, 2, 3], perm = [2, 0, 1]>> ([[INPUT2]], [[PERM2]])
-// CHECK-NEXT:      map.iter.foreach.body<[4, 2, 3]>
+// CHECK-NEXT:      map.iter.elementwise.body<[4, 2, 3]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<3>)
 // CHECK-NEXT:        capturing {{{.*}}[[OUT02:%[^ ,]+]] = [[OUT2]] : !mo.tensor<[4, 2, 3], f32>, [[NEWCAP2:%[^ ]+]] = [[STRIDED2]] : !mo.tensor<[4, 2, 3], f32>} {
 // CHECK-NOT:       map.index.transpose
@@ -61,7 +61,7 @@ mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>, %perm: !mo.tensor<[3],
   %output = map.iter.opaque
       inputs (%input : !mo.tensor<[2, 3, 4], f32>, %perm : !mo.tensor<[3], si64>)
       outputs (%out : !mo.tensor<[4, 2, 3], f32>) {
-    map.iter.foreach.body<[4, 2, 3]>
+    map.iter.elementwise.body<[4, 2, 3]>
         index (%idx: !map.index<3>)
         capturing {%input0 = %input : !mo.tensor<[2, 3, 4], f32>, %perm0 = %perm : !mo.tensor<[3], si64>, %out0 = %out : !mo.tensor<[4, 2, 3], f32>} {
       %idx_ = map.index.transpose<#map.index.transpose.spec<[2, 3, 4] -> [4, 2, 3], perm = [2, 0, 1]>> (%idx, %perm0)

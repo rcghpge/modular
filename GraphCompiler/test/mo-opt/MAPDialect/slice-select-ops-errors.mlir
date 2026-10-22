@@ -206,7 +206,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 
 // In a foreach, the spec must slice the foreach's loop shape.
 func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
-  %y:2 = map.iter.foreach<[8, 16]> inputs (%X: !mo.tensor<[8, 16], f32>) outputs (%full: !mo.tensor<[8, 16], f32>, %out: !mo.tensor<[4, 16], f32>) index (%idx: !map.index<2>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
+  %y:2 = map.iter.elementwise<[8, 16]> inputs (%X: !mo.tensor<[8, 16], f32>) outputs (%full: !mo.tensor<[8, 16], f32>, %out: !mo.tensor<[4, 16], f32>) index (%idx: !map.index<2>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
     %v = map.load %X[%idx] : !mo.tensor<[8, 16], f32>
     map.store %full[%idx] = %v : !mo.tensor<[8, 16], f32>
     // expected-error @below{{spec's in-shape #mosh<ape[9, 16]> : !mosh.ape does not match the shape #mosh<ape[8, 16]> : !mosh.ape its index addresses}}
@@ -225,7 +225,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> !mo.tensor<[8, 16], f32> {
   %y = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>) {
     %pro = map.iter.prologue (%idx : !map.index<2>) capturing {%cap = %X : !mo.tensor<[8, 16], f32>} {
       %v = map.load %cap[%idx] : !mo.tensor<[8, 16], f32>
-      // expected-error @below{{expects parent op to be one of 'map.iter.epilogue, map.iter.foreach, map.iter.foreach.body, map.index.slice.select'}}
+      // expected-error @below{{expects parent op to be one of 'map.iter.epilogue, map.iter.elementwise, map.iter.elementwise.body, map.index.slice.select'}}
       map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<2> {
       }
       map.yield %v : f32

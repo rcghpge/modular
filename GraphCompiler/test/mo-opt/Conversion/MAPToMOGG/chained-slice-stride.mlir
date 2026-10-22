@@ -24,7 +24,7 @@ mo.graph @chainedSliceStride(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor<[2
     outputs (%out: !mo.tensor<[2, 16], f32>) {
     %view1 = map.index.slice.stride<#map.index.slice.spec<[10, 64] -> [4, 32], starts = [1, 16], stops = [5, 48], steps = [1, 1]>> (%input, %start0, %stop0, %step0) : (!mo.tensor<[10, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[4, 32], f32>
     %view2 = map.index.slice.stride<#map.index.slice.spec<[4, 32] -> [2, 16], starts = [1, 8], stops = [3, 24], steps = [1, 1]>> (%view1, %start1, %stop1, %step1) : (!mo.tensor<[4, 32], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 16], f32>
-    map.iter.foreach.body<[2, 16]>
+    map.iter.elementwise.body<[2, 16]>
       index (%idx: !map.index<2>)
       capturing {%view20 = %view2 : !mo.tensor<[2, 16], f32>, %out0 = %out : !mo.tensor<[2, 16], f32>} {
       %val = map.load %view20[%idx] : !mo.tensor<[2, 16], f32>

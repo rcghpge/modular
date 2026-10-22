@@ -53,7 +53,7 @@ namespace {
 // def-before-use order, conservatively. A reader inside a region (an `mo.if`
 // branch) counts against the op that encloses it here, which is what actually
 // moves relative to `b`.
-bool resultsUnusedBefore(IterForeachOp a, IterForeachOp b) {
+bool resultsUnusedBefore(IterElementwiseOp a, IterElementwiseOp b) {
   Block *block = b->getBlock();
   return llvm::none_of(a->getUsers(), [&](Operation *user) {
     Operation *inBlock = block->findAncestorOpInBlock(*user);
@@ -62,7 +62,7 @@ bool resultsUnusedBefore(IterForeachOp a, IterForeachOp b) {
 }
 
 // Whether `op`'s body loads from its input `in`.
-bool loadsInput(IterForeachOp op, Value in) {
+bool loadsInput(IterElementwiseOp op, Value in) {
   Block &body = op.getBody().front();
   for (auto [i, operand] : llvm::enumerate(op.getInputs()))
     if (operand == in &&
@@ -88,7 +88,8 @@ struct FusionCandidateGroup {
 };
 
 // A kernel belongs to one group per operand it loads.
-SmallVector<FusionCandidateGroup> fusionCandidateGroupsOf(IterForeachOp op) {
+SmallVector<FusionCandidateGroup>
+fusionCandidateGroupsOf(IterElementwiseOp op) {
   SmallVector<FusionCandidateGroup> groups;
   for (Value in : op.getInputs()) {
     FusionCandidateGroup group{op.getShapeAttr(), MO::getDeviceOrDefault(op),
@@ -99,7 +100,7 @@ SmallVector<FusionCandidateGroup> fusionCandidateGroupsOf(IterForeachOp op) {
   return groups;
 }
 
-bool fusible(IterForeachOp a, IterForeachOp b) {
+bool fusible(IterElementwiseOp a, IterElementwiseOp b) {
   // 1) Check that both kernels have the same shape and device.
   if (a.getShapeAttr() != b.getShapeAttr())
     return false;
@@ -206,11 +207,11 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
     if (!isa<MO::TensorType>(res.getType()))
       continue;
 
-    IterForeachOp src;
+    IterElementwiseOp src;
     unsigned numConsumers = 0;
     bool escapes = false;
     for (OpOperand &use : res.getUses()) {
-      auto consumer = dyn_cast<IterForeachOp>(use.getOwner());
+      auto consumer = dyn_cast<IterElementwiseOp>(use.getOwner());
       if (consumer && use.getOwner()->getBlock() == dst->getBlock()) {
         ++numConsumers;
         src = consumer;
@@ -383,7 +384,7 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
 
 // The block argument `op`'s body reads its input `in` through. Body args are
 // [inputs..., outputs..., index], as MOToMAP builds them.
-BlockArgument inputArgFor(IterForeachOp op, Value in) {
+BlockArgument inputArgFor(IterElementwiseOp op, Value in) {
   return op.getBody().front().getArgument(llvm::find(op.getInputs(), in) -
                                           op.getInputs().begin());
 }
@@ -402,8 +403,8 @@ BlockArgument inputArgFor(IterForeachOp op, Value in) {
 // selects the element, and stores at the slice's index.
 //
 // Returns the merged kernel, created where `b` was.
-IterForeachOp fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
-                   SliceIndexOp slice = {}) {
+IterElementwiseOp fuse(IterElementwiseOp a, IterElementwiseOp b,
+                       Value forwarded = {}, SliceIndexOp slice = {}) {
   assert((!slice || forwarded) && "a slice is how `b` reads `forwarded`");
   // Merged inputs: `a`'s, then the ones only `b` carries. A shared operand
   // keeps `a`'s slot, which is what collapses the duplicate load.
@@ -433,7 +434,7 @@ IterForeachOp fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
   Location loc = mlir::FusedLoc::get(ctx, {a.getLoc(), b.getLoc()});
   OpBuilder builder(b);
   // Deferred if either member is, as input fusion combines the launch policy.
-  auto fused = IterForeachOp::create(
+  auto fused = IterElementwiseOp::create(
       builder, loc, resultTypes, a.getShapeAttr(), inputs,
       /*chain=*/Value(),
       /*fusionInfo=*/
@@ -468,7 +469,7 @@ IterForeachOp fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
   IRMapping map;
   BlockArgument forwardedArg = forwarded ? inputArgFor(b, forwarded) : nullptr;
   Value forwardedValue;
-  auto cloneBody = [&](IterForeachOp src, ArrayRef<unsigned> inputSlots,
+  auto cloneBody = [&](IterElementwiseOp src, ArrayRef<unsigned> inputSlots,
                        unsigned firstOutput, OpBuilder &builder,
                        Value srcIndex) {
     // Body args are [inputs..., outputs..., index], as MOToMAP builds them.
@@ -542,7 +543,7 @@ bool readsOnlyThroughPrologue(IterOpaqueOp opaque, Value value) {
 // readers too, so input fusion leaves the pair alone. They merge into one
 // kernel that stores the result for the other readers and hands `srcKernel`
 // the value just computed instead of a reload.
-bool fuseEscapingConsumer(IterForeachOp dstKernel) {
+bool fuseEscapingConsumer(IterElementwiseOp dstKernel) {
   if (dstKernel.getChain() || dstKernel.getHasReadEffect() ||
       dstKernel.getHasWriteEffect() || isRaisableViewChain(dstKernel))
     return false;
@@ -574,13 +575,13 @@ bool fuseEscapingConsumer(IterForeachOp dstKernel) {
     // result materialized, which is brittle. Fusion should choose between
     // this merge and prologue fusion by comparing what each costs, rather
     // than by predicting what the other pass will do.
-    auto getAndCheckConsumerKernel = [&]() -> IterForeachOp {
-      IterForeachOp consumerKernel;
+    auto getAndCheckConsumerKernel = [&]() -> IterElementwiseOp {
+      IterElementwiseOp consumerKernel;
       bool needsStore = false;
       for (OpOperand &use : result.getUses()) {
         Operation *user = use.getOwner();
         bool sameBlock = user->getBlock() == dstKernel->getBlock();
-        if (auto consumer = dyn_cast<IterForeachOp>(user);
+        if (auto consumer = dyn_cast<IterElementwiseOp>(user);
             consumer && sameBlock) {
           if (consumerKernel)
             return nullptr;
@@ -594,7 +595,7 @@ bool fuseEscapingConsumer(IterForeachOp dstKernel) {
       }
       return needsStore ? consumerKernel : nullptr;
     };
-    IterForeachOp srcKernel = getAndCheckConsumerKernel();
+    IterElementwiseOp srcKernel = getAndCheckConsumerKernel();
     if (!srcKernel)
       continue;
 
@@ -712,8 +713,8 @@ struct FuseHorizontalPass
     // done. The sweep never revisits earlier kernels: a merged kernel reads
     // everything both members read, so every pair rejected before it is still
     // rejected.
-    SmallVector<IterForeachOp> kernels =
-        llvm::to_vector(block.getOps<IterForeachOp>());
+    SmallVector<IterElementwiseOp> kernels =
+        llvm::to_vector(block.getOps<IterElementwiseOp>());
     DenseMap<Operation *, unsigned> slotOf;
 
     // A pair that shares no group fails `fusible`, so a kernel is tried only
@@ -749,14 +750,14 @@ struct FuseHorizontalPass
       llvm::sort(candidates);
       candidates.erase(llvm::unique(candidates), candidates.end());
       for (unsigned j : candidates) {
-        IterForeachOp a = kernels[i];
-        IterForeachOp b = kernels[j];
+        IterElementwiseOp a = kernels[i];
+        IterElementwiseOp b = kernels[j];
         if (!fusible(a, b))
           continue;
         // Users of the pair's results load the merged kernel's results after
         // the fusion, which changes their groups.
         llvm::SetVector<unsigned> users;
-        for (IterForeachOp member : {a, b})
+        for (IterElementwiseOp member : {a, b})
           for (Operation *user : member->getUsers())
             if (auto it = slotOf.find(user); it != slotOf.end())
               users.insert(it->second);
@@ -769,7 +770,7 @@ struct FuseHorizontalPass
         slotOf.erase(a);
         slotOf.erase(b);
 
-        IterForeachOp merged = fuse(a, b);
+        IterElementwiseOp merged = fuse(a, b);
         kernels[i] = nullptr;
         kernels[j] = merged;
         slotOf[merged] = j;
@@ -812,7 +813,8 @@ struct FuseHorizontalPass
     bool merged = true;
     while (merged) {
       merged = false;
-      for (IterForeachOp dst : llvm::to_vector(block.getOps<IterForeachOp>())) {
+      for (IterElementwiseOp dst :
+           llvm::to_vector(block.getOps<IterElementwiseOp>())) {
         if (fuseEscapingConsumer(dst)) {
           ++numKernelsFused;
           merged = true;

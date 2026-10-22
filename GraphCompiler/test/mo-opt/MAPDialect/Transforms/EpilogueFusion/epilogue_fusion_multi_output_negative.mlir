@@ -12,7 +12,7 @@
 // CHECK:       map.iter.epilogue
 // CHECK-NEXT:  map.store
 // CHECK-NEXT:  }
-// CHECK:       %[[PAIR:[0-9]+]]:2 = map.iter.foreach<[8, 8]>
+// CHECK:       %[[PAIR:[0-9]+]]:2 = map.iter.elementwise<[8, 8]>
 // CHECK:       map.index.transpose
 // CHECK-NEXT:  map.load %[[MM]][
 // CHECK:       mo.output %[[PAIR]]#0, %[[PAIR]]#1
@@ -40,7 +40,7 @@ mo.graph @transposed_pair(
 // CHECK:       %[[MM:[0-9]+]]:2 = map.iter.opaque
 // CHECK-COUNT-2: map.store
 // CHECK:       map.call.opaque @{{.*}}.Matmul
-// CHECK:       %[[RELU:[0-9]+]] = map.iter.foreach<[8, 8]>
+// CHECK:       %[[RELU:[0-9]+]] = map.iter.elementwise<[8, 8]>
 // CHECK-NEXT:  inputs (%[[MM]]#0: !mo.tensor<[8, 8], f32>
 // CHECK:       map.call.elementwise @{{.*}}.ReLU
 // CHECK:       mo.output %[[RELU]], %[[MM]]#1

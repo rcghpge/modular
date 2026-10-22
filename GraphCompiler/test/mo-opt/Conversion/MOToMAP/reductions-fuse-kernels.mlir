@@ -17,10 +17,10 @@
 // CHECK:       %[[M:.*]] = map.iter.rowwise<[8, 128], axis = 1>
 // CHECK-NEXT:  inputs  (%[[X]]: !mo.tensor<[8, 128], f32>)
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceMax
-// CHECK:       map.iter.foreach<[8, 128]>
+// CHECK:       map.iter.elementwise<[8, 128]>
 // CHECK-NEXT:  inputs  (%[[X]]: !mo.tensor<[8, 128], f32>, %[[S]]: !mo.tensor<[8, 1], f32>)
 // CHECK:       map.call.elementwise @builtin_kernels.elementwise.Div
-// CHECK:       map.iter.foreach<[8]>
+// CHECK:       map.iter.elementwise<[8]>
 // CHECK-NEXT:  inputs  (%[[M]]: !mo.tensor<[8, 1], f32>)
 // CHECK:       map.iter.rowwise<[8, 1], axis = 0>
 // CHECK-NEXT:  inputs  (%[[M]]: !mo.tensor<[8, 1], f32>)

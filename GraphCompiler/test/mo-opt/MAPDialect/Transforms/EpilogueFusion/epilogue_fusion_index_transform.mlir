@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-epilogue | FileCheck %s
 
-// `mo.slice` lowers to a `map.iter.foreach` over the OUTPUT shape whose body
+// `mo.slice` lowers to a `map.iter.elementwise` over the OUTPUT shape whose body
 // transforms the loop index (`map.index.slice`) before loading the input -- see
 // MOToMAP's slice lowering. As a consumer it looks fusible: single-result, and
 // that result is a tensor. But the splice replaces the load of the producer's
@@ -19,7 +19,7 @@
 // CHECK-NOT:     map.index.slice
 // CHECK:       map.call.opaque @{{.*}}MapLowerOneFusedOutput
 // The slice stays its own kernel, index transform intact.
-// CHECK:       map.iter.foreach<[3]>
+// CHECK:       map.iter.elementwise<[3]>
 // CHECK:       map.index.slice
 mo.graph @no_fuse_slice_consumer(%a: !mo.tensor<[8], f32>) -> !mo.tensor<[3], f32> {
   %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[8], f32>) -> !mo.tensor<[8], f32>

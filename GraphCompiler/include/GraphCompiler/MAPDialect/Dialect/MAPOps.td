@@ -94,7 +94,7 @@ def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     attribute), typed `AnyAttr` so `map` need not depend on `mogg`.
 
     The execution device is an explicit `#M.device_ref` (`MO_ExplicitDevice`)
-    rather than inferred from types as on `map.iter.foreach`: inference cannot
+    rather than inferred from types as on `map.iter.elementwise`: inference cannot
     tell "runs on the host" from "don't know" for unannotated tensors, which
     matters for passes that must refuse to act on device kernels.
   }];
@@ -306,10 +306,10 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
 }
 
 //===----------------------------------------------------------------------===//
-// map.iter.foreach
+// map.iter.elementwise
 //===----------------------------------------------------------------------===//
 
-def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
+def MAP_IterElementwiseOp : MAP_Op<"iter.elementwise", [
   AttrSizedOperandSegments,
   IsolatedFromAbove,
   MAP_IterOpInterface,
@@ -339,7 +339,7 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
 
     Example:
     ```mlir
-    %result = map.iter.foreach<[8, 16, 128]>
+    %result = map.iter.elementwise<[8, 16, 128]>
         inputs  (%x: !mo.tensor<[8, 16, 128], f32>,
                  %y: !mo.tensor<[8, 16, 128], f32>)
         outputs (%out: !mo.tensor<[8, 16, 128], f32>)
@@ -384,10 +384,10 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
 }
 
 //===----------------------------------------------------------------------===//
-// map.iter.foreach.body
+// map.iter.elementwise.body
 //===----------------------------------------------------------------------===//
 
-def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
+def MAP_IterElementwiseBodyOp : MAP_Op<"iter.elementwise.body", [
   HasParent<"IterOpaqueOp">,
   IsolatedFromAbove,
   SingleBlock,
@@ -397,18 +397,18 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
 ]> {
   let summary = "The per-index body of a structured MAP loop, wrapped for outlining.";
   let description = [{
-    Holds the per-index computation of a `map.iter.foreach` after
+    Holds the per-index computation of a `map.iter.elementwise` after
     `OutlineStructuredKernelBodies` wraps it in a `map.iter.opaque`. The
     opaque's input and output block arguments are its `$captures` (see
     `CapturingFusionClosure`); the leading block argument is the index.
-    `shape` is copied from the wrapped `map.iter.foreach`.
+    `shape` is copied from the wrapped `map.iter.elementwise`.
 
     Example:
     ```mlir
     %r = map.iter.opaque
         inputs (%x: !mo.tensor<[8, 16, 128], f32>, %y: !mo.tensor<[8, 16, 128], f32>)
         outputs (%out: !mo.tensor<[8, 16, 128], f32>) {
-      map.iter.foreach.body<[8, 16, 128]>
+      map.iter.elementwise.body<[8, 16, 128]>
           index (%idx: !map.index<3>)
           capturing {%x0 = %x, %y0 = %y, %out0 = %out} {
         %xv = map.load %x0[%idx] : !mo.tensor<[8, 16, 128], f32>
@@ -458,7 +458,7 @@ def MAP_IterRowwiseOp : MAP_Op<"iter.rowwise", [
     block arguments. Outputs are extra block arguments matching the non-chain
     results. Block arguments are ordered [inputs..., outputs..., row].
 
-    As on `map.iter.foreach`, the optional `chain` operand/result models
+    As on `map.iter.elementwise`, the optional `chain` operand/result models
     mutating kernels; it has no block argument, and the output chain is always
     the last result. `hasReadEffect`/`hasWriteEffect` carry forward the
     original op's memory effects instead of the conservative "unknown effects"
@@ -531,7 +531,7 @@ def MAP_IterRowwiseBodyOp : MAP_Op<"iter.rowwise.body", [
   let description = [{
     Holds the per-row computation of a `map.iter.rowwise` after
     `OutlineStructuredKernelBodies` wraps it in a `map.iter.opaque`, as
-    `map.iter.foreach.body` does for `map.iter.foreach`. The opaque's input and
+    `map.iter.elementwise.body` does for `map.iter.elementwise`. The opaque's input and
     output block arguments are its `$captures` (see `CapturingFusionClosure`);
     the leading block argument is the row index. `shape` and `axis` are copied
     from the wrapped `map.iter.rowwise`.
@@ -790,7 +790,7 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
 //===----------------------------------------------------------------------===//
 
 def MAP_SliceSelectOp : MAP_Op<"index.slice.select", [
-  ParentOneOf<["IterEpilogueOp", "IterForeachOp", "IterForeachBodyOp",
+  ParentOneOf<["IterEpilogueOp", "IterElementwiseOp", "IterElementwiseBodyOp",
                "SliceSelectOp"]>,
   SingleBlock,
   NoTerminator,
@@ -870,7 +870,7 @@ def MAP_SliceStrideOp : MAP_Op<"index.slice.stride", [
     A view of `input` with the slice's *output* shape, which a `map.load`
     addresses with the loop's own index. Nothing is copied.
 
-    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.elementwise.body`
     whose loads it feeds. `input` is a buffer when the view feeds an in-place
     kernel's fused load.
 
@@ -952,7 +952,7 @@ def MAP_BroadcastStrideOp : MAP_Op<"index.broadcast.stride", [
     A view of `input` with the broadcast's *output* shape, which a `map.load`
     addresses with the loop's own index. Nothing is copied.
 
-    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.elementwise.body`
     whose loads it feeds. `input` is a buffer when the view feeds an in-place
     kernel's fused load.
 
@@ -1035,7 +1035,7 @@ def MAP_TransposeStrideOp : MAP_Op<"index.transpose.stride", [
     addresses with the loop's own index. Nothing is copied; the strides are
     `input`'s reordered by `perm`.
 
-    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.elementwise.body`
     whose loads it feeds. `input` is a buffer when the view feeds an in-place
     kernel's fused load.
 
@@ -1120,7 +1120,7 @@ def MAP_ReshapeStrideOp : MAP_Op<"index.reshape.stride", [
     A view of `input` with the reshape's *output* shape, which a `map.load`
     addresses with the loop's own index. Nothing is copied.
 
-    Sits in a `map.iter.opaque`'s body, before the `map.iter.foreach.body`
+    Sits in a `map.iter.opaque`'s body, before the `map.iter.elementwise.body`
     whose loads it feeds. `input` is a buffer when the view feeds an in-place
     kernel's fused load.
 

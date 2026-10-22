@@ -11,7 +11,7 @@ mogg.kernel.decl @kernels.consumer registration = "kernels.consumer" device_info
 
 // CHECK-LABEL: mo.graph @fuse_add_into_prologue
 // CHECK-SAME:  (%[[A:.*]]: !mo.tensor<[4], f32>, %[[B:.*]]: !mo.tensor<[4], f32>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       %[[RES:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[A]]: !mo.tensor<[4], f32>, %[[B]]: !mo.tensor<[4], f32>)
 // CHECK-NEXT:  outputs (%[[O:.*]] : !mo.tensor<[4], f32>) {
@@ -28,7 +28,7 @@ mo.graph @fuse_add_into_prologue(
     %a: !mo.tensor<[4], f32>,
     %b: !mo.tensor<[4], f32>
 ) -> !mo.tensor<[4], f32> {
-  %ew = map.iter.foreach<[4]>
+  %ew = map.iter.elementwise<[4]>
       inputs  (%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
       outputs (%ewout: !mo.tensor<[4], f32>)
       index   (%i: !map.index<1>)
@@ -52,7 +52,7 @@ mo.graph @fuse_add_into_prologue(
 
 // CHECK-LABEL: mo.graph @fuse_add_into_prologue_dynamic
 // CHECK-SAME:  (%[[DA:.*]]: !mo.tensor<[D0], f32>, %[[DB:.*]]: !mo.tensor<[D0], f32>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       %[[DRES:.*]] = map.iter.opaque
 // CHECK-NEXT:  inputs (%[[DA]]: !mo.tensor<[D0], f32>, %[[DB]]: !mo.tensor<[D0], f32>)
 // CHECK:       map.iter.prologue (%[[DPI:.*]] : !map.index<1>) capturing {%[[DCA:.*]] = %[[DA]] : !mo.tensor<[D0], f32>, %[[DCB:.*]] = %[[DB]] : !mo.tensor<[D0], f32>}
@@ -63,7 +63,7 @@ mo.graph @fuse_add_into_prologue_dynamic<D0>(
     %a: !mo.tensor<[D0], f32>,
     %b: !mo.tensor<[D0], f32>
 ) -> !mo.tensor<[D0], f32> {
-  %ew = map.iter.foreach<[D0]>
+  %ew = map.iter.elementwise<[D0]>
       inputs  (%a: !mo.tensor<[D0], f32>, %b: !mo.tensor<[D0], f32>)
       outputs (%ewout: !mo.tensor<[D0], f32>)
       index   (%i: !map.index<1>)
@@ -90,7 +90,7 @@ mo.graph @fuse_add_into_prologue_dynamic<D0>(
 // cases above -- same shape, one extra use.
 
 // CHECK-LABEL: mo.graph @no_fuse_multi_use
-// CHECK:       %[[EW:.*]] = map.iter.foreach<[4]>
+// CHECK:       %[[EW:.*]] = map.iter.elementwise<[4]>
 // CHECK:       map.iter.opaque
 // CHECK-NEXT:  inputs (%[[EW]]: !mo.tensor<[4], f32>)
 // CHECK:       map.load
@@ -100,7 +100,7 @@ mo.graph @no_fuse_multi_use(
     %a: !mo.tensor<[4], f32>,
     %b: !mo.tensor<[4], f32>
 ) -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) {
-  %ew = map.iter.foreach<[4]>
+  %ew = map.iter.elementwise<[4]>
       inputs  (%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
       outputs (%ewout: !mo.tensor<[4], f32>)
       index   (%i: !map.index<1>)

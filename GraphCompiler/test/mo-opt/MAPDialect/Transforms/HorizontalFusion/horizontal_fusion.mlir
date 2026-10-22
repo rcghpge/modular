@@ -7,7 +7,7 @@
 
 // CHECK-LABEL: mo.graph @shared_operand
 // CHECK-SAME:  (%[[X:.*]]: !mo.tensor<[8], f32>, %[[Y:.*]]: !mo.tensor<[8], f32>, %[[Z:.*]]: !mo.tensor<[8], f32>)
-// CHECK-NEXT:  %[[OUT:.*]]:2 = map.iter.foreach<[8]>
+// CHECK-NEXT:  %[[OUT:.*]]:2 = map.iter.elementwise<[8]>
 // CHECK-NEXT:  inputs (%[[X]]: !mo.tensor<[8], f32>, %[[Y]]: !mo.tensor<[8], f32>, %[[Z]]: !mo.tensor<[8], f32>)
 // CHECK-NEXT:  outputs (%[[O0:.*]]: !mo.tensor<[8], f32>, %[[O1:.*]]: !mo.tensor<[8], f32>)
 // CHECK:       map.store %[[O0]]
@@ -26,9 +26,9 @@ mo.graph @shared_operand(
 // Sharing an operand is the whole trigger, so disjoint inputs stay apart.
 
 // CHECK-LABEL: mo.graph @no_shared_operand
-// CHECK-NOT:   map.iter.foreach<[8]>{{.*}}:2
-// CHECK:       map.iter.foreach<[8]>
-// CHECK:       map.iter.foreach<[8]>
+// CHECK-NOT:   map.iter.elementwise<[8]>{{.*}}:2
+// CHECK:       map.iter.elementwise<[8]>
+// CHECK:       map.iter.elementwise<[8]>
 mo.graph @no_shared_operand(
   %w: !mo.tensor<[8], f32>,
   %x: !mo.tensor<[8], f32>,
@@ -43,7 +43,7 @@ mo.graph @no_shared_operand(
 // Siblings need not agree on output dtype: each store keeps its own.
 
 // CHECK-LABEL: mo.graph @add_and_cast_share_operand
-// CHECK:       %[[OUT:.*]]:2 = map.iter.foreach<[8]>
+// CHECK:       %[[OUT:.*]]:2 = map.iter.elementwise<[8]>
 // CHECK:       outputs (%[[O0:[a-z0-9]+]]: !mo.tensor<[8], f32>, %[[O1:[a-z0-9]+]]: !mo.tensor<[8], si32>)
 // CHECK:       map.store %[[O0]][%{{.*}}] = %{{.*}} : !mo.tensor<[8], f32>
 // CHECK:       %[[CAST:.*]] = map.call.elementwise @{{.*}}.Cast(%{{.*}}) : !map.index<1>, f32 -> si32
@@ -62,7 +62,7 @@ mo.graph @add_and_cast_share_operand(
 // constant, so the fused kernel iterates `[n]` and both stores land in it.
 
 // CHECK-LABEL: mo.graph @two_adds_dynamic<n>
-// CHECK:       %[[OUT:.*]]:2 = map.iter.foreach<[n]>
+// CHECK:       %[[OUT:.*]]:2 = map.iter.elementwise<[n]>
 // CHECK-NEXT:  inputs (%{{.*}}: !mo.tensor<[n], f32>, %{{.*}}: !mo.tensor<[n], f32>, %{{.*}}: !mo.tensor<[n], f32>)
 // CHECK-NEXT:  outputs (%[[O0:[a-z0-9]+]]: !mo.tensor<[n], f32>, %[[O1:[a-z0-9]+]]: !mo.tensor<[n], f32>)
 // CHECK:       map.store %[[O0]]
@@ -85,10 +85,10 @@ mo.graph @two_adds_dynamic<n>(
 // these patterns cannot match.
 
 // CHECK-LABEL: mo.graph @reader_inside_branch
-// CHECK:       %[[A:[a-z0-9]+]] = map.iter.foreach<[4]>
+// CHECK:       %[[A:[a-z0-9]+]] = map.iter.elementwise<[4]>
 // CHECK:       %[[IF:[a-z0-9]+]] = mo.if
-// CHECK:       map.iter.foreach<[4]>
-// CHECK:       %[[B:[a-z0-9]+]] = map.iter.foreach<[4]>
+// CHECK:       map.iter.elementwise<[4]>
+// CHECK:       %[[B:[a-z0-9]+]] = map.iter.elementwise<[4]>
 // CHECK:       mo.output %[[B]], %[[IF]]
 mo.graph @reader_inside_branch(
   %cond: !mo.tensor<[], bool>,
@@ -113,7 +113,7 @@ mo.graph @reader_inside_branch(
 // attributes of both, and fuses their locations.
 
 // CHECK-LABEL: mo.graph @merge_launch_attrs_and_locs
-// CHECK:       %[[OUT:.*]]:2 = map.iter.foreach<[8]>
+// CHECK:       %[[OUT:.*]]:2 = map.iter.elementwise<[8]>
 // CHECK:       } {fusionInfo = {{.*}}, hasReadEffect = false, hasWriteEffect = false, test.only_b}
 // CHECK-NEXT:  mo.output %[[OUT]]#0, %[[OUT]]#1
 // LOC-LABEL:   mo.graph @merge_launch_attrs_and_locs
@@ -121,11 +121,11 @@ mo.graph @reader_inside_branch(
 mo.graph @merge_launch_attrs_and_locs(
   %x: !mo.tensor<[8], f32>
 ) -> (!mo.tensor<[8], f32>, !mo.tensor<[8], f32>) {
-  %a = map.iter.foreach<[8]> inputs (%x: !mo.tensor<[8], f32>) outputs (%out: !mo.tensor<[8], f32>) index (%idx: !map.index<1>) -> !mo.tensor<[8], f32> {
+  %a = map.iter.elementwise<[8]> inputs (%x: !mo.tensor<[8], f32>) outputs (%out: !mo.tensor<[8], f32>) index (%idx: !map.index<1>) -> !mo.tensor<[8], f32> {
     %v = map.load %x[%idx] : !mo.tensor<[8], f32>
     map.store %out[%idx] = %v : !mo.tensor<[8], f32>
   } {dispatch = #mogg.dispatch<immediate>} loc("a")
-  %b = map.iter.foreach<[8]> inputs (%x: !mo.tensor<[8], f32>) outputs (%out: !mo.tensor<[8], f32>) index (%idx: !map.index<1>) -> !mo.tensor<[8], f32> {
+  %b = map.iter.elementwise<[8]> inputs (%x: !mo.tensor<[8], f32>) outputs (%out: !mo.tensor<[8], f32>) index (%idx: !map.index<1>) -> !mo.tensor<[8], f32> {
     %v = map.load %x[%idx] : !mo.tensor<[8], f32>
     map.store %out[%idx] = %v : !mo.tensor<[8], f32>
   } {test.only_b} loc("b")
@@ -137,11 +137,11 @@ mo.graph @merge_launch_attrs_and_locs(
 // would be a kernel copying both windows, so they stay apart.
 
 // CHECK-LABEL: mo.graph @two_views_of_one_tensor
-// CHECK:       map.iter.foreach<[4, 64]>
+// CHECK:       map.iter.elementwise<[4, 64]>
 // CHECK-NOT:   map.store
 // CHECK:       map.store
 // CHECK-NOT:   map.store
-// CHECK:       map.iter.foreach<[4, 64]>
+// CHECK:       map.iter.elementwise<[4, 64]>
 // CHECK-NOT:   map.store
 // CHECK:       map.store
 // CHECK-NOT:   map.store

@@ -52,8 +52,8 @@ include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 class MOGG_Op<string mnemonic, list<Trait> traits = []> :
   Op<MOGGDialect, mnemonic, traits>;
 
-// The call a `mogg.routine` body holds exactly one of.
-def MOGG_RoutineCall : NativeOpTrait<"RoutineCall"> {
+// Ops that call a kernel, a primitive or a `mogg.func`.
+def MOGG_CallLike : NativeOpTrait<"CallLike"> {
   let cppNamespace = "::M::MOGG";
 }
 
@@ -184,7 +184,7 @@ def MOGG_OutputOp : MOGG_Op<"output", [
 //===----------------------------------------------------------------------===//
 
 def MOGG_CallOp : MOGG_Op<"call", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
   MOGG_FuncCallOpInterface,
@@ -1268,7 +1268,7 @@ def MOGG_TensorStoreOp : MOGG_Op<"tensor.store", [
 }
 
 def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
@@ -1497,7 +1497,7 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 }
 
 def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
@@ -1507,7 +1507,7 @@ def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
     Runs the generic foreach driver `$callee` over `$shape`. The body does the
     per-index load-compute-store; its arguments are one per `$capturing`
     tensor, then the index. Lowered from a `map.iter.opaque` wrapping a
-    `map.iter.foreach.body`.
+    `map.iter.elementwise.body`.
 
     Captures may differ in shape from `$shape` and each other (e.g.
     broadcasts), so there is no shape verifier. A capture is a `!mogg.buffer`
@@ -1525,7 +1525,7 @@ def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
 }
 
 def MOGG_CallForeachTileOp : MOGG_Op<"call.foreach.tile", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   NoTerminator,
 ]> {
@@ -1561,7 +1561,7 @@ def MOGG_CallForeachTileOp : MOGG_Op<"call.foreach.tile", [
 }
 
 def MOGG_CallViewCopyOp : MOGG_Op<"call.view_copy", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
 ]> {
   let summary = "Copy a view into a tensor through the registered view-copy primitive.";
   let description = [{
@@ -1591,7 +1591,7 @@ def MOGG_CallViewCopyOp : MOGG_Op<"call.view_copy", [
 }
 
 def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   NoTerminator,
 ]> {
@@ -1688,7 +1688,7 @@ def MOGG_RowwiseReduceOp : MOGG_Op<"rowwise.reduce", [
 }
 
 def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
@@ -1711,7 +1711,7 @@ def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
 }
 
 def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
-  MOGG_RoutineCall,
+  MOGG_CallLike,
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,

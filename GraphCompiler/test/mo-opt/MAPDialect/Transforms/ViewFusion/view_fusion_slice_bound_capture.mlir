@@ -10,7 +10,7 @@ mogg.kernel.decl @kernels.consumer registration = "kernels.consumer" device_info
 
 // CHECK-LABEL: mo.graph @sliceBoundViewIntoPrologue_noFuse
 // The bound-vector view producer survives -- it is not fused into the prologue.
-// CHECK:       %[[STOPS:.*]] = map.iter.foreach<[1]>
+// CHECK:       %[[STOPS:.*]] = map.iter.elementwise<[1]>
 // CHECK:       map.iter.opaque
 // CHECK-NEXT:  inputs ({{.*}}%[[STOPS]]: !mo.tensor<[1], si64>{{.*}})
 // CHECK:       map.iter.prologue
@@ -24,7 +24,7 @@ mo.graph @sliceBoundViewIntoPrologue_noFuse(
     %steps: !mo.tensor<[1], si64>
 ) -> !mo.tensor<[1], si64> {
   // View producer: reshape a scalar into a [1] bound vector.
-  %stops = map.iter.foreach<[1]>
+  %stops = map.iter.elementwise<[1]>
       inputs  (%stopScalar: !mo.tensor<[], si64>)
       outputs (%so: !mo.tensor<[1], si64>)
       index   (%i: !map.index<1>)

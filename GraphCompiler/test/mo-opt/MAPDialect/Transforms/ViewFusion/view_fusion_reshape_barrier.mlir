@@ -24,7 +24,7 @@ mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device
 // kernel and is the opaque's plain input.
 
 // CHECK-LABEL: mo.graph @sliceReshapeTransposeIntoPrologue
-// CHECK:       %[[SLICE:.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       %[[SLICE:.*]] = map.iter.elementwise<[3, 32]>
 // CHECK:         map.index.slice<
 // CHECK:       %[[RES:.*]] = map.iter.opaque
 // CHECK:       inputs ({{.*}}%[[SLICE]]: !mo.tensor<[3, 32], f32>)
@@ -41,7 +41,7 @@ mo.graph @sliceReshapeTransposeIntoPrologue(
     %steps: !mo.tensor<[2], si64>,
     %perm: !mo.tensor<[2], si64>
 ) -> !mo.tensor<[6, 16], f32> {
-  %sliced = map.iter.foreach<[3, 32]>
+  %sliced = map.iter.elementwise<[3, 32]>
       inputs  (%input: !mo.tensor<[10, 64], f32>, %starts: !mo.tensor<[2], si64>,
                %stops: !mo.tensor<[2], si64>, %steps: !mo.tensor<[2], si64>)
       outputs (%so: !mo.tensor<[3, 32], f32>)
@@ -53,7 +53,7 @@ mo.graph @sliceReshapeTransposeIntoPrologue(
     %v = map.load %input[%si] : !mo.tensor<[10, 64], f32>
     map.store %so[%i] = %v : !mo.tensor<[3, 32], f32>
   }
-  %reshaped = map.iter.foreach<[16, 6]>
+  %reshaped = map.iter.elementwise<[16, 6]>
       inputs  (%sliced: !mo.tensor<[3, 32], f32>)
       outputs (%ro: !mo.tensor<[16, 6], f32>)
       index   (%j: !map.index<2>)
@@ -64,7 +64,7 @@ mo.graph @sliceReshapeTransposeIntoPrologue(
     %v = map.load %sliced[%ri] : !mo.tensor<[3, 32], f32>
     map.store %ro[%j] = %v : !mo.tensor<[16, 6], f32>
   }
-  %transposed = map.iter.foreach<[6, 16]>
+  %transposed = map.iter.elementwise<[6, 16]>
       inputs  (%reshaped: !mo.tensor<[16, 6], f32>, %perm: !mo.tensor<[2], si64>)
       outputs (%to: !mo.tensor<[6, 16], f32>)
       index   (%k: !map.index<2>)
@@ -92,7 +92,7 @@ mo.graph @sliceReshapeTransposeIntoPrologue(
 // slice out.)
 
 // CHECK-LABEL: mo.graph @viewAndReshapeFuseIntoAdd
-// CHECK:       %[[SUM:.*]] = map.iter.foreach<[3, 32]>
+// CHECK:       %[[SUM:.*]] = map.iter.elementwise<[3, 32]>
 // CHECK-DAG:     map.index.reshape<
 // CHECK-DAG:     map.index.slice<
 // CHECK-DAG:     map.call.elementwise @{{.*}}Add
@@ -104,7 +104,7 @@ mo.graph @viewAndReshapeFuseIntoAdd(
     %steps: !mo.tensor<[2], si64>,
     %b: !mo.tensor<[96], f32>
 ) -> !mo.tensor<[3, 32], f32> {
-  %sliced = map.iter.foreach<[3, 32]>
+  %sliced = map.iter.elementwise<[3, 32]>
       inputs  (%a: !mo.tensor<[10, 64], f32>, %starts: !mo.tensor<[2], si64>,
                %stops: !mo.tensor<[2], si64>, %steps: !mo.tensor<[2], si64>)
       outputs (%so: !mo.tensor<[3, 32], f32>)
@@ -116,7 +116,7 @@ mo.graph @viewAndReshapeFuseIntoAdd(
     %v = map.load %a[%si] : !mo.tensor<[10, 64], f32>
     map.store %so[%i] = %v : !mo.tensor<[3, 32], f32>
   }
-  %reshaped = map.iter.foreach<[3, 32]>
+  %reshaped = map.iter.elementwise<[3, 32]>
       inputs  (%b: !mo.tensor<[96], f32>)
       outputs (%ro: !mo.tensor<[3, 32], f32>)
       index   (%j: !map.index<2>)
@@ -127,7 +127,7 @@ mo.graph @viewAndReshapeFuseIntoAdd(
     %v = map.load %b[%ri] : !mo.tensor<[96], f32>
     map.store %ro[%j] = %v : !mo.tensor<[3, 32], f32>
   }
-  %sum = map.iter.foreach<[3, 32]>
+  %sum = map.iter.elementwise<[3, 32]>
       inputs  (%sliced: !mo.tensor<[3, 32], f32>, %reshaped: !mo.tensor<[3, 32], f32>)
       outputs (%ao: !mo.tensor<[3, 32], f32>)
       index   (%k: !map.index<2>)

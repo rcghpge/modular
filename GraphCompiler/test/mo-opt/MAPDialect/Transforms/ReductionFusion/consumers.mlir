@@ -19,7 +19,7 @@
 // CHECK-NEXT:    %[[Z:.*]] = map.call.elementwise @builtin_kernels.elementwise.Exp(%[[ROW]], %[[Y]])
 // CHECK-NEXT:    map.store %[[OUT]][%[[ROW]]] = %[[Z]] : !mo.tensor<[8, 1], f32>
 // CHECK-NEXT:  }
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[R]]
 mo.graph @chain(%x: !mo.tensor<[8, 128], f32>, %b: !mo.tensor<[8, 1], f32>) -> !mo.tensor<[8, 1], f32> {
   %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
@@ -63,7 +63,7 @@ mo.graph @oneField(%x: !mo.tensor<[4, 16], f32>) -> (!mo.tensor<[4, 1], f32>, !m
 // moves down to it. That input's producer then fuses at the row too.
 // CHECK-LABEL: mo.graph @sinksPastInput
 // CHECK-SAME:  (%[[X4:.*]]: !mo.tensor<[8, 128], f32>, %[[B4:.*]]: !mo.tensor<[8, 1], f32>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       map.iter.rowwise<[8, 128], axis = 1>
 // CHECK-NEXT:  inputs  (%[[X4]]: !mo.tensor<[8, 128], f32>, %[[B4]]: !mo.tensor<[8, 1], f32>)
 // CHECK:       map.load %[[B4]][%[[ROW4:[[:alnum:]_]+]]]
@@ -82,7 +82,7 @@ mo.graph @sinksPastInput(%x: !mo.tensor<[8, 128], f32>, %b: !mo.tensor<[8, 1], f
 // CHECK:       %[[R5:.*]] = map.iter.rowwise<[8, 128], axis = 1>
 // CHECK:       %[[T:.*]] = map.iter.rowwise<[8, 1], axis = 0>
 // CHECK-NEXT:  inputs  (%[[R5]]: !mo.tensor<[8, 1], f32>)
-// CHECK:       map.iter.foreach<[8, 1]>
+// CHECK:       map.iter.elementwise<[8, 1]>
 // CHECK:       inputs  (%[[R5]]: !mo.tensor<[8, 1], f32>, %{{.*}}: !mo.tensor<[8, 1], f32>)
 mo.graph @cycle(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
   %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
@@ -95,7 +95,7 @@ mo.graph @cycle(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
 // A consumer over the full row space is a later step: it stays out.
 // CHECK-LABEL: mo.graph @fullRow
 // CHECK:       %[[R6:.*]] = map.iter.rowwise<[8, 128], axis = 1>
-// CHECK:       map.iter.foreach<[8, 128]>
+// CHECK:       map.iter.elementwise<[8, 128]>
 mo.graph @fullRow(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 128], f32> {
   %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %rb = mo.static.broadcast_to(%r) : !mo.tensor<[8, 1], f32> -> !mo.tensor<[8, 128], f32>
@@ -107,7 +107,7 @@ mo.graph @fullRow(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 128], f32> {
 // reverse) stays out.
 // CHECK-LABEL: mo.graph @transformedRead
 // CHECK:       map.iter.rowwise<[8, 8], axis = 1>
-// CHECK:       map.iter.foreach<[8, 1]>
+// CHECK:       map.iter.elementwise<[8, 1]>
 // CHECK:       map.index.slice
 mo.graph @transformedRead(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32> {
   %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32>

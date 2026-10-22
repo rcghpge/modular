@@ -16,7 +16,7 @@ module {
 // CHECK-NEXT:    inputs ([[INPUT:%[^ :,]+]]: !mo.tensor<[4, 6], f32>)
 // CHECK-NEXT:    outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[24], f32>) {
 // CHECK-NEXT:      [[STRIDED:%[^ ]+]] = map.index.reshape.stride<#map.index.reshape.spec<[4, 6] -> [24]>> ([[INPUT]])
-// CHECK-NEXT:      map.iter.foreach.body<[24]>
+// CHECK-NEXT:      map.iter.elementwise.body<[24]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<1>)
 // CHECK-NEXT:        capturing {{{.*}}[[OUT0:%[^ ,]+]] = [[OUT]] : !mo.tensor<[24], f32>, [[NEWCAP:%[^ ]+]] = [[STRIDED]] : !mo.tensor<[24], f32>} {
 // CHECK-NOT:       map.index.reshape
@@ -28,7 +28,7 @@ mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>)
   %output = map.iter.opaque
       inputs (%input : !mo.tensor<[4, 6], f32>)
       outputs (%out : !mo.tensor<[24], f32>) {
-    map.iter.foreach.body<[24]>
+    map.iter.elementwise.body<[24]>
         index (%idx: !map.index<1>)
         capturing {%input0 = %input : !mo.tensor<[4, 6], f32>, %out0 = %out : !mo.tensor<[24], f32>} {
       %idx_ = map.index.reshape<#map.index.reshape.spec<[4, 6] -> [24]>> (%idx)
@@ -47,7 +47,7 @@ mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>)
 // CHECK-NEXT:    inputs ([[INPUT2:%[^ :,]+]]: !mo.tensor<[24], f32>)
 // CHECK-NEXT:    outputs ([[OUT2:%[^ :,]+]] : !mo.tensor<[4, 6], f32>) {
 // CHECK-NEXT:      [[STRIDED2:%[^ ]+]] = map.index.reshape.stride<#map.index.reshape.spec<[24] -> [4, 6]>> ([[INPUT2]])
-// CHECK-NEXT:      map.iter.foreach.body<[4, 6]>
+// CHECK-NEXT:      map.iter.elementwise.body<[4, 6]>
 // CHECK-NEXT:        index   ([[IDX2:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {{{.*}}[[OUT02:%[^ ,]+]] = [[OUT2]] : !mo.tensor<[4, 6], f32>, [[NEWCAP2:%[^ ]+]] = [[STRIDED2]] : !mo.tensor<[4, 6], f32>} {
 // CHECK-NOT:       map.index.reshape
@@ -59,7 +59,7 @@ mo.graph @reshapeExpand(%input: !mo.tensor<[24], f32>)
   %output = map.iter.opaque
       inputs (%input : !mo.tensor<[24], f32>)
       outputs (%out : !mo.tensor<[4, 6], f32>) {
-    map.iter.foreach.body<[4, 6]>
+    map.iter.elementwise.body<[4, 6]>
         index (%idx: !map.index<2>)
         capturing {%input0 = %input : !mo.tensor<[24], f32>, %out0 = %out : !mo.tensor<[4, 6], f32>} {
       %idx_ = map.index.reshape<#map.index.reshape.spec<[24] -> [4, 6]>> (%idx)

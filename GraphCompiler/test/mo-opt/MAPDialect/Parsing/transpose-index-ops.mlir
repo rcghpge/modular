@@ -14,7 +14,7 @@ module {
 
 // 2D swap: out.dim[0] = in.dim[1], out.dim[1] = in.dim[0].
 // CHECK-LABEL: mo.graph @transposeSwap
-// CHECK:         [[RESULT:%[^ ]+]] = map.iter.foreach<[3, 2]>
+// CHECK:         [[RESULT:%[^ ]+]] = map.iter.elementwise<[3, 2]>
 // CHECK-NEXT:    inputs  ([[INPUT:%[^ :,]+]]: !mo.tensor<[2, 3], f32>, [[PERM:%[^ :,]+]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:    outputs ([[OUTARG:%[^ :,]+]]: !mo.tensor<[3, 2], f32>)
 // CHECK-NEXT:    index   ([[IDX:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[3, 2], f32> {
@@ -25,7 +25,7 @@ module {
 // CHECK-NEXT:   mo.output [[RESULT]] : !mo.tensor<[3, 2], f32>
 mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>, %perm: !mo.tensor<[2], si64>)
     -> !mo.tensor<[3, 2], f32> {
-  %output = map.iter.foreach<[3, 2]>
+  %output = map.iter.elementwise<[3, 2]>
       inputs  (%input: !mo.tensor<[2, 3], f32>, %perm: !mo.tensor<[2], si64>)
       outputs (%out: !mo.tensor<[3, 2], f32>)
       index   (%idx: !map.index<2>)
@@ -41,7 +41,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>, %perm: !mo.tensor<[2], 
 
 // 3D permutation: out.dim[i] = in.dim[perm[i]] for perm = [2, 0, 1].
 // CHECK-LABEL: mo.graph @transpose3D
-// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.foreach<[4, 2, 3]>
+// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.elementwise<[4, 2, 3]>
 // CHECK-NEXT:    inputs  ([[INPUT2:%[^ :,]+]]: !mo.tensor<[2, 3, 4], f32>, [[PERM2:%[^ :,]+]]: !mo.tensor<[3], si64>)
 // CHECK-NEXT:    outputs ([[OUTARG2:%[^ :,]+]]: !mo.tensor<[4, 2, 3], f32>)
 // CHECK-NEXT:    index   ([[IDX2:%[^ :,]+]]: !map.index<3>) -> !mo.tensor<[4, 2, 3], f32> {
@@ -52,7 +52,7 @@ mo.graph @transposeSwap(%input: !mo.tensor<[2, 3], f32>, %perm: !mo.tensor<[2], 
 // CHECK-NEXT:   mo.output [[RESULT2]] : !mo.tensor<[4, 2, 3], f32>
 mo.graph @transpose3D(%input: !mo.tensor<[2, 3, 4], f32>, %perm: !mo.tensor<[3], si64>)
     -> !mo.tensor<[4, 2, 3], f32> {
-  %output = map.iter.foreach<[4, 2, 3]>
+  %output = map.iter.elementwise<[4, 2, 3]>
       inputs  (%input: !mo.tensor<[2, 3, 4], f32>, %perm: !mo.tensor<[3], si64>)
       outputs (%out: !mo.tensor<[4, 2, 3], f32>)
       index   (%idx: !map.index<3>)

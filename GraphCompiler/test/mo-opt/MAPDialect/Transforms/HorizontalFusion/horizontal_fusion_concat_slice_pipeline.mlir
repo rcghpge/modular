@@ -18,7 +18,7 @@
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 16], f32>,
@@ -43,7 +43,7 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 // CHECK:       map.index.slice.select{{.*}} -> (%[[V_IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %{{.*}}[%[[V_IOUT]]] = %{{.*}} : !mo.tensor<[B, 8, 16], f32>
 // CHECK:       map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output<B, T> %[[K]]#0, %[[K]]#1, %[[V]]#0, %[[V]]#1
 mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
   %k_cache: !mo.tensor<[B, 8, 16], f32>,
@@ -80,7 +80,7 @@ mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_projection_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 2, 16], bf16>,
@@ -112,7 +112,7 @@ mo.graph @concat_slice_projection_window<B, S, T -> OB, OT>(
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_relu_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 16], f32>,
@@ -131,7 +131,7 @@ mo.graph @concat_slice_relu_window<B, S, T -> OB, OT>(
 // bias at the loop index, which the merge does not take yet.
 // CHECK-LABEL: mo.graph @concat_slice_add_window
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       map.iter.foreach<[B, 8, 16]>
+// CHECK:       map.iter.elementwise<[B, 8, 16]>
 // CHECK:       map.index.slice<
 // CHECK:       map.call.elementwise @{{.*}}.Add
 mo.graph @concat_slice_add_window<B, S, T -> OB, OT>(
@@ -159,7 +159,7 @@ mo.graph @concat_slice_add_window<B, S, T -> OB, OT>(
 // CHECK:       map.index.reshape<#map.index.reshape.spec<[128, 4] -> [8, 64]>>
 // CHECK-NOT:   map.index.slice.select
 // CHECK:       map.call.opaque @{{.*}}.Matmul
-// CHECK:       %[[WIN:[a-z0-9]+]] = map.iter.foreach<[64, 4]>
+// CHECK:       %[[WIN:[a-z0-9]+]] = map.iter.elementwise<[64, 4]>
 // CHECK-NEXT:  inputs (%[[MM]]: !mo.tensor<[128, 4], f32>
 // CHECK:       map.index.slice<
 // CHECK:       mo.output %[[MM]], %[[WIN]]

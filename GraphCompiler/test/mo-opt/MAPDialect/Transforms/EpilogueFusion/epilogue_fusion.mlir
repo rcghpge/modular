@@ -11,7 +11,7 @@
 // CHECK-NEXT:  map.store %[[CAP0]][%{{.*}}] = %[[ADD]] : !mo.tensor<[8, 8], f32>
 // CHECK:       map.call.opaque @{{.*}}.Matmul{{.*}} inputs(%[[X]], %[[Y]]) outputs(%[[EPI]])
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}], operandIndices = [0]>>
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]] : !mo.tensor<[8, 8], f32>
 mo.graph @matmul_add(
   %x: !mo.tensor<[8, 8], f32>,
@@ -29,7 +29,7 @@ mo.graph @matmul_add(
 // CHECK:      map.call.elementwise @{{.*}}.Add
 // CHECK:      map.call.opaque @{{.*}}MapLowerOneFusedOutput
 // CHECK:      fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.add"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 mo.graph @custom_add(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   %out = mo.add(%c, %b) : !mo.tensor<[4], f32>
@@ -46,7 +46,7 @@ mo.graph @custom_add(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.
 // CHECK:      #mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"
 // CHECK-SAME: #mogg.fusion_leaf<"mo.add"
 // CHECK-SAME: #mogg.fusion_leaf<"mo.relu"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 mo.graph @chain(
   %x: !mo.tensor<[8, 8], f32>,
   %y: !mo.tensor<[8, 8], f32>,
@@ -63,12 +63,12 @@ mo.graph @chain(
 // CHECK:      map.iter.opaque
 // CHECK:      map.call.elementwise @{{.*}}.Add
 // CHECK:      #mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.add"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 // CHECK:      } else {
 // CHECK:      map.iter.opaque
 // CHECK:      map.call.elementwise @{{.*}}.Mul
 // CHECK:      #mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.mul"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 // CHECK:      mo.output
 mo.graph @fuse_in_if(
   %a: !mo.tensor<[4], f32>,
@@ -91,7 +91,7 @@ mo.graph @fuse_in_if(
 // CHECK:      map.iter.opaque
 // CHECK:      #mogg.fusion<#mogg.fusion_leaf<"custom__map_lower_one_fused_output"
 // CHECK:      mo.if
-// CHECK:      map.iter.foreach
+// CHECK:      map.iter.elementwise
 // CHECK:      map.call.elementwise @{{.*}}.Add
 mo.graph @no_fuse_across_blocks(
   %a: !mo.tensor<[4], f32>,
@@ -116,7 +116,7 @@ mo.graph @no_fuse_across_blocks(
 // CHECK-NEXT:   map.store %[[CAP]][%[[IDX]]] = %{{.*}} : !mo.tensor<[4], si32>
 // CHECK:      } {device = #M.device_ref<"cpu", 0>, fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"
 // CHECK-SAME: #mogg.fusion_leaf<"mo.cast"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 // CHECK:      mo.output %[[DST]] : !mo.tensor<[4], si32>
 mo.graph @cast_fused(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], si32> {
   %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
@@ -137,7 +137,7 @@ mo.graph @cast_fused(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], si32> {
 // CHECK:      map.call.opaque @{{.*}}.Matmul{{.*}} outputs(%{{.*}})
 // CHECK:      #mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"
 // CHECK-SAME: #mogg.fusion_leaf<"mo.cast"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 // CHECK:      mo.output %[[DST]] : !mo.tensor<[8, 8], si32>
 mo.graph @fuse_matmul_cast(
   %x: !mo.tensor<[8, 8], f32>,
@@ -150,8 +150,8 @@ mo.graph @fuse_matmul_cast(
 
 // CHECK-LABEL: mo.graph @no_fuse_multi_use
 // CHECK:      map.iter.opaque
-// CHECK:      map.iter.foreach
-// CHECK:      map.iter.foreach
+// CHECK:      map.iter.elementwise
+// CHECK:      map.iter.elementwise
 mo.graph @no_fuse_multi_use(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
     -> (!mo.tensor<[4], f32>, !mo.tensor<[4], f32>) {
   %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
@@ -164,7 +164,7 @@ mo.graph @no_fuse_multi_use(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>)
 // CHECK:      map.iter.opaque
 // CHECK-NOT:  map.iter.epilogue
 // CHECK:      map.call.opaque @{{.*}}MapLowerOnePlainOutput
-// CHECK:      map.iter.foreach
+// CHECK:      map.iter.elementwise
 // CHECK:      map.call.elementwise @{{.*}}.Add
 mo.graph @no_fuse_plain_output(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
@@ -174,7 +174,7 @@ mo.graph @no_fuse_plain_output(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32
 
 // CHECK-LABEL: mo.graph @no_fuse_same_result_twice
 // CHECK:      map.iter.opaque
-// CHECK:      map.iter.foreach
+// CHECK:      map.iter.elementwise
 // CHECK:      map.call.elementwise @{{.*}}.Add
 mo.graph @no_fuse_same_result_twice(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %c = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
@@ -185,7 +185,7 @@ mo.graph @no_fuse_same_result_twice(%a: !mo.tensor<[4], f32>) -> !mo.tensor<[4],
 // CHECK-LABEL: mo.graph @two_producers_one_fuses
 // CHECK-DAG:  map.call.elementwise @{{.*}}.Add
 // CHECK-DAG:  #mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"{{.*}}, #mogg.fusion_leaf<"mo.add"
-// CHECK-NOT:  map.iter.foreach
+// CHECK-NOT:  map.iter.elementwise
 // CHECK:      mo.output
 mo.graph @two_producers_one_fuses(%a: !mo.tensor<[4], f32>, %b: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %c0 = mo.custom [symbol = "map_lower_one_fused_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>

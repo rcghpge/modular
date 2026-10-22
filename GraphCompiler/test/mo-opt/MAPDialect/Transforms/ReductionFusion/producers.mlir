@@ -6,7 +6,7 @@
 // A chain: `mul` fuses first, which leaves `cast` read only by the rowwise.
 // CHECK-LABEL: mo.graph @chain
 // CHECK-SAME:  (%[[X:.*]]: !mo.tensor<[8, 128], bf16>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       map.iter.rowwise<[8, 128], axis = 1>
 // CHECK-NEXT:  inputs  (%[[X]]: !mo.tensor<[8, 128], bf16>)
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceSum index (%[[I:.*]]: !map.index<2>) -> f32 {
@@ -25,7 +25,7 @@ mo.graph @chain(%x: !mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 1], f32> {
 // A view producer: the broadcast index lands inside the fold.
 // CHECK-LABEL: mo.graph @broadcastGamma
 // CHECK-SAME:  (%[[X2:.*]]: !mo.tensor<[8, 128], f32>, %[[G:.*]]: !mo.tensor<[128], f32>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceMax index (%[[I2:.*]]: !map.index<2>) -> f32 {
 // CHECK-NEXT:    %[[XV:.*]] = map.load %[[X2]][%[[I2]]]
 // CHECK-NEXT:    %[[GI:.*]] = map.index.broadcast<#map.index.broadcast.spec<[128] -> [8, 128]>> (%[[I2]])
@@ -40,7 +40,7 @@ mo.graph @broadcastGamma(%x: !mo.tensor<[8, 128], f32>, %g: !mo.tensor<[128], f3
 
 // A non-inner axis.
 // CHECK-LABEL: mo.graph @outerAxis
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       map.iter.rowwise<[M, N], axis = 0>
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceSum
 // CHECK:       map.call.elementwise @builtin_kernels.elementwise.Exp
@@ -52,7 +52,7 @@ mo.graph @outerAxis<M, N>(%x: !mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32
 
 // A producer another kernel also reads stays materialized.
 // CHECK-LABEL: mo.graph @sharedProducer
-// CHECK:       %[[SQ2:.*]] = map.iter.foreach<[8, 128]>
+// CHECK:       %[[SQ2:.*]] = map.iter.elementwise<[8, 128]>
 // CHECK:       map.iter.rowwise<[8, 128], axis = 1>
 // CHECK-NEXT:  inputs  (%[[SQ2]]: !mo.tensor<[8, 128], f32>)
 mo.graph @sharedProducer(%x: !mo.tensor<[8, 128], f32>) -> (!mo.tensor<[8, 1], f32>, !mo.tensor<[8, 128], f32>) {

@@ -318,9 +318,9 @@ void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
               FuseConstantIterOpaqueInputs>(context);
 }
 
-void IterForeachOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                                MLIRContext *context) {
-  results.add<DedupeIterInputs<IterForeachOp>>(context);
+void IterElementwiseOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
+  results.add<DedupeIterInputs<IterElementwiseOp>>(context);
 }
 
 void LoadOp::getCanonicalizationPatterns(RewritePatternSet &results,
@@ -328,8 +328,8 @@ void LoadOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<InlineConstantScalarLoad>(context);
 }
 
-void IterForeachBodyOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                                    MLIRContext *context) {
+void IterElementwiseBodyOp::getCanonicalizationPatterns(
+    RewritePatternSet &results, MLIRContext *context) {
   results.add<DedupeCapturingClosureCaptures, DropDeadCapturingClosureCaptures>(
       context);
 }

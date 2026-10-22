@@ -21,7 +21,7 @@
 // CHECK-NEXT:  map.store %[[CAP1]][%{{.*}}] = %[[ADD1]]
 // CHECK:       map.call.opaque @{{.*}}.Matmul{{.*}} inputs(%{{.*}}, %{{.*}}) outputs(%[[EPI]])
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"mo.matmul"{{.*}}, #mogg.fusion_horizontal<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"mo.add"{{.*}}]>]
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]]#0, %[[OUT]]#1
 mo.graph @matmul_two_adds(
   %x: !mo.tensor<[8, 8], f32>,
@@ -43,7 +43,7 @@ mo.graph @matmul_two_adds(
 // CHECK-COUNT-3: map.store
 // CHECK-NOT:   map.store
 // CHECK:       map.call.opaque @{{.*}}.Matmul
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT3]]#0, %[[OUT3]]#1, %[[OUT3]]#2
 mo.graph @matmul_three_adds(
   %x: !mo.tensor<[8, 8], f32>,
@@ -69,7 +69,7 @@ mo.graph @matmul_three_adds(
 // CHECK-NEXT:  map.iter.epilogue (%[[VAL:.*]] : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP0:.*]] = %[[O0]] : {{.*}}, %{{.*}}, %[[CAP1:.*]] = %[[O1]] : !mo.tensor<[2, 2], si32>}
 // CHECK:       map.store %[[CAP0]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], f32>
 // CHECK:       map.store %[[CAP1]][%{{.*}}] = %{{.*}} : !mo.tensor<[2, 2], si32>
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]]#0, %[[OUT]]#1
 mo.graph @matmul_add_and_cast(
   %a: !mo.tensor<[2, 2], f32>,
@@ -92,7 +92,7 @@ mo.graph @matmul_add_and_cast(
 // CHECK:       map.store %[[CAP0]]
 // CHECK:       map.store %[[CAP1]]
 // CHECK:       map.call.opaque @{{.*}}.Matmul{{.*}} outputs(%[[EPI]])
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]]#0, %[[OUT]]#1
 mo.graph @matmul_two_adds_dynamic<N>(
   %x: !mo.tensor<[N, N], f32>,
@@ -119,7 +119,7 @@ mo.graph @matmul_two_adds_dynamic<N>(
 // CHECK-COUNT-2: map.store
 // CHECK-NOT:   map.store
 // CHECK:       map.call.opaque @{{.*}}.Matmul
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 // CHECK:       map.call.elementwise @{{.*}}.Add
 mo.graph @matmul_two_adds_then_consumer(
   %x: !mo.tensor<[8, 8], f32>,

@@ -28,7 +28,7 @@ mo.graph @broadcastOfSliceIntoExistingEpilogue(
 
 // CHECK-LABEL: mo.graph @broadcastOfSliceIntoExistingEpilogue
 // CHECK-SAME:  (%[[MAIN:.*]]: !mo.tensor<[8, 8], f32>, %[[BIAS:.*]]: !mo.tensor<[16], f32>)
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       %[[RES:.*]] = map.iter.opaque
 // The slice bounds are single-element host constants, so
 // `FuseConstantIterOpaqueInputs` rematerializes them in the body rather than
@@ -59,5 +59,5 @@ mo.graph @broadcastOfSliceIntoExistingEpilogue(
 // CHECK-SAME:  #mogg.fusion_view<[#mogg.fusion_leaf<"mo.slice"
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.static.broadcast_to"
 // CHECK-SAME:  #mogg.fusion_leaf<"mo.add"
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[RES]] : !mo.tensor<[8, 8], f32>

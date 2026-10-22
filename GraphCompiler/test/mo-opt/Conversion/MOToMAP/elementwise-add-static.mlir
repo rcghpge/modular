@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
-// Verify that elementwise mo ops lower to map.iter.foreach (not map.iter.opaque)
+// Verify that elementwise mo ops lower to map.iter.elementwise (not map.iter.opaque)
 // when the advanced fusion pipeline is enabled.
 
 mo.graph @add(
@@ -15,7 +15,7 @@ mo.graph @add(
 // `dispatch`.
 // CHECK-LABEL:   mo.graph @add
 // CHECK-NOT:       map.iter.opaque
-// CHECK:           map.iter.foreach<[8, 16, 128]>{{$}}
+// CHECK:           map.iter.elementwise<[8, 16, 128]>{{$}}
 // CHECK:             [[XV:%.*]] = map.load %{{.*}}[[[IDX:%.*]]] : !mo.tensor<[8, 16, 128], f32>
 // CHECK:             [[YV:%.*]] = map.load %{{.*}}[[[IDX]]] : !mo.tensor<[8, 16, 128], f32>
 // CHECK:             map.call.elementwise @{{.+}}.Add([[IDX]], [[XV]], [[YV]])

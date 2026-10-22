@@ -11,9 +11,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 //
-// Generic output fusion: inline a `map.iter.foreach` consumer's body into the
-// `map.iter.epilogue` of the `map.iter.opaque` producer that feeds it, at the
-// producer's store site. A consumer reading the result at an untransformed
+// Generic output fusion: inline a `map.iter.elementwise` consumer's body into
+// the `map.iter.epilogue` of the `map.iter.opaque` producer that feeds it, at
+// the producer's store site. A consumer reading the result at an untransformed
 // index fuses as-is; one reading it through a single `map.index.reshape` fuses
 // with that reshape relocated onto the store index. The generic enforces every
 // correctness constraint; a wrapper narrows which edges fuse with a

@@ -16,7 +16,7 @@
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK:       %[[RELU:[a-z0-9]+]] = map.iter.foreach<[4, 8, 16]>
+// CHECK:       %[[RELU:[a-z0-9]+]] = map.iter.elementwise<[4, 8, 16]>
 // CHECK-NEXT:  inputs (%[[CAT]]#1: !mo.tensor<[4, 8, 16], f32>)
 // CHECK:       map.call.elementwise @{{.*}}.ReLU
 // CHECK:       mo.output %[[CAT]]#0, %[[RELU]]

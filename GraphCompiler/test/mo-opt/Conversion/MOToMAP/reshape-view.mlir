@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
 // Verify that mo.static.reshape lowers to a standalone (unfused)
-// map.iter.foreach over the output shape, with a map.index.reshape op
+// map.iter.elementwise over the output shape, with a map.index.reshape op
 // computing the input index -- not map.iter.opaque, and not the "view
 // kernels are not yet supported" error.
 
@@ -9,7 +9,7 @@
 
 // CHECK-LABEL: mo.graph @reshapeFlatten
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         [[OUT:%.*]] = map.iter.foreach<[24]>
+// CHECK:         [[OUT:%.*]] = map.iter.elementwise<[24]>
 // CHECK:         inputs  ([[INPUT:%.*]]: !mo.tensor<[4, 6], f32>)
 // CHECK:         outputs ([[OUTARG:%.*]]: !mo.tensor<[24], f32>)
 // CHECK:         index   ([[IDX:%.*]]: !map.index<1>)  -> !mo.tensor<[24], f32> {
@@ -25,7 +25,7 @@ mo.graph @reshapeFlatten(%input: !mo.tensor<[4, 6], f32>) -> !mo.tensor<[24], f3
 
 // CHECK-LABEL: mo.graph @reshapeExpand
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         [[OUT2:%.*]] = map.iter.foreach<[4, 6]>
+// CHECK:         [[OUT2:%.*]] = map.iter.elementwise<[4, 6]>
 // CHECK:         inputs  ([[INPUT2:%.*]]: !mo.tensor<[24], f32>)
 // CHECK:         outputs ([[OUTARG2:%.*]]: !mo.tensor<[4, 6], f32>)
 // CHECK:         index   ([[IDX2:%.*]]: !map.index<2>)  -> !mo.tensor<[4, 6], f32> {
@@ -41,7 +41,7 @@ mo.graph @reshapeExpand(%input: !mo.tensor<[24], f32>) -> !mo.tensor<[4, 6], f32
 
 // CHECK-LABEL: mo.graph @reshapeSameRank
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[3, 4]>
+// CHECK:         map.iter.elementwise<[3, 4]>
 // CHECK:         map.index.reshape<#map.index.reshape.spec<[2, 6] -> [3, 4]>>
 mo.graph @reshapeSameRank(%input: !mo.tensor<[2, 6], f32>) -> !mo.tensor<[3, 4], f32> {
   %res = mo.static.reshape(%input) : !mo.tensor<[2, 6], f32> -> !mo.tensor<[3, 4], f32>
@@ -53,7 +53,7 @@ mo.graph @reshapeSameRank(%input: !mo.tensor<[2, 6], f32>) -> !mo.tensor<[3, 4],
 
 // CHECK-LABEL: mo.graph @reshapeSymbolicDims
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[N, 2, 3]>
+// CHECK:         map.iter.elementwise<[N, 2, 3]>
 // CHECK:         map.index.reshape<#map.index.reshape.spec<[N, 6] -> [N, 2, 3]>>
 mo.graph @reshapeSymbolicDims<N>(%input: !mo.tensor<[N, 6], f32>) -> !mo.tensor<[N, 2, 3], f32> {
   %res = mo.static.reshape(%input) : !mo.tensor<[N, 6], f32> -> !mo.tensor<[N, 2, 3], f32>

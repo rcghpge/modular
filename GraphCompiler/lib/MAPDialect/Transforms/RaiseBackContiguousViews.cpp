@@ -11,8 +11,8 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 //
-// Raises unfused slice/reshape `map.iter.foreach` view kernels back to MO/MOGG
-// ops that lower without a copy.
+// Raises unfused slice/reshape `map.iter.elementwise` view kernels back to
+// MO/MOGG ops that lower without a copy.
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,7 +48,7 @@ std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice);
 // returned ops are in body order. Empty if the body is anything else, e.g. a
 // compute kernel or a broadcast/transpose view. A chain arises when `ViewFuser`
 // fuses adjacent views into one kernel.
-SmallVector<Operation *> matchViewChain(IterForeachOp op) {
+SmallVector<Operation *> matchViewChain(IterElementwiseOp op) {
   SmallVector<Operation *> empty;
   if (op.getNumResults() != 1)
     return empty;
@@ -131,7 +131,7 @@ std::optional<int64_t> matchContiguousSliceDim(SliceIndexOp slice) {
 // the input load, so the transforms run output->input; the data ops are their
 // reverse (input->output). E.g. body `slice -> reshape -> load(in)` raises to
 // `reshape(in) -> slice(...)` on the buffer.
-bool raiseViewChain(IterForeachOp op, unsigned &numSlicesRaised,
+bool raiseViewChain(IterElementwiseOp op, unsigned &numSlicesRaised,
                     unsigned &numReshapesRaised) {
   SmallVector<Operation *> chain = matchViewChain(op);
   if (chain.empty())
@@ -192,9 +192,9 @@ struct RaiseBackContiguousViewsPass
     // Walk, since a view kernel can sit inside control flow (e.g.
     // mo.parallel).
     unsigned slices = 0, reshapes = 0;
-    SmallVector<IterForeachOp> foreachOps;
-    graphOp.walk([&](IterForeachOp op) { foreachOps.push_back(op); });
-    for (IterForeachOp op : foreachOps)
+    SmallVector<IterElementwiseOp> foreachOps;
+    graphOp.walk([&](IterElementwiseOp op) { foreachOps.push_back(op); });
+    for (IterElementwiseOp op : foreachOps)
       raiseViewChain(op, slices, reshapes);
     numSlicesRaised = slices;
     numReshapesRaised = reshapes;
@@ -203,7 +203,7 @@ struct RaiseBackContiguousViewsPass
 
 } // namespace
 
-bool isRaisableViewChain(IterForeachOp op) {
+bool isRaisableViewChain(IterElementwiseOp op) {
   return !matchViewChain(op).empty();
 }
 

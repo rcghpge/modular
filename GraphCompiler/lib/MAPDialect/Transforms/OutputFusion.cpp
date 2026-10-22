@@ -37,14 +37,14 @@ namespace M::MAP {
 #include "GraphCompiler/MAPDialect/Transforms/MAPTransforms.h.inc"
 
 bool consumerReadsUntransformed(LoadOp load) {
-  auto foreachOp = load->getParentOfType<IterForeachOp>();
+  auto foreachOp = load->getParentOfType<IterElementwiseOp>();
   if (!foreachOp)
     return false;
   return load.getIndex() == foreachOp.getBody().front().getArguments().back();
 }
 
 bool consumerReadsThroughReshape(LoadOp load) {
-  auto foreachOp = load->getParentOfType<IterForeachOp>();
+  auto foreachOp = load->getParentOfType<IterElementwiseOp>();
   if (!foreachOp)
     return false;
   Value loopIdx = foreachOp.getBody().front().getArguments().back();
@@ -55,7 +55,7 @@ bool consumerReadsThroughReshape(LoadOp load) {
 bool consumerIsPureReshape(LoadOp load) {
   if (!consumerReadsThroughReshape(load))
     return false;
-  auto foreachOp = load->getParentOfType<IterForeachOp>();
+  auto foreachOp = load->getParentOfType<IterElementwiseOp>();
   return llvm::all_of(
       getOutputStores(foreachOp.getBody().front()), [&](StoreOp store) {
         auto storedLoad = store.getValue().getDefiningOp<LoadOp>();
@@ -72,7 +72,7 @@ struct OutputFusionEdge {
   IterOpaqueOp dst;
   unsigned resultIdx;
   IterEpilogueOp epilogueOp;
-  IterForeachOp src;
+  IterElementwiseOp src;
   ReshapeIndexOp reshape;
 };
 
@@ -107,7 +107,7 @@ ReshapeIndexOp reshapeOnFusedInput(Block &srcBody, BlockArgument fusionArg) {
 }
 
 // The block arg of the single `src` input that reads `dstResult`.
-BlockArgument fusedInputArg(IterForeachOp src, Value dstResult) {
+BlockArgument fusedInputArg(IterElementwiseOp src, Value dstResult) {
   auto it = llvm::find(src.getInputs(), dstResult);
   return src.getBody().front().getArgument(it - src.getInputs().begin());
 }
@@ -135,7 +135,7 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
     // Fusion stays within a block: never across a control-flow boundary.
     if (user->getBlock() != dst->getBlock())
       continue;
-    auto src = dyn_cast<IterForeachOp>(user);
+    auto src = dyn_cast<IterElementwiseOp>(user);
     if (!src)
       continue;
     // An epilogue already storing more than once serves several destinations
@@ -261,7 +261,7 @@ IterOpaqueOp fuseOutputOnce(const OutputFusionEdge &edge,
                             PatternRewriter &rewriter) {
   IterOpaqueOp dst = edge.dst;
   IterEpilogueOp epilogueOp = edge.epilogueOp;
-  IterForeachOp src = edge.src;
+  IterElementwiseOp src = edge.src;
   ReshapeIndexOp reshape = edge.reshape;
   MLIRContext *ctx = dst.getContext();
 

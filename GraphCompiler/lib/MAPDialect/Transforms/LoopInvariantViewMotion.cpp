@@ -13,7 +13,7 @@
 //
 // Hoists chains of index-transform ops (ops implementing
 // MAP::IndexTransformOpInterface, e.g. map.index.slice) out of any
-// CapturingFusionClosure (map.iter.foreach.body, map.iter.prologue,
+// CapturingFusionClosure (map.iter.elementwise.body, map.iter.prologue,
 // map.iter.epilogue) into a chain of "stride" ops (e.g.
 // map.index.slice.stride) in the enclosing map.iter.opaque, so the transform
 // runs once per kernel invocation instead of once per loop index.

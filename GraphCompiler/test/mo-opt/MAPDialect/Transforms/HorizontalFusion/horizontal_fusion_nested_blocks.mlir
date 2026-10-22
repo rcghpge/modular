@@ -6,17 +6,17 @@
 
 // CHECK-LABEL: mo.graph @pairs_in_every_block
 // CHECK:       %[[IF:[a-z0-9]+]]:2 = mo.if
-// CHECK-NEXT:  %[[THEN:[a-z0-9]+]]:2 = map.iter.foreach<[4]>
+// CHECK-NEXT:  %[[THEN:[a-z0-9]+]]:2 = map.iter.elementwise<[4]>
 // CHECK:       map.call.elementwise @{{.*}}.Mul
 // CHECK:       map.call.elementwise @{{.*}}.Sub
 // CHECK:       mo.yield %[[THEN]]#0, %[[THEN]]#1
 // CHECK-NEXT:  } else {
-// CHECK-NEXT:  %[[ELSE:[a-z0-9]+]]:2 = map.iter.foreach<[4]>
+// CHECK-NEXT:  %[[ELSE:[a-z0-9]+]]:2 = map.iter.elementwise<[4]>
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.call.elementwise @{{.*}}.Sub
 // CHECK:       mo.yield %[[ELSE]]#0, %[[ELSE]]#1
 // CHECK-NEXT:  }
-// CHECK-NEXT:  %[[OUTER:[a-z0-9]+]]:2 = map.iter.foreach<[4]>
+// CHECK-NEXT:  %[[OUTER:[a-z0-9]+]]:2 = map.iter.elementwise<[4]>
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.call.elementwise @{{.*}}.Mul
 // CHECK:       mo.output %[[OUTER]]#0, %[[OUTER]]#1, %[[IF]]#0, %[[IF]]#1
@@ -53,7 +53,7 @@ mo.graph @pairs_in_every_block(
 // CHECK-NEXT:  map.call.elementwise @{{.*}}.Add
 // CHECK-NEXT:  map.store
 // CHECK:       map.call.opaque @{{.*}}.Matmul
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.yield %[[MM]]#0, %[[MM]]#1
 // CHECK-NEXT:  } else {
 // CHECK:       mo.output %[[IF]]#0, %[[IF]]#1

@@ -245,7 +245,7 @@ Pass definition:
 
 #### Description
 
-"Fuses" an `mo.mutable.load` into a `map.iter.foreach` so the loop reads the
+"Fuses" an `mo.mutable.load` into a `map.iter.elementwise` so the loop reads the
 buffer-semantic tensor directly. Enabled by the `fuseMutableLoadStore` option.
 
 #### Dialects
@@ -255,8 +255,8 @@ Consumes and produces `map` (on `mo.graph`).
 #### Additional notes
 
 Replaces the value-semantic tensor from the load with the buffer-semantic one,
-threads the load's input chain into the `map.iter.foreach`, and adds the load's
-output chain to the loop's outputs.
+threads the load's input chain into the `map.iter.elementwise`, and adds the
+load's output chain to the loop's outputs.
 
 Pass definition:
 `GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.
@@ -287,8 +287,8 @@ Pass definition:
 
 #### Description
 
-Raises `map.iter.foreach` view kernels that never got fused back into ops the
-rest of the pipeline can lower without a copy.
+Raises `map.iter.elementwise` view kernels that never got fused back into ops
+the rest of the pipeline can lower without a copy.
 
 #### Dialects
 
@@ -318,7 +318,7 @@ Consumes and produces `map`.
 
 #### Additional notes
 
-The loop's shape and body move into a nested `map.iter.foreach.body`, which
+The loop's shape and body move into a nested `map.iter.elementwise.body`, which
 reaches the wrapper's inputs/outputs by SSA dominance. After outlining, nothing
 inspects the inside of the `map.iter.opaque` again. `LoopInvariantViewMotion`
 (below) then runs over these regions.
@@ -345,7 +345,8 @@ has no `LowerableToMOGGInterface` and would strand `map-to-mogg`. For each
 `map.load`, it walks backward from the index operand through any chain of
 index-transform ops (today `map.index.slice`) and hoists them into "stride" ops
 (today `map.index.slice.stride`) in the enclosing opaque region. The pass
-enforces that no index-transform op survives inside a `map.iter.foreach.body`.
+enforces that no index-transform op survives inside a
+`map.iter.elementwise.body`.
 
 Pass definition:
 `GraphCompiler/include/GraphCompiler/MAPDialect/Transforms/MAPTransforms.td`.

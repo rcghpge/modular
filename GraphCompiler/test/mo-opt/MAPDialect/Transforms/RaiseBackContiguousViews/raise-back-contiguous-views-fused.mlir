@@ -8,7 +8,7 @@
 // composed chain, but one op per hop can.)
 
 // CHECK-LABEL: mo.graph @fusedSliceChainRaised
-// CHECK-NOT:     map.iter.foreach
+// CHECK-NOT:     map.iter.elementwise
 // CHECK-NOT:     map.index.slice
 // CHECK:         mogg.slice({{.*}}) : (!mo.tensor<[10, 64], f32>, {{.*}}) -> !mo.tensor<[6, 64], f32>
 // CHECK:         mogg.slice({{.*}}) : (!mo.tensor<[6, 64], f32>, {{.*}}) -> !mo.tensor<[3, 64], f32>
@@ -34,7 +34,7 @@ mo.graph @fusedSliceChainRaised(%input: !mo.tensor<[10, 64], f32>) -> !mo.tensor
 // mogg.slice, so the interleave reads a view instead of a materialized copy.
 
 // CHECK-LABEL: mo.graph @fusedReshapeSliceChainRaised
-// CHECK-NOT:     map.iter.foreach
+// CHECK-NOT:     map.iter.elementwise
 // CHECK-NOT:     map.index.reshape
 // CHECK-NOT:     map.index.slice
 // CHECK:         mo.static.reshape(%arg0) : !mo.tensor<[2, 256, 16], f32> -> !mo.tensor<[512, 16], f32>

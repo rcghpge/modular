@@ -537,7 +537,7 @@ void IterPrologueOp::getAsmBlockArgumentNames(Region &region,
 }
 
 //===----------------------------------------------------------------------===//
-// map.iter.foreach
+// map.iter.elementwise
 //===----------------------------------------------------------------------===//
 
 // Parses `(name: type, ...)` block arguments without operands.
@@ -567,7 +567,8 @@ static void printBlockArgList(OpAsmPrinter &p, Block::BlockArgListType args) {
   p << ")";
 }
 
-ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
+ParseResult IterElementwiseOp::parse(OpAsmParser &parser,
+                                     OperationState &state) {
   // <[d0, d1, ...]>
   if (parser.parseLess())
     return mlir::failure();
@@ -575,7 +576,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
   auto shapeResult = MOSH::parseShapeAttr(parser, shapeTypedAttr);
   if (!shapeResult.has_value())
     return parser.emitError(parser.getCurrentLocation(),
-                            "expected '[' for map.iter.foreach shape");
+                            "expected '[' for map.iter.elementwise shape");
   if (failed(*shapeResult))
     return mlir::failure();
   if (parser.parseGreater())
@@ -611,7 +612,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
   if (indexArgInfo.size() != 1)
     return parser.emitError(
         parser.getCurrentLocation(),
-        "'map.iter.foreach' expects exactly one index argument");
+        "'map.iter.elementwise' expects exactly one index argument");
   allArgInfo.push_back(indexArgInfo.front());
 
   // Optional chain (%c), an operand with no block arg.
@@ -627,9 +628,10 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
       return mlir::failure();
     numChainOperands = 1;
   }
-  state.addAttribute(IterForeachOp::getOperandSegmentSizesAttrName(state.name),
-                     parser.getBuilder().getDenseI32ArrayAttr(
-                         {numInputOperands, numChainOperands}));
+  state.addAttribute(
+      IterElementwiseOp::getOperandSegmentSizesAttrName(state.name),
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {numInputOperands, numChainOperands}));
 
   if (parser.parseArrowTypeList(state.types))
     return mlir::failure();
@@ -641,7 +643,7 @@ ParseResult IterForeachOp::parse(OpAsmParser &parser, OperationState &state) {
   return parser.parseOptionalAttrDict(state.attributes);
 }
 
-void IterForeachOp::print(OpAsmPrinter &p) {
+void IterElementwiseOp::print(OpAsmPrinter &p) {
   // Without the outer "#mosh<ape[...]>" envelope.
   p << "<[";
   MOSH::printShapeValue(p, getShape().getValues());
@@ -703,7 +705,7 @@ void IterForeachOp::print(OpAsmPrinter &p) {
                            getDispatchAttrName().getValue()});
 }
 
-LogicalResult IterForeachOp::verify() {
+LogicalResult IterElementwiseOp::verify() {
   Block &body = getBody().front();
   unsigned numInputs = getInputs().size();
 
@@ -749,7 +751,7 @@ LogicalResult IterForeachOp::verify() {
   return mlir::success();
 }
 
-Value IterForeachOp::getOutputChain() {
+Value IterElementwiseOp::getOutputChain() {
   ResultRange results = getResults();
   if (results.empty())
     return nullptr;
@@ -757,7 +759,7 @@ Value IterForeachOp::getOutputChain() {
   return llvm::isa<MO::ChainType>(last.getType()) ? last : Value();
 }
 
-void IterForeachOp::getEffects(
+void IterElementwiseOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
   collectKernelEffects(getOperation(), getHasReadEffect(), getHasWriteEffect(),
                        effects);
@@ -775,26 +777,26 @@ getFirstExecutionDevice(ValueRange results, ValueRange inputs) {
   return {M::DeviceRefAttr{}};
 }
 
-llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
+llvm::SmallVector<M::DeviceRefAttr> IterElementwiseOp::getExecutionDevices() {
   return getFirstExecutionDevice(getResults(), getInputs());
 }
 
-Block::BlockArgListType IterForeachOp::getInputBlockArgs() {
+Block::BlockArgListType IterElementwiseOp::getInputBlockArgs() {
   return getBody().front().getArguments().take_front(getInputs().size());
 }
 
-Block::BlockArgListType IterForeachOp::getOutputBlockArgs() {
+Block::BlockArgListType IterElementwiseOp::getOutputBlockArgs() {
   unsigned numOutputs = getNumResults() - (getOutputChain() ? 1 : 0);
   return getBody().front().getArguments().slice(getInputs().size(), numOutputs);
 }
 
-CapturingFusionClosure IterForeachOp::createBodyClosure(OpBuilder &builder,
-                                                        Location loc,
-                                                        ValueRange captures) {
-  return IterForeachBodyOp::create(builder, loc, getShape(), captures);
+CapturingFusionClosure
+IterElementwiseOp::createBodyClosure(OpBuilder &builder, Location loc,
+                                     ValueRange captures) {
+  return IterElementwiseBodyOp::create(builder, loc, getShape(), captures);
 }
 
-void IterForeachOp::insertInputsAt(unsigned idx, ValueRange vals) {
+void IterElementwiseOp::insertInputsAt(unsigned idx, ValueRange vals) {
   ASSERT_STREAM(idx <= getInputs().size(),
                 << "idx (" << idx << ") must stay within the inputs ("
                 << getInputs().size() << "), before outputs/index block args");
@@ -806,7 +808,7 @@ void IterForeachOp::insertInputsAt(unsigned idx, ValueRange vals) {
     getBody().insertArgument(idx, v.getType(), v.getLoc());
 }
 
-void IterForeachOp::eraseInputsAt(unsigned idx, size_t len) {
+void IterElementwiseOp::eraseInputsAt(unsigned idx, size_t len) {
   ASSERT_STREAM(idx + len <= getInputs().size(),
                 << "[idx, idx + len) = [" << idx << ", " << (idx + len)
                 << ") must stay within the inputs (" << getInputs().size()
@@ -817,24 +819,24 @@ void IterForeachOp::eraseInputsAt(unsigned idx, size_t len) {
     getBody().eraseArgument(idx);
 }
 
-void IterForeachOp::setChain(Value chain) {
+void IterElementwiseOp::setChain(Value chain) {
   if (chain)
     getChainMutable().assign(chain);
 }
 
 //===----------------------------------------------------------------------===//
-// map.iter.foreach.body
+// map.iter.elementwise.body
 //===----------------------------------------------------------------------===//
 
-ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
-                                     OperationState &state) {
+ParseResult IterElementwiseBodyOp::parse(OpAsmParser &parser,
+                                         OperationState &state) {
   if (parser.parseLess())
     return mlir::failure();
   mlir::TypedAttr shapeTypedAttr;
   auto shapeResult = MOSH::parseShapeAttr(parser, shapeTypedAttr);
   if (!shapeResult.has_value())
     return parser.emitError(parser.getCurrentLocation(),
-                            "expected '[' for map.iter.foreach.body shape");
+                            "expected '[' for map.iter.elementwise.body shape");
   if (failed(*shapeResult))
     return mlir::failure();
   if (parser.parseGreater())
@@ -847,7 +849,7 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
   if (entryArgs.size() != 1)
     return parser.emitError(
         parser.getCurrentLocation(),
-        "'map.iter.foreach.body' expects exactly one index argument");
+        "'map.iter.elementwise.body' expects exactly one index argument");
 
   // capturing {%inner = %outer : type, ...}, as in map.iter.epilogue.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
@@ -867,7 +869,7 @@ ParseResult IterForeachBodyOp::parse(OpAsmParser &parser,
   return parser.parseOptionalAttrDict(state.attributes);
 }
 
-void IterForeachBodyOp::print(OpAsmPrinter &p) {
+void IterElementwiseBodyOp::print(OpAsmPrinter &p) {
   p << "<[";
   MOSH::printShapeValue(p, getShape().getValues());
   p << "]> ";
@@ -891,7 +893,7 @@ void IterForeachBodyOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict(getOperation()->getAttrs(), {"shape"});
 }
 
-LogicalResult IterForeachBodyOp::verify() {
+LogicalResult IterElementwiseBodyOp::verify() {
   Block &body = getBody().front();
   unsigned numCaptures = getCaptures().size();
   if (body.getNumArguments() != 1 + numCaptures)
@@ -1043,7 +1045,7 @@ void IterRowwiseOp::print(OpAsmPrinter &p) {
   p.printArrowTypeList(getResultTypes());
   p << " ";
 
-  // As in map.iter.foreach: shadow manually, outputs and row shadow
+  // As in map.iter.elementwise: shadow manually, outputs and row shadow
   // themselves.
   llvm::DenseSet<Value> seen;
   if (llvm::all_of(getInputs(),
@@ -1198,7 +1200,7 @@ ParseResult IterRowwiseBodyOp::parse(OpAsmParser &parser,
                             "'map.iter.rowwise.body' expects exactly one row "
                             "argument");
 
-  // capturing ( %inner = %outer : type, ... ), as in map.iter.foreach.body.
+  // capturing ( %inner = %outer : type, ... ), as in map.iter.elementwise.body.
   SmallVector<OpAsmParser::UnresolvedOperand> captures;
   SmallVector<Type> captureTypes;
   if (parser.parseKeyword("capturing") || parser.parseLParen())
@@ -1497,10 +1499,10 @@ static MOSH::ShapeAttr getIndexedShape(Value index) {
   Operation *owner = arg.getOwner()->getParentOp();
   if (auto select = llvm::dyn_cast<SliceSelectOp>(owner))
     return select.getSpec().getSignature().getOut();
-  if (auto foreach = llvm::dyn_cast<IterForeachOp>(owner))
+  if (auto foreach = llvm::dyn_cast<IterElementwiseOp>(owner))
     return arg == arg.getOwner()->getArguments().back() ? foreach.getShape()
                                                         : MOSH::ShapeAttr();
-  if (auto body = llvm::dyn_cast<IterForeachBodyOp>(owner))
+  if (auto body = llvm::dyn_cast<IterElementwiseBodyOp>(owner))
     return arg.getArgNumber() == 0 ? body.getShape() : MOSH::ShapeAttr();
   auto epilogue = llvm::dyn_cast<IterEpilogueOp>(owner);
   if (!epilogue || arg.getArgNumber() != 1)

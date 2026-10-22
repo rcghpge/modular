@@ -23,7 +23,7 @@ include "mlir/IR/OpBase.td"
 def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
   let description = [{
     Common interface for the three closure kinds a `map.iter.opaque` (or a
-    to-be-outlined `map.iter.foreach`) holds: `map.iter.foreach.body`,
+    to-be-outlined `map.iter.elementwise`) holds: `map.iter.elementwise.body`,
     `map.iter.prologue`, and `map.iter.epilogue`. Each is a single-block,
     isolated-from-above region reaching every outer value through a
     `$captures` operand, shadowed as the block's trailing arguments.
@@ -59,7 +59,7 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
       [{
         // Reached through the interface, not `$_op`: a default body is emitted
         // per concrete op, and `getCaptureBlockArgs` is itself an interface
-        // default rather than a member of `IterForeachBodyOp` & co.
+        // default rather than a member of `IterElementwiseBodyOp` & co.
         auto closure =
             ::mlir::cast<::M::MAP::CapturingFusionClosure>($_op.getOperation());
         ::mlir::Block::BlockArgListType captureArgs =
@@ -110,7 +110,7 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
 
 def MAP_IterOpInterface : OpInterface<"IterOpInterface"> {
   let description = [{
-    A MAP kernel: `map.iter.foreach`, `map.iter.rowwise` or `map.iter.opaque`.
+    A MAP kernel: `map.iter.elementwise`, `map.iter.rowwise` or `map.iter.opaque`.
     Its body is isolated from above and starts with one block argument per
     input, followed by one per output.
   }];
@@ -185,7 +185,7 @@ def MAP_IterOpInterface : OpInterface<"IterOpInterface"> {
 
 def MAP_StructuredIterOpInterface : OpInterface<"StructuredIterOpInterface"> {
   let description = [{
-    A MAP kernel that runs its body over a shape: `map.iter.foreach` or
+    A MAP kernel that runs its body over a shape: `map.iter.elementwise` or
     `map.iter.rowwise`. Its last body block argument is the index.
   }];
 

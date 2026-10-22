@@ -14,7 +14,7 @@
 // Lowers MO ops into `map` kernels. Each lowerable MO op with a registered
 // Mojo kernel becomes either a `map.iter.opaque` wrapping a `map.call.opaque`
 // to that kernel (with a trivial store epilogue per result), or, for
-// elementwise kernels, a `map.iter.foreach` expressing the loop body
+// elementwise kernels, a `map.iter.elementwise` expressing the loop body
 // explicitly as scalar `map.load` / `map.call.elementwise` / `map.store` ops.
 // A reduction monoid becomes a `map.iter.rowwise`.
 // Contexts, variadics and scalars are materialized after fusion, not here.
@@ -257,7 +257,7 @@ lowerToOpaque(Operation *op, const MOGG::KernelDeclAdaptor &adaptor,
   return opaque.getOperation();
 }
 
-// Lowers an elementwise MO op to a `map.iter.foreach` expressing its loop
+// Lowers an elementwise MO op to a `map.iter.elementwise` expressing its loop
 // body explicitly: one `map.load` per input, a `map.call.elementwise` call
 // to the kernel's scalar function, and a `map.store` into the output, all
 // indexed by the op's `map.index<N>` block argument.
@@ -280,7 +280,7 @@ lowerElementwiseToForeach(Operation *op,
   unsigned rank = static_cast<unsigned>(shapeAttr.getRank());
   Type elemTy = resultTensorTy.getElementType();
 
-  auto foreachOp = MAP::IterForeachOp::create(
+  auto foreachOp = MAP::IterElementwiseOp::create(
       builder, loc,
       /*resultTypes=*/SmallVector<Type>{resultTensorTy},
       /*shape=*/shapeAttr,
@@ -326,7 +326,7 @@ lowerElementwiseToForeach(Operation *op,
   return success();
 }
 
-// Lowers mo.mutable.store to a map.iter.foreach that `map.store`s directly
+// Lowers mo.mutable.store to a map.iter.elementwise that `map.store`s directly
 // into its buffer input and threads a chain in and out. Its elementwise
 // function is a scalar identity (gather_scatter.mojo's MutableStore).
 // Special-cased by identity, as there is no generic mechanism (GEX-2360).
@@ -344,7 +344,7 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
 
   auto [hasReadEffect, hasWriteEffect] = getReadWriteEffects(op);
 
-  auto foreachOp = MAP::IterForeachOp::create(
+  auto foreachOp = MAP::IterElementwiseOp::create(
       builder, loc,
       /*resultTypes=*/SmallVector<Type>{MO::ChainType::get(ctx)},
       /*shape=*/shapeAttr,
@@ -383,7 +383,7 @@ lowerMutableStoreToForeach(MO::MutableStoreOp op,
   return success();
 }
 
-// Lowers mo.slice to a map.iter.foreach over the *output* shape (the "pull"
+// Lowers mo.slice to a map.iter.elementwise over the *output* shape (the "pull"
 // model): the body computes the input index via map.index.slice, loads, and
 // stores unchanged.
 LogicalResult lowerSliceToForeach(MO::SliceOp op) {
@@ -444,7 +444,7 @@ LogicalResult lowerSliceToForeach(MO::SliceOp op) {
   auto spec =
       MAP::SliceSpecAttr::get(ctx, inShape, outShape, starts, stops, steps);
 
-  auto foreachOp = MAP::IterForeachOp::create(
+  auto foreachOp = MAP::IterElementwiseOp::create(
       builder, loc,
       /*resultTypes=*/SmallVector<Type>{outputTy},
       /*shape=*/outShape,
@@ -500,7 +500,7 @@ LogicalResult lowerBroadcastToForeach(Static::BroadcastToOp op) {
   auto spec = MAP::BroadcastSpecAttr::get(
       ctx, MAP::ViewSignatureAttr::get(ctx, inShape, outShape));
 
-  auto foreachOp = MAP::IterForeachOp::create(
+  auto foreachOp = MAP::IterElementwiseOp::create(
       builder, loc,
       /*resultTypes=*/SmallVector<Type>{outputTy},
       /*shape=*/outShape,
@@ -550,7 +550,7 @@ LogicalResult lowerReshapeToForeach(MO::Static::ReshapeOp op) {
   auto spec = MAP::ReshapeSpecAttr::get(
       ctx, MAP::ViewSignatureAttr::get(ctx, inShape, outShape));
 
-  auto foreachOp = MAP::IterForeachOp::create(
+  auto foreachOp = MAP::IterElementwiseOp::create(
       builder, loc,
       /*resultTypes=*/SmallVector<Type>{outputTy},
       /*shape=*/outShape,
@@ -608,7 +608,7 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
   auto spec = MAP::TransposeSpecAttr::get(
       ctx, MAP::ViewSignatureAttr::get(ctx, inShape, outShape), permAttr);
 
-  auto foreachOp = MAP::IterForeachOp::create(
+  auto foreachOp = MAP::IterElementwiseOp::create(
       builder, loc,
       /*resultTypes=*/SmallVector<Type>{outputTy},
       /*shape=*/outShape,

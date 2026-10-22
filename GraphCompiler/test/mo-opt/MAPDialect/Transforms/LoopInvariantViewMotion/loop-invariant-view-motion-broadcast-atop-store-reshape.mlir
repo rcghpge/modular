@@ -17,7 +17,7 @@ module {
 // CHECK:         outputs ([[OUT:%[^ :,]+]] : !mo.tensor<[8], f32>) {
 // The broadcast hoists to a loop-invariant stride view of the input.
 // CHECK-NEXT:      [[BS:%[^ ]+]] = map.index.broadcast.stride<#map.index.broadcast.spec<[1] -> [8]>> ([[IN]])
-// CHECK-NEXT:      map.iter.foreach.body<[2, 4]>
+// CHECK-NEXT:      map.iter.elementwise.body<[2, 4]>
 // CHECK-NEXT:        index   ([[IDX:%[^ :,]+]]: !map.index<2>)
 // CHECK-NEXT:        capturing {{{.*}}[[BCAP:%[^ ]+]] = [[BS]] : !mo.tensor<[8], f32>} {
 // The reshape stays in the loop (it feeds the store); the load reads the hoisted
@@ -31,7 +31,7 @@ mo.graph @broadcastAtopStoreReshape(%c: !mo.tensor<[1], f32>)
   %output = map.iter.opaque
       inputs (%c : !mo.tensor<[1], f32>)
       outputs (%out : !mo.tensor<[8], f32>) {
-    map.iter.foreach.body<[2, 4]>
+    map.iter.elementwise.body<[2, 4]>
         index (%idx: !map.index<2>)
         capturing {%c0 = %c : !mo.tensor<[1], f32>, %out0 = %out : !mo.tensor<[8], f32>} {
       %r = map.index.reshape<#map.index.reshape.spec<[8] -> [2, 4]>> (%idx)

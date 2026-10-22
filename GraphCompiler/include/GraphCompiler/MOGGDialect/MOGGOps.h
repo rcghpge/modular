@@ -40,8 +40,7 @@ using M::KGEN::LIT::FnTypeGeneratorType;
 
 namespace M::MOGG {
 template <typename ConcreteType>
-class RoutineCall : public mlir::OpTrait::TraitBase<ConcreteType, RoutineCall> {
-};
+class CallLike : public mlir::OpTrait::TraitBase<ConcreteType, CallLike> {};
 } // namespace M::MOGG
 
 //===----------------------------------------------------------------------===//

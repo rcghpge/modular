@@ -11,10 +11,10 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 //
-// Input-fusion wrapper for a sole-use `map.iter.foreach` producer fusing into a
-// `map.iter.opaque` consumer's existing prologue, so e.g.
-// `gather(add(a, b), indices)` becomes one kernel whose data-operand prologue
-// computes the add inline. A view producer is `ViewFuser`'s to claim first.
+// Input-fusion wrapper for a sole-use `map.iter.elementwise` producer fusing
+// into a `map.iter.opaque` consumer's existing prologue, so e.g. `gather(add(a,
+// b), indices)` becomes one kernel whose data-operand prologue computes the add
+// inline. A view producer is `ViewFuser`'s to claim first.
 //
 //===----------------------------------------------------------------------===//
 
@@ -42,11 +42,11 @@ struct FuseProloguePass : public MAP::impl::FusePrologueBase<FuseProloguePass> {
     // A foreach producer fusing into an opaque (the load lives in the opaque's
     // prologue; a foreach-body load would have no opaque parent here).
     config.shouldFuse = [](StoreOp srcStore, LoadOp dstLoad) {
-      return srcStore->getParentOfType<IterForeachOp>() &&
+      return srcStore->getParentOfType<IterElementwiseOp>() &&
              dstLoad->getParentOfType<IterOpaqueOp>();
     };
     // Only a sole-use producer fuses into a prologue.
-    config.canDuplicate = [](IterForeachOp) { return false; };
+    config.canDuplicate = [](IterElementwiseOp) { return false; };
     numKernelsFused = fuseInput(getOperation(), config);
   }
 

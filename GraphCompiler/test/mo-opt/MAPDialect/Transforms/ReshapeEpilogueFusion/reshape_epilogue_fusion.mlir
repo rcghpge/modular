@@ -19,7 +19,7 @@
 // CHECK:       map.store %{{.*}}[%[[SIDX]]] = %[[ADD]] : !mo.tensor<[64], f32>
 // CHECK:       map.call.opaque @{{.*}}MapLowerOneFusedOutput
 // CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_epilogue<[#mogg.fusion_leaf<"custom__map_lower_one_fused_output"
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]] : !mo.tensor<[64], f32>
 mo.graph @custom_reshape_add(
   %x: !mo.tensor<[8, 8], f32>,
@@ -36,7 +36,7 @@ mo.graph @custom_reshape_add(
 
 // CHECK-LABEL: mo.graph @custom_reshape_only
 // CHECK:       map.iter.opaque
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 // CHECK:       map.index.reshape<#map.index.reshape.spec<[8, 8] -> [64]>>
 mo.graph @custom_reshape_only(
   %x: !mo.tensor<[8, 8], f32>

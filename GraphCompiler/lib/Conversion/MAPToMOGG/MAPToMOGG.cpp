@@ -19,9 +19,9 @@
 // A `map.iter.opaque` becomes a `mogg.routine` whose body rebuilds each tensor
 // from a `!mogg.pointer` block argument via `mogg.shape.create` /
 // `mogg.tensor.create`. A nested `map.call.opaque` becomes a
-// `mogg.call.opaque`, a `map.iter.foreach.body` a `mogg.call.foreach`, and a
-// `map.iter.epilogue` a `mogg.tensor.create.epilogue` whose body is lowered by
-// the same dispatcher.
+// `mogg.call.opaque`, a `map.iter.elementwise.body` a `mogg.call.foreach`, and
+// a `map.iter.epilogue` a `mogg.tensor.create.epilogue` whose body is lowered
+// by the same dispatcher.
 //
 // The kernel gains one `!mogg.dim` block argument per unique dynamic dimension
 // (deduped across inputs, outputs, and nested shape attributes), placed

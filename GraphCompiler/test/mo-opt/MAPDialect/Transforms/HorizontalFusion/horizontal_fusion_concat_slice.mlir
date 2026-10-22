@@ -21,7 +21,7 @@
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs[axis = 1 : i64] inputs(%{{.*}}, %{{.*}}) outputs(%[[EPI]])
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 16], f32>,
@@ -48,7 +48,7 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 // CHECK:       map.index.slice.select{{.*}} -> (%[[V_IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %{{.*}}[%[[V_IOUT]]] = %{{.*}} : !mo.tensor<[B, 8, 16], f32>
 // CHECK:       map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output
 mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
   %k_cache: !mo.tensor<[B, 8, 16], f32>,
@@ -74,7 +74,7 @@ mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
 // CHECK-NEXT:  map.index.slice.select<#map.index.slice.spec<[4, 9, 16] -> [4, 8, 16], starts = [0, 1, 0], stops = [4, 9, 16], steps = [1, 1, 1]>>{{.*}} -> (%[[IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %{{.*}}[%[[IOUT]]] = %{{.*}} : !mo.tensor<[4, 8, 16], f32>
 // CHECK:       map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @concat_slice_static_window(
   %arg0: !mo.tensor<[4, 8, 16], f32>,
   %arg1: !mo.tensor<[4, 1, 16], f32>
@@ -92,7 +92,7 @@ mo.graph @concat_slice_static_window(
 // CHECK:       map.iter.opaque
 // CHECK:       map.index.slice.select<#map.index.slice.spec<[4, 8, 16] -> [4, 4, 16], starts = [0, 1, 0], stops = [4, 8, 16], steps = [1, 2, 1]>>{{.*}} -> (%[[IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %{{.*}}[%[[IOUT]]] = %{{.*}} : !mo.tensor<[4, 4, 16], f32>
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 mo.graph @concat_slice_step(
   %arg0: !mo.tensor<[4, 6, 16], f32>,
   %arg1: !mo.tensor<[4, 2, 16], f32>
@@ -109,7 +109,7 @@ mo.graph @concat_slice_step(
 // producer/consumer edge, which is output fusion's to take, not this merge's.
 // CHECK-LABEL: mo.graph @concat_slice_single_use
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 mo.graph @concat_slice_single_use(
   %arg0: !mo.tensor<[4, 8, 16], f32>,
   %arg1: !mo.tensor<[4, 1, 16], f32>
@@ -126,7 +126,7 @@ mo.graph @concat_slice_single_use(
 // view of the concat, cheaper than a second store.
 // CHECK-LABEL: mo.graph @concat_slice_contiguous
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 mo.graph @concat_slice_contiguous(
   %arg0: !mo.tensor<[1, 8, 16], f32>,
   %arg1: !mo.tensor<[1, 1, 16], f32>
@@ -143,7 +143,7 @@ mo.graph @concat_slice_contiguous(
 // own kernel.
 // CHECK-LABEL: mo.graph @concat_slice_inner_dim
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 mo.graph @concat_slice_inner_dim(
   %arg0: !mo.tensor<[4, 8, 16], f32>,
   %arg1: !mo.tensor<[4, 1, 16], f32>
@@ -159,7 +159,7 @@ mo.graph @concat_slice_inner_dim(
 // A reversed slice is not one the select takes.
 // CHECK-LABEL: mo.graph @concat_slice_neg_step
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 mo.graph @concat_slice_neg_step(
   %arg0: !mo.tensor<[4, 8, 16], f32>,
   %arg1: !mo.tensor<[4, 1, 16], f32>
@@ -175,7 +175,7 @@ mo.graph @concat_slice_neg_step(
 // Runtime starts and steps leave the select no static bounds to carry.
 // CHECK-LABEL: mo.graph @concat_slice_dynamic_bounds
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       map.iter.foreach
+// CHECK:       map.iter.elementwise
 mo.graph @concat_slice_dynamic_bounds(
   %arg0: !mo.tensor<[4, 8, 16], f32>,
   %arg1: !mo.tensor<[4, 1, 16], f32>,
@@ -196,7 +196,7 @@ mo.graph @concat_slice_dynamic_bounds(
 // CHECK:       %[[OUT:[a-z0-9]+]]:2 = map.iter.opaque
 // CHECK:       map.index.slice.select
 // CHECK:       map.call.opaque @{{.*}}.FusedVariadicInputs
-// CHECK:       %[[RELU:[a-z0-9]+]] = map.iter.foreach<[4, 8, 16]>
+// CHECK:       %[[RELU:[a-z0-9]+]] = map.iter.elementwise<[4, 8, 16]>
 // CHECK-NEXT:  inputs (%[[OUT]]#1: !mo.tensor<[4, 8, 16], f32>)
 // CHECK:       map.call.elementwise @{{.*}}.ReLU
 // CHECK:       mo.output %[[OUT]]#0, %[[OUT]]#1, %[[RELU]]
@@ -219,7 +219,7 @@ mo.graph @concat_slice_window_read_again(
 // CHECK-LABEL: mo.graph @concat_slice_two_windows
 // CHECK:       %[[CONCAT:[0-9]+]] = map.iter.opaque
 // CHECK-NOT:   map.index.slice.select
-// CHECK:       %[[PAIR:[0-9]+]]:2 = map.iter.foreach<[4, 8, 16]>
+// CHECK:       %[[PAIR:[0-9]+]]:2 = map.iter.elementwise<[4, 8, 16]>
 // CHECK-NEXT:  inputs (%[[CONCAT]]: !mo.tensor<[4, 16, 16], f32>
 // CHECK-NOT:   map.index.slice.select
 // CHECK:       fusion_horizontal

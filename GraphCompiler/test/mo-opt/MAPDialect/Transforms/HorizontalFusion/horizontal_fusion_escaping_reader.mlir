@@ -17,7 +17,7 @@
 // CHECK-NEXT:  %[[ADD:[a-z0-9]+]] = map.call.elementwise @{{.*}}.Add(%{{.*}}, %[[VAL]], %[[ZV]])
 // CHECK-NEXT:  map.store %[[CAP1]][%{{.*}}] = %[[ADD]]
 // CHECK:       map.call.opaque @{{.*}}.Matmul{{.*}} outputs(%[[EPI]])
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT]]#0, %[[OUT]]#1
 // The merged kernel's location fuses both kernels'.
 // LOC-LABEL:   mo.graph @matmul_result_escapes
@@ -60,7 +60,7 @@ mo.graph @matmul_result_escapes_shared_input(
 // CHECK-COUNT-3: map.store
 // CHECK-NOT:   map.store
 // CHECK:       map.call.opaque @{{.*}}.Matmul
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[OUT3]]#0, %[[OUT3]]#1, %[[OUT3]]#2
 mo.graph @matmul_result_escapes_two_consumers(
   %x: !mo.tensor<[8, 8], f32>,
@@ -87,7 +87,7 @@ mo.graph @matmul_result_escapes_two_consumers(
 // CHECK:       %[[R:.*]] = mo.if
 // CHECK:       } else {
 // CHECK:       mo.yield
-// CHECK:       %[[ADD:.*]] = map.iter.foreach
+// CHECK:       %[[ADD:.*]] = map.iter.elementwise
 // CHECK-NEXT:  inputs (%[[MM]]: !mo.tensor<[8, 8], f32>, %[[R]]: !mo.tensor<[8, 8], f32>)
 // CHECK:       mo.output %[[ADD]]
 mo.graph @matmul_result_read_in_branch(

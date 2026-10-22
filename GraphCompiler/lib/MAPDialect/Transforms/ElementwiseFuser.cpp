@@ -46,7 +46,8 @@ bool isLargeTensorOperand(Type type, int64_t largeTensorElementThreshold) {
 // Cheap to duplicate iff at most one input is a large tensor: duplication
 // re-reads all inputs once per extra consumer, a win only when at most one
 // re-read is expensive.
-bool isCheapToDuplicate(IterForeachOp op, int64_t largeTensorElementThreshold) {
+bool isCheapToDuplicate(IterElementwiseOp op,
+                        int64_t largeTensorElementThreshold) {
   int numLargeOperands = 0;
   for (Value input : op.getInputs())
     if (isLargeTensorOperand(input.getType(), largeTensorElementThreshold))
@@ -64,13 +65,13 @@ struct FuseElementwisePass
     InputFusionConfig config;
     // Both kernels pure elementwise (no index transform).
     config.shouldFuse = [](StoreOp srcStore, LoadOp dstLoad) {
-      auto src = srcStore->getParentOfType<IterForeachOp>();
-      auto dst = dstLoad->getParentOfType<IterForeachOp>();
+      auto src = srcStore->getParentOfType<IterElementwiseOp>();
+      auto dst = dstLoad->getParentOfType<IterElementwiseOp>();
       return src && dst && !isViewForeach(src) && !isViewForeach(dst);
     };
     // Never duplicate a host kernel.
     int64_t threshold = largeTensorElementThreshold;
-    config.canDuplicate = [threshold](IterForeachOp src) {
+    config.canDuplicate = [threshold](IterElementwiseOp src) {
       return !MO::isOnHost(src) && isCheapToDuplicate(src, threshold);
     };
     config.maxFusionSetSize = maxFusionSetSize;

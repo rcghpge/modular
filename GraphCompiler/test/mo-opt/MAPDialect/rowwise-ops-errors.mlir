@@ -60,7 +60,7 @@ mogg.kernel.decl @builtin_kernels.monoids.ReduceSum registration = "mo.reduce.ad
 
 // A fold belongs to a rowwise.
 mo.graph @reduceParent(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 128], f32> {
-  %r = map.iter.foreach<[8, 128]>
+  %r = map.iter.elementwise<[8, 128]>
       inputs  (%x: !mo.tensor<[8, 128], f32>)
       outputs (%out: !mo.tensor<[8, 128], f32>)
       index   (%idx: !map.index<2>) -> !mo.tensor<[8, 128], f32> {

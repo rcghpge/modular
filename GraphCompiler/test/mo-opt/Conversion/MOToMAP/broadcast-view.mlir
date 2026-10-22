@@ -1,7 +1,7 @@
 // RUN: mo-opt %s --mogg-import-packages --mo-to-map | FileCheck %s
 
 // Verify that mo.static.broadcast_to lowers to a standalone (unfused)
-// map.iter.foreach over the output shape, with a map.index.broadcast op
+// map.iter.elementwise over the output shape, with a map.index.broadcast op
 // computing the input index -- not map.iter.opaque, and not the "view
 // kernels are not yet supported" error.
 
@@ -9,7 +9,7 @@
 
 // CHECK-LABEL: mo.graph @broadcastSameRank
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         [[OUT:%.*]] = map.iter.foreach<[8, 64]>
+// CHECK:         [[OUT:%.*]] = map.iter.elementwise<[8, 64]>
 // CHECK:         inputs  ([[INPUT:%.*]]: !mo.tensor<[1, 64], f32>)
 // CHECK:         outputs ([[OUTARG:%.*]]: !mo.tensor<[8, 64], f32>)
 // CHECK:         index   ([[IDX:%.*]]: !map.index<2>) -> !mo.tensor<[8, 64], f32> {
@@ -27,7 +27,7 @@ mo.graph @broadcastSameRank(%input: !mo.tensor<[1, 64], f32>) -> !mo.tensor<[8, 
 
 // CHECK-LABEL: mo.graph @broadcastRankExpanding
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         [[OUT2:%.*]] = map.iter.foreach<[8, 64]>
+// CHECK:         [[OUT2:%.*]] = map.iter.elementwise<[8, 64]>
 // CHECK:         inputs  ([[INPUT2:%.*]]: !mo.tensor<[64], f32>)
 // CHECK:         outputs ([[OUTARG2:%.*]]: !mo.tensor<[8, 64], f32>)
 // CHECK:         index   ([[IDX2:%.*]]: !map.index<2>) -> !mo.tensor<[8, 64], f32> {
@@ -44,7 +44,7 @@ mo.graph @broadcastRankExpanding(%input: !mo.tensor<[64], f32>) -> !mo.tensor<[8
 
 // CHECK-LABEL: mo.graph @broadcastSymbolicDims
 // CHECK-NOT:     map.iter.opaque
-// CHECK:         map.iter.foreach<[M, 64]>
+// CHECK:         map.iter.elementwise<[M, 64]>
 // CHECK:         map.index.broadcast<#map.index.broadcast.spec<[N, 64] -> [M, 64]>>
 mo.graph @broadcastSymbolicDims<N, M>(%input: !mo.tensor<[N, 64], f32>) -> !mo.tensor<[M, 64], f32> {
   %res = mo.static.broadcast_to(%input) : !mo.tensor<[N, 64], f32> -> !mo.tensor<[M, 64], f32>

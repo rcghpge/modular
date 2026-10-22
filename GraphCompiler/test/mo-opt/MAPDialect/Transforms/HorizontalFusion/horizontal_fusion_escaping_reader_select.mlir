@@ -12,7 +12,7 @@
 // CHECK:       map.iter.epilogue (%val : f32, %idx : !map.index<2>)
 // CHECK:       map.index.slice.select<{{.*}}> (%idx) -> (%[[J:[a-z0-9]+]])
 // CHECK-NEXT:  map.store %{{.*}}[%[[J]]] = %val
-// CHECK-NOT:   map.iter.foreach
+// CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[O]]#0, %[[O]]#1, %[[O]]#2
 mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
 mo.graph @opaque_feeds_select_kernel(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
@@ -23,7 +23,7 @@ mo.graph @opaque_feeds_select_kernel(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tenso
     map.call.opaque @kernels.relu[] inputs (%X) outputs (%epi) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
     map.yield %out : !mo.tensor<[8, 16], f32>
   } {device = #M.device_ref<"cpu", 0>}
-  %m:2 = map.iter.foreach<[8, 16]> inputs (%r: !mo.tensor<[8, 16], f32>) outputs (%x: !mo.tensor<[8, 16], f32>, %y: !mo.tensor<[4, 16], f32>) index (%i: !map.index<2>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
+  %m:2 = map.iter.elementwise<[8, 16]> inputs (%r: !mo.tensor<[8, 16], f32>) outputs (%x: !mo.tensor<[8, 16], f32>, %y: !mo.tensor<[4, 16], f32>) index (%i: !map.index<2>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
     %v = map.load %r[%i] : !mo.tensor<[8, 16], f32>
     map.store %x[%i] = %v : !mo.tensor<[8, 16], f32>
     map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%i) -> (%j) : !map.index<2> {

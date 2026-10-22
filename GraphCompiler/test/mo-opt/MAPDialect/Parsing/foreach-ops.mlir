@@ -1,7 +1,7 @@
 // RUN: mo-opt %s | FileCheck %s
 // RUN: mo-opt %s | mo-opt
 
-// Round-trip the map.iter.foreach family of ops.
+// Round-trip the map.iter.elementwise family of ops.
 // Covers both fully-static shapes and MOSH symbolic-dim shapes.
 // Value names are matched with capture variables so changes in the printer's
 // SSA numbering don't break the test.
@@ -17,9 +17,9 @@ module {
 mogg.kernel.decl @builtin_kernels.elementwise.Add registration = "mo.add" device_info = <"", "", "", ""> elementwise = <<!lit.generator<<"dtype": !DType, "width": !SIMDLength>("lhs": !lit.struct<#SIMD <:!DType *(0,0), :!SIMDLength *(0,1)>>, "rhs": !lit.struct<#SIMD <:!DType *(0,0), :!SIMDLength *(0,1)>>) -> !lit.struct<#SIMD <:!DType *(0,0), :!SIMDLength *(0,1)>>>>, [#kgen<param.decl dtype : !DType>, #kgen<param.decl width : !SIMDLength>], [{dtype = #kgen.param.decl.ref<"dtype"> : !DType, size = #kgen.param.decl.ref<"width"> : !SIMDLength}, {dtype = #kgen.param.decl.ref<"dtype"> : !DType, size = #kgen.param.decl.ref<"width"> : !SIMDLength}], [{dtype = #kgen.param.decl.ref<"dtype"> : !DType, size = #kgen.param.decl.ref<"width"> : !SIMDLength}]> struct_params = [] is_user_defined = false
 mogg.kernel.decl @builtin_kernels.gather_scatter.MutableStore registration = "mo.mutable.store" device_info = <"", "", "", ""> elementwise = <<!lit.generator<<"dtype": !DType, "width": !SIMDLength>("lhs": !lit.struct<#SIMD <:!DType *(0,0), :!SIMDLength *(0,1)>>, "rhs": !lit.struct<#SIMD <:!DType *(0,0), :!SIMDLength *(0,1)>>) -> !lit.struct<#SIMD <:!DType *(0,0), :!SIMDLength *(0,1)>>>>, [#kgen<param.decl dtype : !DType>, #kgen<param.decl width : !SIMDLength>], [{dtype = #kgen.param.decl.ref<"dtype"> : !DType, size = #kgen.param.decl.ref<"width"> : !SIMDLength}, {dtype = #kgen.param.decl.ref<"dtype"> : !DType, size = #kgen.param.decl.ref<"width"> : !SIMDLength}], [{dtype = #kgen.param.decl.ref<"dtype"> : !DType, size = #kgen.param.decl.ref<"width"> : !SIMDLength}]> struct_params = [] is_user_defined = false
 
-// Static shape: verify map.iter.foreach<[8, 16, 128]> round-trips unchanged.
+// Static shape: verify map.iter.elementwise<[8, 16, 128]> round-trips unchanged.
 // CHECK-LABEL: mo.graph @elementwiseAdd
-// CHECK:         [[RESULT:%[^ ]+]] = map.iter.foreach<[8, 16, 128]>
+// CHECK:         [[RESULT:%[^ ]+]] = map.iter.elementwise<[8, 16, 128]>
 // CHECK-NEXT:    inputs  ([[X:%[^ :,]+]]: !mo.tensor<[8, 16, 128], f32>, [[Y:%[^ :,]+]]: !mo.tensor<[8, 16, 128], f32>)
 // CHECK-NEXT:    outputs ([[OUTARG:%[^ :,]+]]: !mo.tensor<[8, 16, 128], f32>)
 // CHECK-NEXT:    index   ([[IDX:%[^ :,]+]]: !map.index<3>) -> !mo.tensor<[8, 16, 128], f32> {
@@ -32,7 +32,7 @@ mogg.kernel.decl @builtin_kernels.gather_scatter.MutableStore registration = "mo
 mo.graph @elementwiseAdd(%x: !mo.tensor<[8, 16, 128], f32>,
                          %y: !mo.tensor<[8, 16, 128], f32>)
     -> !mo.tensor<[8, 16, 128], f32> {
-  %output = map.iter.foreach<[8, 16, 128]>
+  %output = map.iter.elementwise<[8, 16, 128]>
       inputs  (%x: !mo.tensor<[8, 16, 128], f32>,
                %y: !mo.tensor<[8, 16, 128], f32>)
       outputs (%out: !mo.tensor<[8, 16, 128], f32>)
@@ -50,7 +50,7 @@ mo.graph @elementwiseAdd(%x: !mo.tensor<[8, 16, 128], f32>,
 
 // Symbolic shape: named MOSH dims in the shape attr.
 // CHECK-LABEL: mo.graph @elementwiseAddDynamic
-// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.foreach<[D0, D1]>
+// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.elementwise<[D0, D1]>
 // CHECK-NEXT:    inputs  ([[X2:%[^ :,]+]]: !mo.tensor<[D0, D1], f32>, [[Y2:%[^ :,]+]]: !mo.tensor<[D0, D1], f32>)
 // CHECK-NEXT:    outputs ([[OUTARG2:%[^ :,]+]]: !mo.tensor<[D0, D1], f32>)
 // CHECK-NEXT:    index   ([[IDX2:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[D0, D1], f32> {
@@ -58,7 +58,7 @@ mo.graph @elementwiseAddDynamic<D0, D1>(
     %x: !mo.tensor<[D0, D1], f32>,
     %y: !mo.tensor<[D0, D1], f32>)
     -> !mo.tensor<[D0, D1], f32> {
-  %output = map.iter.foreach<[D0, D1]>
+  %output = map.iter.elementwise<[D0, D1]>
       inputs  (%x: !mo.tensor<[D0, D1], f32>,
                %y: !mo.tensor<[D0, D1], f32>)
       outputs (%out: !mo.tensor<[D0, D1], f32>)
@@ -75,7 +75,7 @@ mo.graph @elementwiseAddDynamic<D0, D1>(
 }
 
 // CHECK-LABEL: mo.graph @mutableStore
-// CHECK:         [[OUTCHAIN:%[^ ]+]] = map.iter.foreach<[2, 2]>
+// CHECK:         [[OUTCHAIN:%[^ ]+]] = map.iter.elementwise<[2, 2]>
 // CHECK-NEXT:    inputs  ([[VAL:%[^ :,]+]]: !mo.tensor<[2, 2], f32>, [[BUF:%[^ :,]+]]: !mo.buffer<[2, 2], f32>)
 // CHECK-NEXT:    outputs ()
 // CHECK-NEXT:    index   ([[IDX3:%[^ :,]+]]: !map.index<2>) chain([[INCHAIN:%[^)]+]]) -> !mo.chain {
@@ -86,7 +86,7 @@ mo.graph @elementwiseAddDynamic<D0, D1>(
 // CHECK-NEXT:   mo.output
 mo.graph @mutableStore(%val: !mo.tensor<[2, 2], f32>, %buf: !mo.buffer<[2, 2], f32>) {
   %c = mo.chain.create()
-  %oc = map.iter.foreach<[2, 2]>
+  %oc = map.iter.elementwise<[2, 2]>
       inputs  (%val: !mo.tensor<[2, 2], f32>, %buf: !mo.buffer<[2, 2], f32>)
       outputs ()
       index   (%idx: !map.index<2>)

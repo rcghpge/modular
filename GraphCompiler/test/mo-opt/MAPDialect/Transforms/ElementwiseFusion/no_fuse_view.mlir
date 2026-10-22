@@ -20,10 +20,10 @@ mo.graph @no_fuse_transpose_of_square_matrix(
 }
 
 // CHECK-LABEL: mo.graph @no_fuse_transpose_of_square_matrix
-// CHECK:       map.iter.foreach<[3, 3]>
+// CHECK:       map.iter.elementwise<[3, 3]>
 // CHECK:       map.call.elementwise @{{.*}}.Add
 // CHECK:       map.store
-// CHECK:       map.iter.foreach<[3, 3]>
+// CHECK:       map.iter.elementwise<[3, 3]>
 // CHECK:       map.index.transpose
 // CHECK:       map.store
 // CHECK-NOT:   fusion_elementwise

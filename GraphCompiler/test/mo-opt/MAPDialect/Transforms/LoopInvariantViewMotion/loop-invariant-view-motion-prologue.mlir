@@ -1,13 +1,13 @@
 // RUN: mo-opt %s --pass-pipeline='builtin.module(mo.graph(map-livm, map.iter.opaque(canonicalize,cse)))' | FileCheck %s
 
 // LoopInvariantViewMotion walks every CapturingFusionClosure generically, not
-// just map.iter.foreach.body -- this covers map.iter.prologue, whose own
+// just map.iter.elementwise.body -- this covers map.iter.prologue, whose own
 // IsolatedFromAbove trait is exactly why the old direct-value-substitution
 // hoisting approach was invalid there (see the pass's addCapture-based
 // design). Hoists a map.index.slice chain feeding a map.load inside a
 // map.iter.prologue's body into a map.index.slice.stride op in the enclosing
 // map.iter.opaque, rewiring the load to a fresh capture of the hoisted view,
-// same mechanic already proven for map.iter.foreach.body in
+// same mechanic already proven for map.iter.elementwise.body in
 // loop-invariant-view-motion-slice.mlir.
 
 // map.call.opaque verifies that its callee resolves to a mogg.kernel.decl. The

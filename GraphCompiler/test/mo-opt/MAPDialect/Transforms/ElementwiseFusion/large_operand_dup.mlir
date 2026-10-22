@@ -11,13 +11,13 @@ mo.graph @binaryAddLargeFanout(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>, %arg1: 
 }
 
 // CHECK-LABEL: mo.graph @binaryAddLargeFanout
-// CHECK: %[[ADD:.*]] = map.iter.foreach
+// CHECK: %[[ADD:.*]] = map.iter.elementwise
 // CHECK: map.call.elementwise @{{.*}}.Add
 // CHECK-NOT: map.call.elementwise @{{.*}}.Add
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK: inputs (%[[ADD]]
 // CHECK: map.call.elementwise @{{.*}}.Tanh
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK: inputs (%[[ADD]]
 // CHECK: map.call.elementwise @{{.*}}.ReLU
 
@@ -25,10 +25,10 @@ mo.graph @binaryAddLargeFanout(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>, %arg1: 
 // count, both operands count as small, so the Add is cloned into each
 // consumer's fused kernel instead of being materialized once.
 // HIGHTHRESH-LABEL: mo.graph @binaryAddLargeFanout
-// HIGHTHRESH: map.iter.foreach
+// HIGHTHRESH: map.iter.elementwise
 // HIGHTHRESH: map.call.elementwise @{{.*}}.Add
 // HIGHTHRESH: map.call.elementwise @{{.*}}.Tanh
-// HIGHTHRESH: map.iter.foreach
+// HIGHTHRESH: map.iter.elementwise
 // HIGHTHRESH: map.call.elementwise @{{.*}}.Add
 // HIGHTHRESH: map.call.elementwise @{{.*}}.ReLU
 
@@ -43,10 +43,10 @@ mo.graph @unaryExpLargeFanout(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>) -> (!mo.
 }
 
 // CHECK-LABEL: mo.graph @unaryExpLargeFanout
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK: map.call.elementwise @{{.*}}.Exp
 // CHECK: map.call.elementwise @{{.*}}.Tanh
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK: map.call.elementwise @{{.*}}.Exp
 // CHECK: map.call.elementwise @{{.*}}.ReLU
 
@@ -59,9 +59,9 @@ mo.graph @unaryExpEscapingOutput(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>) -> (!
 }
 
 // CHECK-LABEL: mo.graph @unaryExpEscapingOutput
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK: map.call.elementwise @{{.*}}.Exp
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK-NOT: map.call.elementwise @{{.*}}.Exp
 // CHECK: map.call.elementwise @{{.*}}.Tanh
 
@@ -76,10 +76,10 @@ mo.graph @unaryExpIntoOpaque(%arg0: !mo.tensor<[4096, 2], f32, gpu:0>, %w: !mo.t
 }
 
 // CHECK-LABEL: mo.graph @unaryExpIntoOpaque
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK: map.call.elementwise @{{.*}}.Exp
 // CHECK: map.iter.opaque
 // CHECK: map.call.opaque @{{.*}}.Matmul
-// CHECK: map.iter.foreach
+// CHECK: map.iter.elementwise
 // CHECK-NOT: map.call.elementwise @{{.*}}.Exp
 // CHECK: map.call.elementwise @{{.*}}.Tanh

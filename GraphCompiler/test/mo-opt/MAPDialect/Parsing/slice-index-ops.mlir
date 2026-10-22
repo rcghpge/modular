@@ -14,7 +14,7 @@ module {
 
 // Static shape and bounds: verify map.index.slice round-trips unchanged.
 // CHECK-LABEL: mo.graph @sliceStatic
-// CHECK:         [[RESULT:%[^ ]+]] = map.iter.foreach<[3, 32]>
+// CHECK:         [[RESULT:%[^ ]+]] = map.iter.elementwise<[3, 32]>
 // CHECK-NEXT:    inputs  ([[INPUT:%[^ :,]+]]: !mo.tensor<[10, 64], f32>, [[STARTS:%[^ :,]+]]: !mo.tensor<[2], si64>, [[STOPS:%[^ :,]+]]: !mo.tensor<[2], si64>, [[STEPS:%[^ :,]+]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:    outputs ([[OUTARG:%[^ :,]+]]: !mo.tensor<[3, 32], f32>)
 // CHECK-NEXT:    index   ([[IDX:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[3, 32], f32> {
@@ -28,7 +28,7 @@ mo.graph @sliceStatic(%input: !mo.tensor<[10, 64], f32>,
                       %stops: !mo.tensor<[2], si64>,
                       %steps: !mo.tensor<[2], si64>)
     -> !mo.tensor<[3, 32], f32> {
-  %output = map.iter.foreach<[3, 32]>
+  %output = map.iter.elementwise<[3, 32]>
       inputs  (%input: !mo.tensor<[10, 64], f32>,
                %starts: !mo.tensor<[2], si64>,
                %stops: !mo.tensor<[2], si64>,
@@ -48,7 +48,7 @@ mo.graph @sliceStatic(%input: !mo.tensor<[10, 64], f32>,
 // Symbolic in/out shape dims (N, M) and dynamic (`?`) starts/stops, matching
 // the general case where the mo.slice bounds aren't compile-time constants.
 // CHECK-LABEL: mo.graph @sliceDynamic
-// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.foreach<[M, 32]>
+// CHECK:         [[RESULT2:%[^ ]+]] = map.iter.elementwise<[M, 32]>
 // CHECK-NEXT:    inputs  ([[INPUT2:%[^ :,]+]]: !mo.tensor<[N, 64], f32>, [[STARTS2:%[^ :,]+]]: !mo.tensor<[2], si64>, [[STOPS2:%[^ :,]+]]: !mo.tensor<[2], si64>, [[STEPS2:%[^ :,]+]]: !mo.tensor<[2], si64>)
 // CHECK-NEXT:    outputs ([[OUTARG2:%[^ :,]+]]: !mo.tensor<[M, 32], f32>)
 // CHECK-NEXT:    index   ([[IDX2:%[^ :,]+]]: !map.index<2>) -> !mo.tensor<[M, 32], f32> {
@@ -59,7 +59,7 @@ mo.graph @sliceDynamic<N, M>(
     %stops: !mo.tensor<[2], si64>,
     %steps: !mo.tensor<[2], si64>)
     -> !mo.tensor<[M, 32], f32> {
-  %output = map.iter.foreach<[M, 32]>
+  %output = map.iter.elementwise<[M, 32]>
       inputs  (%input: !mo.tensor<[N, 64], f32>,
                %starts: !mo.tensor<[2], si64>,
                %stops: !mo.tensor<[2], si64>,
