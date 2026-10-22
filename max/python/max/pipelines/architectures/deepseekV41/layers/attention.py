@@ -69,6 +69,7 @@ from .csa2 import (
     leaf_slots,
     store_compressed_kv,
     store_window_kv,
+    window_entries,
 )
 from .indexer import (
     DeepseekV41Indexer,
@@ -701,9 +702,16 @@ class CSA2Attention(Module):
         )
 
     def __call__(
-        self, h: TensorValue, rows: RaggedRows, cache: object | None
+        self,
+        h: TensorValue,
+        rows: RaggedRows,
+        cache: object | None,
+        *,
+        swa_valid_from: TensorValue | None = None,
     ) -> TensorValue:
-        return self.end(self.begin(h, rows, cache), rows)
+        return self.end(
+            self.begin(h, rows, cache), rows, swa_valid_from=swa_valid_from
+        )
 
     def begin(
         self, h: TensorValue, rows: RaggedRows, cache: object | None
@@ -896,6 +904,7 @@ class CSA2Attention(Module):
         state: PendingCSA2Attention,
         rows: RaggedRows,
         selected: TensorValue | None,
+        swa_valid_from: TensorValue | None = None,
     ) -> TensorValue:
         """Builds each row's ``[T, 640]`` absolute-slot index list.
 
@@ -909,23 +918,15 @@ class CSA2Attention(Module):
             selected: ``[T, num_comp]`` int32 raw positions of the selected
                 groups' closing tokens, ``-1`` for none; ``None`` on a
                 window-only layer.
+            swa_valid_from: Per-request SWA validity boundary; see :meth:`end`.
         """
         device = state.q.device
         t = state.q.shape[0]
         request = ops.unsqueeze(ops.cast(rows.bid, DType.int32), -1)
-        back = ops.range(
-            0,
-            -WINDOW_ENTRIES,
-            -1,
-            out_dim=WINDOW_ENTRIES,
-            dtype=DType.int32,
-            device=device,
-        )
         window = leaf_slots(
             state.swa_collection,
             request,
-            ops.unsqueeze(ops.cast(rows.positions, DType.int32), -1)
-            + ops.unsqueeze(back, 0),
+            window_entries(rows.positions, rows.bid, swa_valid_from),
             self.layer_info.layer_id,
         )
         none = ops.constant(-1, DType.int32, device)
@@ -1074,17 +1075,37 @@ class CSA2Attention(Module):
             )
         return pool.kept
 
-    def end(self, state: PendingCSA2Attention, rows: RaggedRows) -> TensorValue:
+    def end(
+        self,
+        state: PendingCSA2Attention,
+        rows: RaggedRows,
+        *,
+        swa_valid_from: TensorValue | None = None,
+    ) -> TensorValue:
         """Runs :meth:`__call__` from the indexer's top-k on.
 
         Takes no ``cache``: ``state`` carries the caches :meth:`begin`
         resolved.
+
+        Args:
+            state: :meth:`begin`'s intermediate state.
+            rows: The query rows, possibly gathered after :meth:`begin`.
+            swa_valid_from: Optional ``[batch]`` integer absolute start of
+                each request's valid SWA suffix, on the query device. Pass
+                it only for layers whose SWA writes omitted rows. A cut
+                layer that wrote all rows in :meth:`begin` must leave this
+                unset even when its query rows were gathered. Earlier
+                chunks and prefix hits require the caller's cache-validity
+                boundary, not simply the current chunk's start. Compressed
+                KV selection is unaffected.
         """
         layer = self.layer_info
         if layer.attention_mode == "SWA-only":
             selection_for_layer(layer, self.selection_box.current)
             self.selection_box.current = None
-            out = self._attend(state, rows, self._index_list(state, rows, None))
+            out = self._attend(
+                state, rows, self._index_list(state, rows, None, swa_valid_from)
+            )
             if self._selection_trace is not None:
                 self._selection_trace.append((layer.layer_id, None))
             return ops.reshape(
@@ -1110,7 +1131,9 @@ class CSA2Attention(Module):
             )
 
         self.selection_box.current = selection
-        out = self._attend(state, rows, self._index_list(state, rows, produced))
+        out = self._attend(
+            state, rows, self._index_list(state, rows, produced, swa_valid_from)
+        )
         if self._selection_trace is not None:
             self._selection_trace.append((layer.layer_id, selection))
         return ops.reshape(

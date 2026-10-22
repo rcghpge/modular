@@ -376,3 +376,18 @@ modular_py_test(
         requirement("numpy"),
     ],
 )
+
+# Checks the absolute-slot boundary used by trimmed decoder SWA reads.
+modular_py_test(
+    name = "test_swa_floor",
+    srcs = ["test_swa_floor.py"],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        requirement("numpy"),
+    ],
+)

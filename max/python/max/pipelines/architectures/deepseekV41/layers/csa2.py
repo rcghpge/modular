@@ -113,6 +113,54 @@ def cache_slots(cache: BufferValue) -> Dim:
     return shape[0] * shape[1] * shape[2] * shape[3]
 
 
+def window_entries(
+    positions: TensorValue,
+    request_ids: TensorValue,
+    valid_from: TensorValue | None = None,
+) -> TensorValue:
+    """Returns each query's 128 logical SWA entries, newest first.
+
+    Args:
+        positions: ``[T]`` absolute query positions.
+        request_ids: ``[T]`` request indices into ``valid_from``.
+        valid_from: Optional ``[batch]`` integer absolute start of each
+            request's contiguous valid SWA suffix for this layer. Entries
+            below it become ``-1``. The caller supplies cache validity,
+            including any preceding chunk or restored prefix; this function
+            neither advances nor persists the boundary. ``None`` leaves the
+            window unrestricted. Negative entries are masked by
+            :func:`leaf_slots` in either case.
+
+    Returns:
+        The ``[T, 128]`` int32 logical entries, with entries below an explicit
+        floor set to -1.
+    """
+    device = positions.device
+    back = ops.range(
+        0,
+        -WINDOW_ENTRIES,
+        -1,
+        out_dim=WINDOW_ENTRIES,
+        dtype=DType.int32,
+        device=device,
+    )
+    entries = ops.unsqueeze(
+        ops.cast(positions, DType.int32), -1
+    ) + ops.unsqueeze(back, 0)
+    if valid_from is not None:
+        floor = ops.gather(
+            ops.cast(valid_from, DType.int32),
+            ops.cast(request_ids, DType.int32),
+            axis=0,
+        )
+        entries = ops.where(
+            entries >= ops.unsqueeze(floor, -1),
+            entries,
+            ops.constant(-1, DType.int32, device),
+        )
+    return entries
+
+
 def leaf_slots(
     leaf: PagedCacheValues,
     request: TensorValue,
