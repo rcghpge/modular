@@ -245,13 +245,11 @@ public:
   ModuleState &createArtifactChildState(Operation *op, ModuleState &parentState,
                                         SMLoc importLoc);
 
-  /// Create an error module state and emit the given error message. If
-  /// `unlisted` is set, the erroneous decl is not registered in
-  /// `errorContext`'s name table. A non-empty `note` is attached to the error.
+  /// Create an error module state and emit the given error message. A
+  /// non-empty `note` is attached to the error.
   ModuleState &createErrorModuleState(SMLoc loc, StringAttr name,
                                       ModuleASTDecl &errorContext,
                                       const Twine &errorMsg,
-                                      bool unlisted = false,
                                       const Twine &note = {});
 
   //===--------------------------------------------------------------------===//

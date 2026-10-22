@@ -611,15 +611,12 @@ ModuleLoader::lookupModuleCache(StringRef name, ASTDecl *parentDecl,
     return wrapped && sourcePath && *wrapped == *sourcePath;
   };
 
-  // Reject self-imports with an unregistered erroneous state. The name *is*
-  // resolvable so it must not be poisoned in the parent's name table; use an
-  // unlisted decl for this.
   if (isSelfImport(state)) {
     if (!emitErrors)
       return state;
     return &createErrorModuleState(
         identifierLoc, declNameAttr, *parentState->decl,
-        "module '" + name + "' cannot import itself", /*unlisted=*/true);
+        "module '" + name + "' cannot import itself");
   }
 
   // Memoize the "imported from" location; the first resolution wins.
@@ -681,7 +678,7 @@ ModuleState *ModuleLoader::importSubModuleStateImpl(StringRef name,
         llvm::is_contained(kMovedStdlibSubpackages, name);
     return &createErrorModuleState(
         identifierLoc, declNameAttr, *parentState->decl,
-        "unable to locate module '" + name + "'", /*unlisted=*/false,
+        "unable to locate module '" + name + "'",
         movedToMax ? Twine(kMovedStdlibNote) : Twine());
   };
 
@@ -784,7 +781,7 @@ ModuleLoader::importRelativeModuleState(const SharedState::ImportPath &path,
   auto emitError = [&](const Twine &message = "") -> ModuleState & {
     return createErrorModuleState(
         identifierLoc, StringAttr::get(getContext(), path.toDottedString()),
-        importContext, message, /*unlisted=*/true);
+        importContext, message);
   };
 
   auto adjustIdentifierLoc = [&](unsigned offset) {
@@ -1358,7 +1355,6 @@ ModuleState &ModuleLoader::createArtifactChildState(Operation *op,
 ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
                                                   ModuleASTDecl &errorContext,
                                                   const Twine &errorMsg,
-                                                  bool unlisted,
                                                   const Twine &note) {
   // Track the failure in the scope whose lookup failed.
   ModuleState *contextState = lookupState(&errorContext);
@@ -1373,16 +1369,16 @@ ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
   if (!state) {
     auto &parentDecl = errorContext;
     OpBuilder builder = parentDecl.getDeclEndBuilder();
-    // The source spelling is bound in the parent name table, but this
-    // synthesized module must not claim that symbol: a later import can still
-    // create the real module with the same name.
+    // This synthesized module must not claim the source spelling's symbol: a
+    // later import can still create the real module with the same name. Like
+    // every module decl, it is unlisted.
     StringAttr symbolName = StringAttr::get(
         parentDecl.getContext(), Twine(name.getValue()) + ".__error_module");
     FileModuleOp moduleOp = FileModuleOp::create(
         builder, shared.translateLocation(loc), symbolName);
     ASTDecl &decl = shared.declResolver->addDecl(
-        moduleOp.getOperation(), loc, unlisted ? StringAttr() : name,
-        &parentDecl, LexerCursor(), LexerCursor(), /*indentation=*/-1);
+        moduleOp.getOperation(), loc, StringAttr(), &parentDecl, LexerCursor(),
+        LexerCursor(), /*indentation=*/-1);
     auto &moduleDecl = cast<FileModuleASTDecl>(decl);
     moduleDecl.resolvedness = DeclResolvedness::body;
     moduleDecl.setErroneous();
