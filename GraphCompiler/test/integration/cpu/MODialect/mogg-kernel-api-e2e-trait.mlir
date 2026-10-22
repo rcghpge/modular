@@ -3,7 +3,7 @@
 
 // End-to-end proof of the dense CPU trait-argument emit path (Slice 3 /
 // Phase 4): `trait_negate`'s arguments carry the minimal graph-visible markers
-// (`Some[Output & DenseTensor]` / `Some[Input & DenseTensor]`) and refine
+// (`Some[Output & TileTensorable]` / `Some[Input & TileTensorable]`) and refine
 // `TileTensorable` in the body, so the graph compiler emits an inline
 // `_MoggDenseTensorArg` for each argument and infers the kernel's generic `T`
 // from it. With an all-ones input the negate kernel must

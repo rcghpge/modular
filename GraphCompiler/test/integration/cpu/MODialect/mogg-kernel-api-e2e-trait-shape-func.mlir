@@ -3,9 +3,9 @@
 
 // End-to-end proof of the trait-typed shape-function emit path. The custom op
 // `trait_metadata_shape_op` registers a metadata-only, no-role trait shape
-// function (`trait_metadata_shape_op_shape[T: DenseTensor](input: T)`), so its
-// tensor operand is emitted as a `_MoggShapeTensorArg` (immutable, host,
-// `DenseTensor`-tier -- data-visible) rather than rebound to a legacy
+// function (`trait_metadata_shape_op_shape[T: TileTensorable](input: T)`), so
+// its tensor operand is emitted as a `_MoggShapeTensorArg` (immutable, host,
+// data-visible) rather than rebound to a legacy
 // `InputTensor`, and the call result is rebound to the concrete
 // `IndexList[output_rank]`. The execute entry stays on the legacy lane and
 // copies input -> output.

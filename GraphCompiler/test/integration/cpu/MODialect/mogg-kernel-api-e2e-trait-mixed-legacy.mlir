@@ -3,7 +3,7 @@
 
 // End-to-end proof of a MIXED-LANE kernel: `trait_mixed_legacy_add`'s output
 // carries the composable tensor-argument traits (`Some[Output &
-// DenseTensor]`), so the graph compiler emits an inline `_MoggDenseTensorArg`
+// TileTensorable]`), so the graph compiler emits an inline `_MoggDenseTensorArg`
 // for it, while its two inputs are legacy `InputTensor` (`ManagedTensorSlice`)
 // operands, unchanged. `CallExecuteOp::emitMojo` must assemble both lanes'
 // captures in the same call. With all-ones inputs, `z[i] = x[i] + y[i]` must

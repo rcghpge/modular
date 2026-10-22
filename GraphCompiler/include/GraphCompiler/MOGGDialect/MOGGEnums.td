@@ -115,8 +115,7 @@ def MOGG_TensorArgBound
     : I32EnumAttr<"TensorArgBoundKind", "tensor-argument written bound", [
         I32EnumAttrCase<"unspecified", 0, "unspecified">,
         I32EnumAttrCase<"tensor", 1, "tensor">,
-        I32EnumAttrCase<"dense", 2, "dense">,
-        I32EnumAttrCase<"tile", 3, "tile">,
+        I32EnumAttrCase<"tile", 2, "tile">,
       ]> {
   let cppNamespace = "::M::MOGG";
 }

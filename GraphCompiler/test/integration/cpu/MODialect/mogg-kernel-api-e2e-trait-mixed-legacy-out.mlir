@@ -4,7 +4,7 @@
 // End-to-end proof of a MIXED-LANE kernel with the lanes swapped from
 // `trait_mixed_legacy_add`: `trait_mixed_legacy_out_add`'s output is a legacy
 // `OutputTensor` (`ManagedTensorSlice`), while its two inputs carry the
-// composable tensor-argument traits (`Some[Input & DenseTensor]`). Both the
+// composable tensor-argument traits (`Some[Input & TileTensorable]`). Both the
 // legacy write path (`OutputTensor.__setitem__`) and the trait read path
 // (`to_tile_tensor(...)` loads) fire in the same emitted kernel. With
 // all-ones inputs, `z[i] = x[i] + y[i]` must return all 2.

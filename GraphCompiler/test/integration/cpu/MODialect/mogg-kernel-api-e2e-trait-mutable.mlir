@@ -2,9 +2,9 @@
 // RUN: mt --execute --model-inputs=ones %t.mlir | FileCheck %s
 
 // End-to-end proof of the trait MUTABLE-INPUT emit path. `trait_inplace_increment`
-// declares its argument `Some[MutableInput & DenseTensor]` and mutates it in
+// declares its argument `Some[MutableInput & TileTensorable]` and mutates it in
 // place (`x[i] += 1`). For a mutable_input role the lowering stamps a
-// `MutableInput & DenseTensor & TileTensorable` stub bound, so the emitted
+// `MutableInput & TileTensorable` stub bound, so the emitted
 // inline `_MoggDenseTensorArg` must conform to `MutableInput` (gated on its io),
 // not merely `Input` -- otherwise the generated Mojo would fail to satisfy its
 // own bound. With an all-ones input the kernel returns all 2.

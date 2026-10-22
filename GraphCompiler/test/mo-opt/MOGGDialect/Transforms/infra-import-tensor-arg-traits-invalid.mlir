@@ -10,15 +10,15 @@
 
 // === Role errors ========================================================== //
 
-// `Some[DenseTensor]` (kernel `trait_no_role`) -- no role trait. Also covers
+// `Some[TileTensorable]` (kernel `trait_no_role`) -- no role trait. Also covers
 // the empty-role boundary: a tensor arg with metadata but no Input/Output/
 // MutableInput.
 // CHECK-DAG: error: trait-bound tensor argument has no role trait
 
-// `Input & Output & DenseTensor` (kernel `trait_two_roles`) -- two role traits.
+// `Input & Output & TileTensorable` (kernel `trait_two_roles`) -- two role traits.
 // CHECK-DAG: error: trait-bound tensor argument has more than one role trait
 
-// `Input & MutableInput & DenseTensor` (kernel `trait_input_and_mutable_input`)
+// `Input & MutableInput & TileTensorable` (kernel `trait_input_and_mutable_input`)
 // -- the Input/MutableInput pair specifically. Exact-leaf matching means
 // `MutableInput` does not subsume `Input`, so both roles count (a second
 // "more than one role trait" diagnostic in the same run).
@@ -26,7 +26,7 @@
 
 // === Access-form errors =================================================== //
 
-// `Output & Fused & DenseTensor` (kernel `trait_fused_no_access`) -- fused with
+// `Output & Fused & TileTensorable` (kernel `trait_fused_no_access`) -- fused with
 // no access form.
 // CHECK-DAG: error: a Fused tensor argument must declare exactly one access form
 
@@ -70,46 +70,44 @@
 // `_LegacyComputable` up front.
 // CHECK-DAG: error: declare _LegacyComputeOutput on the kernel signature and refine to _LegacyComputable in the body
 
-// `Output & Fused & _LegacyComputeOutput & TileTensorable` and `& DenseTensor`
-// (kernels `trait_compute_output_tile_on_signature`,
-// `trait_compute_output_dense_on_signature`) -- a data tier on the signature,
-// which the store-fusion form can't satisfy.
-// CHECK-DAG: error: a _LegacyComputeOutput argument cannot require DenseTensor or TileTensorable on the kernel signature
-// CHECK-DAG: error: a _LegacyComputeOutput argument cannot require DenseTensor or TileTensorable on the kernel signature
+// `Output & Fused & _LegacyComputeOutput & TileTensorable` (kernel
+// `trait_compute_output_tile_on_signature`) -- `TileTensorable` on the
+// signature, which the store-fusion form can't satisfy.
+// CHECK-DAG: error: a _LegacyComputeOutput argument cannot require TileTensorable on the kernel signature
 
 // === Foreign trait ======================================================== //
 
-// `Output & DenseTensor & Copyable` (kernel `trait_foreign`) -- a foreign
+// `Output & TileTensorable & Copyable` (kernel `trait_foreign`) -- a foreign
 // (stdlib) trait in the bound.
 // CHECK-DAG: references 'Copyable', which is not a tensor-argument trait
 
-// `TensorTuple[*Ts]` with `Ts: TypeList[Trait=Input & DenseTensor & Movable, ...]`
+// `TensorTuple[*Ts]` with `Ts: TypeList[Trait=Input & TileTensorable & Movable, ...]`
 // (kernel `trait_tensor_tuple_movable`). The tuple puts no bound on its
 // elements, so `Movable` is as foreign in its list bound as anywhere else.
 // CHECK-DAG: references 'Movable', which is not a tensor-argument trait
 
-// `*Ts: Input & DenseTensor` (kernel `trait_variadic_pack`). A variadic pack of
+// `*Ts: Input & TileTensorable` (kernel `trait_variadic_pack`). A variadic pack of
 // tensor arguments is not a trait-lane spelling; `TensorTuple` is.
 // CHECK-DAG: error: variadic packs of tensor-trait arguments are not supported; take a `TensorTuple` instead
 
 // === Shape-function lane disallows ======================================== //
 //
-// A shape-function tensor argument may conform to `Tensor`, `DenseTensor`,
-// or `TileTensorable` (host execution makes data access safe), but the
+// A shape-function tensor argument may conform to `Tensor` or
+// `TileTensorable` (host execution makes data access safe), but the
 // shape-fn distill lane still rejects io-role markers, `Fused`, and the
 // fusion access traits (`LoadAccess`/`Loadable`, `StoreAccess`/`Storable`,
 // `_LegacyComputeOutput`/`_LegacyComputable`) -- those stay execute-lane-only
 // fusion machinery.
 
-// `Input & DenseTensor` (shape fn `trait_shape_fn_with_role`) -- an io-role on
+// `Input & TileTensorable` (shape fn `trait_shape_fn_with_role`) -- an io-role on
 // a shape-fn arg.
 // CHECK-DAG: error: shape-function tensor argument carries an io-role marker
 
-// `Fused & DenseTensor` (shape fn `trait_shape_fn_fused`) -- Fused on a
+// `Fused & TileTensorable` (shape fn `trait_shape_fn_fused`) -- Fused on a
 // shape-fn arg.
 // CHECK-DAG: error: Fused is not allowed on a shape-function tensor argument
 
-// `Loadable & DenseTensor` (shape fn `trait_shape_fn_loadable`) -- a fusion
+// `Loadable & TileTensorable` (shape fn `trait_shape_fn_loadable`) -- a fusion
 // access capability on a shape-fn arg.
 // CHECK-DAG: error: LoadAccess, Loadable, StoreAccess, Storable, _LegacyComputeOutput, and _LegacyComputable are fusion machinery
 
@@ -117,16 +115,13 @@ module {}
 
 // === Stable storage marker ================================================ //
 
-// `Output & DenseTensor & Stable` (kernel `trait_stable_output`).
+// `Output & TileTensorable & Stable` (kernel `trait_stable_output`).
 // CHECK-DAG: error: Stable is not valid on an Output argument
 
 // `Input & Fused & Loadable & Stable` (kernel `trait_stable_fused`).
 // CHECK-DAG: error: a Stable tensor argument cannot also be Fused
 
-// `Input & Tensor & Stable` (kernel `trait_stable_no_dense`) -- no dense tier.
-// CHECK-DAG: error: a Stable tensor argument must also conform to DenseTensor
-
-// `Stable & DenseTensor` on a shape function (`trait_shape_fn_stable`).
+// `Stable & TileTensorable` on a shape function (`trait_shape_fn_stable`).
 // CHECK-DAG: error: Stable is not allowed on a shape-function tensor argument
 
 

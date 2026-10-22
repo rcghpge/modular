@@ -390,7 +390,7 @@ Consumes and produces `mogg`.
 
 A scalar argument's tensor is wrapped in `mogg.scalar.create`, a variadic run is
 packed into a `mogg.tuple.create`, and a trait-bound argument (`Tensor` /
-`DenseTensor` / `TileTensorable`) is wrapped in a `mogg.trait.create` so the raw
+`TileTensorable`) is wrapped in a `mogg.trait.create` so the raw
 `!mogg.tensor` reaches the kernel as the conforming trait argument. This is
 deferred out of `MAPToMOGG` to keep the fusion IR simpler and each emission a
 local, 1:1 lowering.

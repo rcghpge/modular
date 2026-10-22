@@ -1126,8 +1126,7 @@ struct ImportPackagesPass
         continue;
       }
       // Trait-bound shape-function tensor arguments distill with
-      // `isShapeFunc=true`: no io-role, bound by `Tensor`, `DenseTensor`, or
-      // `TileTensorable`.
+      // `isShapeFunc=true`: no io-role, bound by `Tensor` or `TileTensorable`.
       auto sfFunctionAttr = buildFunctionAttr(
           sf.func, /*computeResultParams=*/true,
           /*strictResultParams=*/true, /*distillTraitArgs=*/true,

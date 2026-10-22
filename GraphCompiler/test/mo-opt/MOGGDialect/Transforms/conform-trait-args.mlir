@@ -5,11 +5,11 @@
 // ConformCallOperands wraps each trait-bound call operand in a
 // `mogg.trait.create` carrying the distilled contract, so a raw
 // `!mogg.tensor` (which reconstructs as a `ManagedTensorSlice`, conforming to
-// none of `Tensor`/`DenseTensor`/`TileTensorable`) reaches the kernel as the
+// neither `Tensor` nor `TileTensorable`) reaches the kernel as the
 // conforming trait argument. The wrap is materialized in the IR here; the call
 // op's own emit stays a dumb forward. `trait_negate` declares both its input
-// and its output against `DenseTensor`, so both operands are wrapped -- with the
-// input carrying `role = input` and the output `role = output` -- and the
+// and its output against `TileTensorable`, so both operands are wrapped --
+// with the input carrying `role = input` and the output `role = output` -- and the
 // execution device rides on the op for local alignment at emit.
 
 // CHECK-LABEL: mo.graph @trait_negate_graph

@@ -428,8 +428,7 @@ enum class TraitCategory {
   role,
   /// The `Fused` fusion marker.
   fused,
-  /// A metadata-only base trait (`Tensor` / `DenseTensor`); carries no
-  /// contract meaning.
+  /// A metadata-only base trait (`Tensor`); carries no contract meaning.
   metadata,
   /// A dense data-access capability (`TileTensorable`); carries no contract
   /// meaning on its own.
@@ -503,9 +502,8 @@ public:
 // Keep in sync with tensor_arg_traits.mojo, except `TileTransformAccess` /
 // `TileTransformable`, reserved for the deferred tile-transform fusion traits
 // and not yet in the module (so the `deferred` rejection is unreachable).
-// Leaf constants for the shape-fn lane's `isPresentLeaf` lookups, so call
-// sites can't drift from the row spelling.
-constexpr StringLiteral kDenseTensorLeaf = "DenseTensor";
+// Leaf constant for the `isPresentLeaf` lookups, so call sites can't drift
+// from the row spelling.
 constexpr StringLiteral kTileTensorableLeaf = "TileTensorable";
 
 constexpr VocabEntry kTensorArgVocab[] = {
@@ -514,7 +512,6 @@ constexpr VocabEntry kTensorArgVocab[] = {
     {"MutableInput", TraitCategory::role, TensorArgRole::mutableInput},
     {"Fused", TraitCategory::fused},
     {"Tensor", TraitCategory::metadata},
-    {kDenseTensorLeaf, TraitCategory::metadata},
     {"LoadAccess", TraitCategory::accessMarker, TensorArgAccess::load},
     {"Loadable", TraitCategory::accessCapability, TensorArgAccess::load},
     {"StoreAccess", TraitCategory::accessMarker, TensorArgAccess::store},
@@ -945,7 +942,7 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     }
     // Not a vocabulary trait. Canonicalization folds a composition into its
     // ancestor closure, and the only non-vocabulary ancestor of a vocabulary
-    // trait is the universal `AnyType` root (`DenseTensor: Tensor`,
+    // trait is the universal `AnyType` root (`TileTensorable: Tensor`,
     // `Loadable: LoadAccess`, ...). Accept `AnyType`; anything else is a
     // foreign trait the author wrote explicitly.
     mlir::SymbolRefAttr sym = traitSymbol.getSymbol();
@@ -981,13 +978,13 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
   // Shape-function lane: arguments always run on the host and are
   // read-only, so reading through `TileTensorable` is safe here (unlike
   // the execute lane). The distiller records the deepest bound written
-  // (`Tensor`, `DenseTensor`, or `TileTensorable`) in `contract.bound`.
+  // (`Tensor` or `TileTensorable`) in `contract.bound`.
   if (isShapeFunc) {
     if (anyPresent(TraitCategory::role)) {
       emitError("shape-function tensor argument carries an io-role marker "
                 "(Input, Output, or MutableInput). Shape-function arguments "
-                "are read-only. They must carry no role. Conform to Tensor, "
-                "DenseTensor, or TileTensorable instead");
+                "are read-only. They must carry no role. Conform to Tensor "
+                "or TileTensorable instead");
       return mlir::failure();
     }
     if (anyPresent(TraitCategory::fused)) {
@@ -1006,8 +1003,8 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
       emitError(
           "LoadAccess, Loadable, StoreAccess, Storable, _LegacyComputeOutput, "
           "and _LegacyComputable are fusion machinery. They are not allowed "
-          "on a shape-function tensor argument. Conform to Tensor, "
-          "DenseTensor, or TileTensorable instead");
+          "on a shape-function tensor argument. Conform to Tensor or "
+          "TileTensorable instead");
       return mlir::failure();
     }
     TensorArgContract contract;
@@ -1015,8 +1012,6 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     contract.fused = false;
     if (isPresentLeaf(kTileTensorableLeaf))
       contract.bound = TensorArgBound::tile;
-    else if (isPresentLeaf(kDenseTensorLeaf))
-      contract.bound = TensorArgBound::dense;
     else
       contract.bound = TensorArgBound::tensor;
     return contract;
@@ -1046,8 +1041,8 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
   contract.fused = anyPresent(TraitCategory::fused);
 
   // Storage: a `Stable` argument is read through a `TileTensor` projection
-  // over its slot, so it needs the dense tier and cannot be a fusion functor
-  // or a pointer-written output.
+  // over its slot, so it cannot be a fusion functor or a pointer-written
+  // output.
   contract.stable = anyPresent(TraitCategory::storage);
   if (contract.stable) {
     if (contract.fused) {
@@ -1060,12 +1055,6 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
       emitError("Stable is not valid on an Output argument; outputs are "
                 "written through a pointer-backed buffer (use Input or "
                 "MutableInput)");
-      return mlir::failure();
-    }
-    if (!isPresentLeaf(kDenseTensorLeaf)) {
-      emitError("a Stable tensor argument must also conform to DenseTensor; "
-                "the stable address slot is only reachable through a "
-                "TileTensor projection");
       return mlir::failure();
     }
   }
@@ -1127,12 +1116,12 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
               "may deliver a store fusion instead");
     return mlir::failure();
   }
-  // The store-fusion wrapper conforms to neither data tier.
+  // The store-fusion wrapper doesn't conform to `TileTensorable`.
   if (contract.hasAccess(TensorArgAccess::transform) &&
-      (isPresentLeaf(kDenseTensorLeaf) || isPresentLeaf(kTileTensorableLeaf))) {
-    emitError("a _LegacyComputeOutput argument cannot require DenseTensor or "
-              "TileTensorable on the kernel signature; refine in the body, "
-              "since the graph compiler may deliver a store fusion instead");
+      isPresentLeaf(kTileTensorableLeaf)) {
+    emitError("a _LegacyComputeOutput argument cannot require TileTensorable "
+              "on the kernel signature; refine in the body, since the graph "
+              "compiler may deliver a store fusion instead");
     return mlir::failure();
   }
 
@@ -1272,8 +1261,6 @@ StringRef toString(TensorArgBound bound) {
     return "unspecified";
   case TensorArgBound::tensor:
     return "tensor";
-  case TensorArgBound::dense:
-    return "dense";
   case TensorArgBound::tile:
     return "tile";
   }
@@ -1341,9 +1328,6 @@ tensorArgContractToAttr(mlir::MLIRContext *ctx,
   case TensorArgBound::tensor:
     irBound = MOGG::TensorArgBoundKind::tensor;
     break;
-  case TensorArgBound::dense:
-    irBound = MOGG::TensorArgBoundKind::dense;
-    break;
   case TensorArgBound::tile:
     irBound = MOGG::TensorArgBoundKind::tile;
     break;
@@ -1407,8 +1391,6 @@ std::optional<TensorArgContract> dictToTensorArgContract(mlir::Attribute attr) {
   if (boundStr) {
     if (*boundStr == toString(TensorArgBound::tensor))
       bound = TensorArgBound::tensor;
-    else if (*boundStr == toString(TensorArgBound::dense))
-      bound = TensorArgBound::dense;
     else if (*boundStr == toString(TensorArgBound::tile))
       bound = TensorArgBound::tile;
     else if (*boundStr != toString(TensorArgBound::unspecified))

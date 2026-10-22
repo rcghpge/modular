@@ -1,11 +1,12 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-pipeline --map-to-mogg --mogg-pipeline --mogg-to-mgp | FileCheck %s
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-pipeline --map-to-mogg --mogg-pipeline --mogg-to-mgp --mogg-outline-async-routines --mogg-add-try-except-blocks --mogg-emit-mojo --mogg-dump-mojo -o /dev/null 2>&1 | FileCheck %s --check-prefix=EMIT
 
-// A trait kernel whose input is `Some[Input & DenseTensor & Stable]`
+// A trait kernel whose input is `Some[Input & Tensor & Stable]`
 // (`trait_stable_negate`). The contract carries `stable = true` on the
 // `mogg.trait.create` that wraps the input, and emit assembles a
 // `_MoggStableTensorArg` (slot-backed, `StableAddrEngine`) instead of the
-// pointer-backed `_MoggDenseTensorArg`.
+// pointer-backed `_MoggDenseTensorArg`. The bound doesn't name
+// `TileTensorable`; the kernel refines to it in its body.
 
 // CHECK-LABEL: mogg.func @__custom__trait_stable_negate
 // The output stays a plain dense arg; the input wrapper carries the stable

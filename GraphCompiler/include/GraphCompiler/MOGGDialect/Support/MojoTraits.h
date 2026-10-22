@@ -329,7 +329,7 @@ struct _MoggOutputStoreFusionTensor[
 // translates to a device address.
 static constexpr llvm::StringLiteral kTransformFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import DenseTensor, Fused, Output, TileTensorable, UnsafeFusedView, _LegacyComputable, _LegacyComputeOutput
+from extensibility import Fused, Output, TileTensorable, UnsafeFusedView, _LegacyComputable, _LegacyComputeOutput
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -361,7 +361,6 @@ struct _MoggTransformFusionTensor[
     _access_enabled: Bool,
 ](
     Copyable,
-    DenseTensor,
     DevicePassable where _device_passable,
     Fused,
     Movable,

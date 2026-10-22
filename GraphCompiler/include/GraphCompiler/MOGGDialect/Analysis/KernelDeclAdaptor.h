@@ -69,10 +69,9 @@ enum class TensorArgRole { input, output, mutableInput, none };
 enum class TensorArgAccess { none, load, store, transform };
 
 /// The deepest trait bound written on a shape-function tensor argument:
-/// `Tensor` (shape only), `DenseTensor` (adds layout/alignment), or
-/// `TileTensorable` (adds host-side data access). `unspecified` in the execute
-/// lane.
-enum class TensorArgBound : uint8_t { unspecified, tensor, dense, tile };
+/// `Tensor` (shape only) or `TileTensorable` (adds layout and host-side data
+/// access). `unspecified` in the execute lane.
+enum class TensorArgBound : uint8_t { unspecified, tensor, tile };
 
 inline unsigned bit(TensorArgAccess access) {
   switch (access) {
@@ -141,7 +140,7 @@ struct TensorArgContract {
 /// form distill identically; `AnyType` is ignored.
 ///
 /// With `isShapeFunc`, the argument distills to `TensorArgRole::none` and may
-/// bind only `Tensor` / `DenseTensor` / `TileTensorable` (shape functions run
+/// bind only `Tensor` / `TileTensorable` (shape functions run
 /// on the host, so data access is safe), recorded in `bound`. io-role markers,
 /// `Fused`, and the fusion access traits are errors. Otherwise exactly one
 /// io-role is required.

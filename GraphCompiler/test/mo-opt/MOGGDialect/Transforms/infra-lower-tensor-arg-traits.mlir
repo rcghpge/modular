@@ -36,7 +36,8 @@
 
 // --- Role x dense (no fusion, no access form) --- //
 
-// Input + DenseTensor -> input/none, and Output + DenseTensor -> output/none
+// Input + TileTensorable -> input/none, and Output + TileTensorable ->
+// output/none
 // (the dense add covers both leading-output and trailing-input dense roles).
 // IMPORT-DAG: registration = "trait_add_explicit"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
 
@@ -44,7 +45,7 @@
 // with the explicit-generic spelling above).
 // IMPORT-DAG: registration = "trait_add_some"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
 
-// MutableInput + DenseTensor -> mutable_input/none (alongside a dense output).
+// MutableInput + TileTensorable -> mutable_input/none (alongside a dense output).
 // IMPORT-DAG: registration = "trait_mutable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "mutable_input"}, unit, unit, unit]
 
 // `TensorTuple`s `xs: TensorTuple[*Ts]`, one per variadic, each bake one
@@ -56,22 +57,19 @@
 // distills the same input/load/fused contract a single fused argument does.
 // IMPORT-DAG: registration = "trait_tensor_tuple_fused"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 1 : i32, capabilities = 0 : i32, fused = true, role = "input"}, unit, unit, unit]
 
-// Plain `Tensor` metadata (no `DenseTensor`): Input + Tensor -> input/none --
-// the dense-vs-plain distinction is invisible to the distilled contract.
+// Plain `Tensor` metadata (no `TileTensorable`): Input + Tensor -> input/none
+// -- the `Tensor`-vs-`TileTensorable` distinction is invisible to the
+// distilled contract.
 // IMPORT-DAG: registration = "trait_plain_tensor_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input"}, unit, unit, unit]
-
-// `TileTensorable` has no contract effect: Output + DenseTensor + TileTensorable
-// -> output/none (identical to a plain dense output).
-// IMPORT-DAG: registration = "trait_tile_tensorable_output"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, unit, unit, unit]
 
 // --- Stable storage marker --- //
 
 // `Stable` sets the contract's `stable` key (elided when false, so every other
-// row above is unchanged). Input, mutable input, and the `TileTensorable`
-// refinement of `DenseTensor` all distill with it.
+// row above is unchanged). Input and mutable input both distill with it, as
+// does an input bound by only `Tensor`.
 // IMPORT-DAG: registration = "trait_stable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input", stable = true}, unit, unit, unit]
 // IMPORT-DAG: registration = "trait_stable_mutable_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "mutable_input", stable = true}, unit, unit, unit]
-// IMPORT-DAG: registration = "trait_stable_tile_tensorable"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input", stable = true}, unit, unit, unit]
+// IMPORT-DAG: registration = "trait_stable_tensor_input"{{.*}}[{access = 0 : i32, capabilities = 0 : i32, fused = false, role = "output"}, {access = 0 : i32, capabilities = 0 : i32, fused = false, role = "input", stable = true}, unit, unit, unit]
 
 // --- Fused load (marker vs capability) --- //
 
@@ -106,11 +104,11 @@
 
 // --- Non-fused access form --- //
 
-// Input + DenseTensor + Loadable -> input/load with capability=load but
+// Input + TileTensorable + Loadable -> input/load with capability=load but
 // fused=false: the access form is independent of the `Fused` marker.
 // IMPORT-DAG: registration = "trait_nonfused_load_capability"{{.*}}[{access = 1 : i32, capabilities = 1 : i32, fused = false, role = "input"}, unit, unit, unit]
 
-// MutableInput + DenseTensor + Loadable + Storable -> mutable_input carrying BOTH
+// MutableInput + TileTensorable + Loadable + Storable -> mutable_input carrying BOTH
 // access forms at once: access = 3 (load|store) and capabilities = 3. The
 // positive proof that a contract holds the full access SET (multiple forms on
 // one argument); a swapped/dropped form or a single-form fallback would be
@@ -121,9 +119,6 @@
 
 // `Some[Tensor]` (`trait_tensor_shape_fn`) -> bound = "tensor".
 // IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_tensor_shape_fn"{{.*}}[{access = 0 : i32, bound = "tensor", capabilities = 0 : i32, fused = false, role = "none"}]
-
-// `Some[DenseTensor]` (`trait_metadata_shape_fn`) -> bound = "dense".
-// IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_metadata_shape_fn"{{.*}}[{access = 0 : i32, bound = "dense", capabilities = 0 : i32, fused = false, role = "none"}]
 
 // `Some[TileTensorable]` (`trait_tile_tensorable_shape_fn`) -> bound = "tile".
 // IMPORT-DAG: mogg.shape_func.decl{{.*}}registration = "trait_tile_tensorable_shape_fn"{{.*}}[{access = 0 : i32, bound = "tile", capabilities = 0 : i32, fused = false, role = "none"}]
@@ -234,7 +229,7 @@ mo.graph @mixed_legacy_trait(%x: !mo.tensor<[2, 3], f32>, %y: !mo.tensor<[2, 3],
 }
 
 // Reverse mixed lane (`trait_mixed_legacy_out`): a LEGACY `OutputTensor`
-// alongside two TRAIT `Input & DenseTensor` inputs. The legacy output lowers to
+// alongside two TRAIT `Input & TileTensorable` inputs. The legacy output lowers to
 // `mogg.tensor.__init__`; the trait inputs lower to `mogg.tensor_arg.__init__`
 // with `role = input`. Covers the legacy-output / trait-input coexistence
 // direction (the mirror of `mixed_legacy_trait`).

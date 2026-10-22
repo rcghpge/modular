@@ -25,7 +25,6 @@ from layout import coord_to_index_list
 
 import extensibility
 from extensibility import (
-    DenseTensor,
     Fused,
     Input,
     InputTensor,
@@ -51,8 +50,8 @@ struct TraitAddExplicit:
     @staticmethod
     def execute[
         target: StaticString,
-        Z: Output & DenseTensor,
-        X: Input & DenseTensor,
+        Z: Output & TileTensorable,
+        X: Input & TileTensorable,
     ](z: Z, x: X, y: X, ctx: DeviceContext) raises:
         pass
 
@@ -65,9 +64,9 @@ struct TraitAddSome:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
-        y: Some[Input & DenseTensor],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & TileTensorable],
+        y: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -81,7 +80,7 @@ struct TraitFusedLoad:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: Some[Input & Fused & Loadable],
         ctx: DeviceContext,
     ) raises:
@@ -97,7 +96,7 @@ struct TraitBadConvention:
     @staticmethod
     def execute[
         target: StaticString,
-        Z: Output & DenseTensor,
+        Z: Output & TileTensorable,
     ](mut z: Z, ctx: DeviceContext) raises:
         pass
 
@@ -115,7 +114,7 @@ struct TraitLegacyBadConvention:
     def execute[
         target: StaticString,
     ](
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         mut z: OutputTensor,
         ctx: DeviceContext,
     ) raises:
@@ -131,9 +130,9 @@ struct TraitMultiOutput:
     def execute[
         target: StaticString,
     ](
-        a: Some[Output & DenseTensor],
-        b: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
+        a: Some[Output & TileTensorable],
+        b: Some[Output & TileTensorable],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -148,8 +147,8 @@ struct TraitMutableInput:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[MutableInput & DenseTensor],
+        z: Some[Output & TileTensorable],
+        x: Some[MutableInput & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -163,9 +162,9 @@ struct TraitMutableInput:
 struct TraitTensorTuple:
     @staticmethod
     def execute[
-        Outs: TypeList[Trait=Output & DenseTensor, ...],
-        As: TypeList[Trait=Input & DenseTensor, ...],
-        Bs: TypeList[Trait=Input & DenseTensor, ...],
+        Outs: TypeList[Trait=Output & TileTensorable, ...],
+        As: TypeList[Trait=Input & TileTensorable, ...],
+        Bs: TypeList[Trait=Input & TileTensorable, ...],
         //,
         target: StaticString,
     ](
@@ -187,7 +186,7 @@ struct TraitTensorTupleFused:
         //,
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:
@@ -203,7 +202,7 @@ struct TraitMixedLegacy:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: InputTensor,
         y: InputTensor,
         ctx: DeviceContext,
@@ -221,8 +220,8 @@ struct TraitMixedLegacyOut:
         target: StaticString,
     ](
         z: OutputTensor,
-        x: Some[Input & DenseTensor],
-        y: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
+        y: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -237,8 +236,8 @@ struct TraitMultiOutputExplicit:
     @staticmethod
     def execute[
         target: StaticString,
-        A: Output & DenseTensor,
-        X: Input & DenseTensor,
+        A: Output & TileTensorable,
+        X: Input & TileTensorable,
     ](a: A, b: A, x: X, ctx: DeviceContext) raises:
         pass
 
@@ -248,8 +247,8 @@ struct TraitMutableInputExplicit:
     @staticmethod
     def execute[
         target: StaticString,
-        Z: Output & DenseTensor,
-        X: MutableInput & DenseTensor,
+        Z: Output & TileTensorable,
+        X: MutableInput & TileTensorable,
     ](z: Z, x: X, ctx: DeviceContext) raises:
         pass
 
@@ -259,7 +258,7 @@ struct TraitFusedLoadExplicit:
     @staticmethod
     def execute[
         target: StaticString,
-        Z: Output & DenseTensor,
+        Z: Output & TileTensorable,
         X: Input & Fused & Loadable,
     ](z: Z, x: X, ctx: DeviceContext) raises:
         pass
@@ -274,8 +273,8 @@ struct TraitLeadingMutable:
     def execute[
         target: StaticString,
     ](
-        x: Some[MutableInput & DenseTensor],
-        y: Some[Input & DenseTensor],
+        x: Some[MutableInput & TileTensorable],
+        y: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -290,9 +289,9 @@ struct TraitAllOutputs:
     def execute[
         target: StaticString,
     ](
-        a: Some[Output & DenseTensor],
-        b: Some[Output & DenseTensor],
-        c: Some[Output & DenseTensor],
+        a: Some[Output & TileTensorable],
+        b: Some[Output & TileTensorable],
+        c: Some[Output & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -307,9 +306,9 @@ struct TraitNonLeadingOutput:
     def execute[
         target: StaticString,
     ](
-        x: Some[Input & DenseTensor],
-        z: Some[Output & DenseTensor],
-        y: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
+        z: Some[Output & TileTensorable],
+        y: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         pass
@@ -324,7 +323,7 @@ struct TraitMixedLegacyMut:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: MutableInputTensor,
         ctx: DeviceContext,
     ) raises:
@@ -340,7 +339,7 @@ struct TraitMixedLegacyFused:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: InputTensor,
         y: Some[Input & Fused & Loadable],
         ctx: DeviceContext,
@@ -369,8 +368,8 @@ struct TraitDenseAndFusedInputs:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & TileTensorable],
         y: Some[Input & Fused & Loadable],
         ctx: DeviceContext,
     ) raises:
@@ -405,26 +404,15 @@ struct LegacyOnlyControl:
 # ===----------------------------------------------------------------------=== #
 
 
-# Plain `Tensor` metadata (no `DenseTensor`): an `Input` bound with only the base
-# `Tensor` trait still distills to input/none -- the dense-vs-plain distinction
-# is invisible to the contract.
+# Plain `Tensor` metadata (no `TileTensorable`): an `Input` bound with only
+# the base `Tensor` trait still distills to input/none -- the
+# `Tensor`-vs-`TileTensorable` distinction is invisible to the contract.
 @extensibility.register("trait_plain_tensor_input")
 struct TraitPlainTensorInput:
     @staticmethod
     def execute[
         target: StaticString,
     ](x: Some[Input & Tensor], ctx: DeviceContext) raises:
-        pass
-
-
-# `TileTensorable` has no contract effect: an `Output & DenseTensor &
-# TileTensorable` distills identically to a plain dense output (output/none).
-@extensibility.register("trait_tile_tensorable_output")
-struct TraitTileTensorableOutput:
-    @staticmethod
-    def execute[
-        target: StaticString,
-    ](z: Some[Output & TileTensorable], ctx: DeviceContext) raises:
         pass
 
 
@@ -498,20 +486,20 @@ struct TraitMutableFusedLoad:
 
 
 # Non-fused dense input that still advertises a load access form: Input &
-# DenseTensor & Loadable distills to input/load with capabilities = load but
+# TileTensorable & Loadable distills to input/load with capabilities = load but
 # fused = false (the access form is independent of the fusion marker).
 @extensibility.register("trait_nonfused_load_capability")
 struct TraitNonFusedLoadCapability:
     @staticmethod
     def execute[
         target: StaticString,
-    ](x: Some[Input & DenseTensor & Loadable], ctx: DeviceContext) raises:
+    ](x: Some[Input & TileTensorable & Loadable], ctx: DeviceContext) raises:
         pass
 
 
 # Non-fused dense MutableInput advertising BOTH access forms at once:
-# MutableInput & DenseTensor & Loadable & Storable distills to mutable_input with
-# access = {load, store} and capabilities = {load, store}. This is the positive
+# MutableInput & TileTensorable & Loadable & Storable distills to mutable_input
+# with access = {load, store} and capabilities = {load, store}. This is the positive
 # proof that a contract carries the full access SET (multiple forms on one
 # argument), independent of any emit -- `load` on a read-only Input or `store` on
 # an Output would be rejected by the per-form role/access compatibility check;
@@ -523,25 +511,16 @@ struct TraitNonFusedLoadStoreCapability:
     def execute[
         target: StaticString,
     ](
-        x: Some[MutableInput & DenseTensor & Loadable & Storable],
+        x: Some[MutableInput & TileTensorable & Loadable & Storable],
         ctx: DeviceContext,
     ) raises:
         pass
 
 
-# A trait-typed, metadata-only free shape function. It reads only `.shape()`, so
-# its tensor argument carries no io-role: `Some[DenseTensor]` distills in the
-# shape-fn lane to the no-role contract `{role: none, fused: false,
-# access: none, bound: dense}`. This is the positive counterpart to the
-# shape-fn disallows in tensor_arg_trait_invalid_stubs (io-role / Fused /
-# Loadable).
-@extensibility.register_shape_function("trait_metadata_shape_fn")
-def trait_metadata_shape_fn[T: DenseTensor](x: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
-
-
 # The bare-`Tensor` bound: shape only, no layout/alignment. Distills to the
-# no-role contract with `bound: tensor`.
+# no-role contract `{role: none, fused: false, access: none, bound: tensor}`.
+# This is the positive counterpart to the shape-fn disallows in
+# tensor_arg_trait_invalid_stubs (io-role / Fused / Loadable).
 @extensibility.register_shape_function("trait_tensor_shape_fn")
 def trait_tensor_shape_fn[T: Tensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
@@ -558,7 +537,7 @@ def trait_tile_tensorable_shape_fn[
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
 
 
-# `Input & DenseTensor & Stable`: a slot-backed read-only input. Distills to
+# `Input & TileTensorable & Stable`: a slot-backed read-only input. Distills to
 # the input contract with `stable = true`; the `Stable` storage marker is the
 # only vocabulary row that sets it.
 @extensibility.register("trait_stable_input")
@@ -567,34 +546,36 @@ struct TraitStableInput:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor & Stable],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & TileTensorable & Stable],
         ctx: DeviceContext,
     ) raises:
         pass
 
 
-# `MutableInput & DenseTensor & Stable`: a slot-backed in-place argument.
+# `MutableInput & TileTensorable & Stable`: a slot-backed in-place argument.
 @extensibility.register("trait_stable_mutable_input")
 struct TraitStableMutableInput:
     @staticmethod
     def execute[
         target: StaticString,
-    ](x: Some[MutableInput & DenseTensor & Stable], ctx: DeviceContext) raises:
+    ](
+        x: Some[MutableInput & TileTensorable & Stable], ctx: DeviceContext
+    ) raises:
         pass
 
 
-# `Input & TileTensorable & Stable`: `TileTensorable` refines `DenseTensor`,
-# and the ancestor-inclusive symbol list is what the distiller checks the
-# dense requirement against, so no explicit `DenseTensor` is needed.
-@extensibility.register("trait_stable_tile_tensorable")
-struct TraitStableTileTensorable:
+# `Input & Tensor & Stable`: the bound needn't name `TileTensorable`. The
+# emitted stable argument conforms to it regardless, so the kernel refines in
+# its body to project through the slot.
+@extensibility.register("trait_stable_tensor_input")
+struct TraitStableTensorInput:
     @staticmethod
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & TileTensorable & Stable],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & Tensor & Stable],
         ctx: DeviceContext,
     ) raises:
         pass

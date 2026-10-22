@@ -98,7 +98,7 @@ constexpr llvm::StringLiteral kMoggNumDpsOutputs = "mogg.num_dps_outputs";
 constexpr llvm::StringLiteral kTraitStubBufferCaptureAttrName =
     "mogg.trait_stub_buffer_capture";
 
-/// Generic trait bounds for shape-function stubs with generic `DenseTensor`
+/// Generic trait bounds for shape-function stubs with generic `TileTensorable`
 /// parameters.
 constexpr llvm::StringLiteral kTraitStubArgBoundsAttrName =
     "mogg.trait_stub_arg_bounds";

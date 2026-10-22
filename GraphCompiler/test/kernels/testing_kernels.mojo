@@ -65,7 +65,6 @@ from extensibility import (
     StableInputVariadicTensors,
 )
 from extensibility import (
-    DenseTensor,
     Fused,
     Input,
     LoadAccess,
@@ -335,8 +334,8 @@ struct TraitNegate:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         # The host-entry bound is the role + metadata traits; each target arm
@@ -407,8 +406,8 @@ struct TraitStableNegate:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor & Stable],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & Tensor & Stable],
         ctx: DeviceContext,
     ) raises:
         comptime assert not is_cpu[
@@ -443,8 +442,8 @@ struct TraitNegateTileTensor:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
+        z: Some[Output & TileTensorable],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime assert conforms_to(type_of(z), TileTensorable)
@@ -504,7 +503,7 @@ struct TraitFusedLoadNegateUnifiedClosure:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: Some[Input & Fused & LoadAccess],
         ctx: DeviceContext,
     ) raises:
@@ -546,7 +545,7 @@ struct TraitFusedLoadHostNegative:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: Some[Input & Fused & LoadAccess],
         ctx: DeviceContext,
     ) raises:
@@ -576,7 +575,7 @@ def _gpu_fused_load_negate_host_unified_closure_kernel[
 
 @inline(.always)
 def _fused_load_negate[
-    Z: Output & DenseTensor,
+    Z: Output & TileTensorable,
     //,
     target: StaticString,
 ](
@@ -629,7 +628,7 @@ struct TraitFusedLoadHostUnifiedClosure:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: Some[Input & Fused & LoadAccess],
         ctx: DeviceContext,
     ) raises:
@@ -676,7 +675,7 @@ struct TraitFusedLoadHostClosureNegative:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: Some[Input & Fused & LoadAccess],
         ctx: DeviceContext,
     ) raises:
@@ -712,14 +711,14 @@ struct TraitFusedLoadHostClosureNegative:
 
 # Trait-lane in-place mutable kernel: `x` is read and written through the same
 # buffer (`x[i] += 1`). Proves the emitted `_MoggDenseTensorArg[io=MUTABLE_INPUT]`
-# satisfies a `MutableInput & DenseTensor & TileTensorable` stub bound -- i.e.
+# satisfies a `MutableInput & TileTensorable` stub bound -- i.e.
 # the wrapper conforms to `MutableInput` (gated on the io), not just `Input`.
 @extensibility.register("trait_inplace_increment")
 struct TraitInplaceIncrement:
     @staticmethod
     def execute[
         target: StaticString,
-    ](x: Some[MutableInput & DenseTensor], ctx: DeviceContext) raises:
+    ](x: Some[MutableInput & TileTensorable], ctx: DeviceContext) raises:
         comptime assert conforms_to(type_of(x), MutableInput)
         comptime assert conforms_to(type_of(x), TileTensorable)
         var xt = x.to_tile_tensor()
@@ -782,7 +781,7 @@ struct TraitFusedLoadNegate:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: Some[Input & Fused & LoadAccess],
         ctx: DeviceContext,
     ) raises:
@@ -821,8 +820,8 @@ struct TraitFusedLoadNegate:
 # parameters because a signature takes one list per tuple.
 # TODO(GEX-4386): Type element `k` without the `TileProjection` rebind.
 def _gpu_tensor_tuple_add_kernel[
-    Outs: TypeList[Trait=Output & DenseTensor, ...],
-    Ins: TypeList[Trait=Input & DenseTensor, ...],
+    Outs: TypeList[Trait=Output & TileTensorable, ...],
+    Ins: TypeList[Trait=Input & TileTensorable, ...],
     bias_dtype: DType,
     BiasLayoutType: TensorLayout,
 ](
@@ -859,13 +858,13 @@ def _gpu_tensor_tuple_add_kernel[
 struct TraitTensorTupleAdd:
     @staticmethod
     def execute[
-        Outs: TypeList[Trait=Output & DenseTensor, ...],
-        Ins: TypeList[Trait=Input & DenseTensor, ...],
+        Outs: TypeList[Trait=Output & TileTensorable, ...],
+        Ins: TypeList[Trait=Input & TileTensorable, ...],
         //,
         target: StaticString,
     ](
         outputs: TensorTuple[*Outs],
-        bias: Some[Input & DenseTensor],
+        bias: Some[Input & TileTensorable],
         inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:
@@ -959,13 +958,13 @@ def _gpu_array_tuple_add_kernel[
 struct TraitTensorTupleAddArray:
     @staticmethod
     def execute[
-        Outs: TypeList[Trait=Output & DenseTensor, ...],
-        Ins: TypeList[Trait=Input & DenseTensor, ...],
+        Outs: TypeList[Trait=Output & TileTensorable, ...],
+        Ins: TypeList[Trait=Input & TileTensorable, ...],
         //,
         target: StaticString,
     ](
         outputs: TensorTuple[*Outs],
-        bias: Some[Input & DenseTensor],
+        bias: Some[Input & TileTensorable],
         inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:
@@ -1074,7 +1073,7 @@ struct TraitTensorTupleFusedConcat:
         //,
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:
@@ -1164,7 +1163,7 @@ struct TraitTensorTupleFusedStoreSplit:
         target: StaticString,
     ](
         outputs: TensorTuple[*Outs],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime if is_cpu[target]():
@@ -1234,7 +1233,7 @@ struct TraitFusedStoreDouble:
         target: StaticString,
     ](
         z: Some[Output & Fused & StoreAccess],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime if is_cpu[target]():
@@ -1321,7 +1320,7 @@ struct TraitFusedStoreParameterClosure:
         target: StaticString,
     ](
         z: Some[Output & Fused & StoreAccess],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime if is_cpu[target]():
@@ -1391,7 +1390,7 @@ struct TraitFusedStoreUnifiedClosure:
         target: StaticString,
     ](
         z: Some[Output & Fused & StoreAccess],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime if is_cpu[target]():
@@ -1433,7 +1432,7 @@ struct TraitFusedStoreHostNegative:
         target: StaticString,
     ](
         z: Some[Output & Fused & StoreAccess],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime assert conforms_to(type_of(z), DevicePassable)
@@ -1511,7 +1510,7 @@ struct TraitFusedTransformBias:
         # `_LegacyComputable & TileTensorable` (the transform plus the output
         # projection for the parent store) or `Storable`.
         z: Some[Output & Fused & _LegacyComputeOutput],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         var n = Int(z.shape().product())
@@ -1601,7 +1600,7 @@ struct TraitFusedTransformBiasUnifiedClosure:
         target: StaticString,
     ](
         z: Some[Output & Fused & _LegacyComputeOutput],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         var n = Int(z.shape().product())
@@ -1666,7 +1665,7 @@ struct TraitTupleThenComputeOutput:
     ](
         outputs: TensorTuple[*Outs],
         z: Some[Output & Fused & _LegacyComputeOutput],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime if is_cpu[target]():
@@ -1710,7 +1709,7 @@ struct TraitFusedTransformHostNegative:
         target: StaticString,
     ](
         z: Some[Output & Fused & _LegacyComputeOutput],
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime assert conforms_to(type_of(z), DevicePassable)
@@ -2455,8 +2454,8 @@ struct TraitSupportsScalarKernel:
     @staticmethod
     def execute[
         dtype: DType,
-        Z: Output & DenseTensor,
-        X: Input & DenseTensor,
+        Z: Output & TileTensorable,
+        X: Input & TileTensorable,
     ](z: Z, x: X, y: Scalar[dtype],) raises:
         print("datatype is", dtype)
         print("value is", y)
@@ -2542,7 +2541,7 @@ def test_custom_op_shape(input: Some[Tensor]) -> IndexList[type_of(input).rank]:
 
 
 # A custom op whose shape function is trait-typed: a metadata-only, no-role
-# `Some[DenseTensor]` argument that reads only `.shape()`. This exercises the
+# `Some[TileTensorable]` argument that reads only `.shape()`. This exercises the
 # trait shape-fn emit path (the operand is constructed as a `_MoggShapeTensorArg`
 # instead of a legacy `InputTensor`). The `execute` entry stays on the legacy
 # lane -- the shape-fn migration is independent of how `execute` is written --
@@ -2566,14 +2565,14 @@ struct TraitMetadataShapeOp:
 
 @extensibility.register_shape_function("trait_metadata_shape_op")
 def trait_metadata_shape_op_shape[
-    T: DenseTensor
+    T: TileTensorable
 ](input: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
 
 
 # A custom op whose shape function binds the bare `Tensor` metadata trait
 # (shape only, no layout/alignment), unlike `trait_metadata_shape_op` above
-# which binds `DenseTensor`. This exercises the `_data_visible=False` emit
+# which binds `TileTensorable`. This exercises the `_data_visible=False` emit
 # path -- the emitted `_MoggShapeTensorArg` conforms only to `Tensor`, so it
 # cannot see layout or read elements. `execute` stays on the legacy lane and
 # copies input to output so the result is verifiable end-to-end.
@@ -2644,11 +2643,11 @@ def trait_reshape_shape_op_shape[
 struct TraitTensorTupleShapeOp:
     @staticmethod
     def execute[
-        Ins: TypeList[Trait=Input & DenseTensor, ...],
+        Ins: TypeList[Trait=Input & TileTensorable, ...],
         //,
         target: StaticString,
     ](
-        output: Some[Output & DenseTensor],
+        output: Some[Output & TileTensorable],
         inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:
@@ -3492,7 +3491,7 @@ struct TraitMixedLegacyAdd:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         x: InputTensor,
         y: InputTensor,
         ctx: DeviceContext,
@@ -3518,8 +3517,8 @@ struct TraitMixedLegacyOutAdd:
         target: StaticString,
     ](
         z: OutputTensor,
-        x: Some[Input & DenseTensor],
-        y: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
+        y: Some[Input & TileTensorable],
         ctx: DeviceContext,
     ) raises:
         comptime assert conforms_to(type_of(x), TileTensorable)
@@ -3549,7 +3548,7 @@ struct TraitDualLaneAdd:
         target: StaticString,
     ](
         z: OutputTensor,
-        x: Some[Input & DenseTensor],
+        x: Some[Input & TileTensorable],
         y: InputTensor,
         ctx: DeviceContext,
     ) raises:
@@ -3925,7 +3924,7 @@ struct TraitTensorTupleFusedConcatUnifiedClosure:
         //,
         target: StaticString,
     ](
-        z: Some[Output & DenseTensor],
+        z: Some[Output & TileTensorable],
         inputs: TensorTuple[*Ins],
         ctx: DeviceContext,
     ) raises:

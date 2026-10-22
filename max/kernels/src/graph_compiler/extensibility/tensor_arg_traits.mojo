@@ -25,7 +25,7 @@ The traits fall into three groups:
 - The `Stable` marker declares that the argument's storage is a stable address
   slot, read through `StableAddrEngine` (device only).
 - Metadata and access traits describe what the kernel can read off the argument
-  (`Tensor`, `DenseTensor`) and how it touches individual elements.
+  (`Tensor`) and how it touches individual elements.
 
 Element access is split into marker / capability pairs. A graph-visible marker
 (`LoadAccess`, `StoreAccess`) records the access form in the distilled contract
@@ -178,35 +178,6 @@ trait Tensor:
 
         Returns:
             The shape as a `Coord` of the argument's `ShapeType`.
-        """
-        ...
-
-
-trait DenseTensor(Tensor):
-    """Metadata trait: a `Tensor` backed by a dense (contiguous) layout.
-
-    Adds the layout type, preferred alignment, and engine on top of
-    `Tensor`, giving the kernel enough to build a `TileTensor` view over the
-    argument's storage. The dense-vs-plain distinction is invisible to the
-    distilled contract.
-    """
-
-    comptime LayoutType: TensorLayout
-    comptime alignment: Int
-    comptime Engine: TensorEngine = CurrentTensorEngine[AddressSpace.GENERIC]
-    """How the argument's backing memory is referenced.
-
-    Per-target instantiation metadata like `alignment`, not part of the
-    distilled contract: the graph compiler picks it per device label when it
-    instantiates the argument, so a host-pointer argument and a device-pointer
-    argument differ here while sharing one contract.
-    """
-
-    def layout(self) -> Self.LayoutType:
-        """Returns the tensor's layout (shape and strides).
-
-        Returns:
-            The argument's `LayoutType` instance.
         """
         ...
 
@@ -366,9 +337,11 @@ trait _LegacyComputable(_LegacyComputeOutput):
 # ===----------------------------------------------------------------------=== #
 
 
-trait TileTensorable(DenseTensor):
-    """A `DenseTensor` that can project to a `TileTensor` view over its storage.
+trait TileTensorable(Tensor):
+    """A `Tensor` backed by a dense layout that can project to a `TileTensor`
+    view over its storage.
 
+    Adds the layout type, preferred alignment, and engine on top of `Tensor`.
     Lets the kernel work on a non-fused argument directly as a `TileTensor`
     (via `to_tile_tensor`) instead of going through the fused
     load/store/transform access. Bind it in the signature when the kernel
@@ -381,7 +354,25 @@ trait TileTensorable(DenseTensor):
     name instead.
     """
 
+    comptime LayoutType: TensorLayout
+    comptime alignment: Int
+    comptime Engine: TensorEngine = CurrentTensorEngine[AddressSpace.GENERIC]
+    """How the argument's backing memory is referenced.
+
+    Per-target instantiation metadata like `alignment`, not part of the
+    distilled contract: the graph compiler picks it per device label when it
+    instantiates the argument, so a host-pointer argument and a device-pointer
+    argument differ here while sharing one contract.
+    """
     comptime mut: Bool
+
+    def layout(self) -> Self.LayoutType:
+        """Returns the tensor's layout (shape and strides).
+
+        Returns:
+            The argument's `LayoutType` instance.
+        """
+        ...
 
     def _to_tile_tensor(
         self,

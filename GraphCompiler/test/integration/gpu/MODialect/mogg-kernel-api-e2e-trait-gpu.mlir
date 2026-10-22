@@ -3,7 +3,7 @@
 
 // End-to-end proof of the dense GPU trait-argument emit path (Slice 3 /
 // Phase 4). `trait_negate` is written with the composable tensor-argument
-// traits (`Some[Output & DenseTensor]`); for a GPU device the graph compiler
+// traits (`Some[Output & TileTensorable]`); for a GPU device the graph compiler
 // emits the same inline `_MoggDenseTensorArg` but with `device_passable = True`,
 // so the value crosses to the device and `_to_device_type` projects it to a
 // device `TileTensor`. The kernel's GPU arm enqueues `_gpu_negate_kernel`. With

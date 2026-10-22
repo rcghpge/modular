@@ -50,7 +50,7 @@ packOperands(OpBuilder &builder, Location loc, ValueRange operands,
              M::DeviceRefAttr device, bool &changed) {
   MLIRContext *ctx = builder.getContext();
 
-  // A NON-fused trait-bound tensor argument (`Tensor` / `DenseTensor` /
+  // A NON-fused trait-bound tensor argument (`Tensor` /
   // `TileTensorable`) has its raw `!mogg.tensor` re-presented as the
   // conforming trait argument by `mogg.trait.create`, which carries the
   // distilled contract and the execution device (for the emit-side layout /

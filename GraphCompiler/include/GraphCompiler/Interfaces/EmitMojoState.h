@@ -80,8 +80,8 @@ struct EmitMojoState {
   /// One-per-module guard for `kTransformFusionDefs`, emitted by
   /// `emitTransformFusionFunctor`.
   bool emittedTransformFusionArgDefs = false;
-  /// One-per-module import of the `Tensor`, `DenseTensor`, `TileTensorable`
-  /// marker traits, used as shape-function stub parameter bounds.
+  /// One-per-module import of the `Tensor` and `TileTensorable` marker traits,
+  /// used as shape-function stub parameter bounds.
   bool emittedTraitMarkerImports = false;
   /// The `mogg.routine.async` return values, set by ops feeding
   /// `mogg.output` (e.g. AsyncReadyOp or AsyncPack*).

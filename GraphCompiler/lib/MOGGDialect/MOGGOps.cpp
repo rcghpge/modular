@@ -4566,7 +4566,6 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 static constexpr llvm::StringLiteral kTensorArgDefs = R"mojo(
 from layout import Coord, DefaultEngine, TensorEngine, TensorLayout, TileTensor
 from extensibility import (
-    DenseTensor,
     Input,
     MutableInput,
     Output,
@@ -4615,7 +4614,6 @@ struct _MoggTensorArg[
     # A storage handle and a layout, so copies alias the same buffer, as
     # `TileTensor` copies do. `TensorTuple` holds its elements by value.
     Copyable,
-    DenseTensor,
     DevicePassable where _is_device_passable,
     Input where _io == _MoggTensorIO.INPUT,
     MutableInput where _io == _MoggTensorIO.MUTABLE_INPUT,
@@ -4732,14 +4730,14 @@ static constexpr llvm::StringLiteral kStableTensorArgAlias =
 
 // `_MoggShapeTensorArg`: shape functions run host-only, so this struct
 // skips `_MoggTensorArg`'s device-passable machinery. `_data_visible`
-// gates off `DenseTensor`/`TileTensorable` for a bare `Tensor` bound.
+// gates off `TileTensorable` for a bare `Tensor` bound.
 // Emitted once per module, guarded by
 // `EmitMojoState::emittedShapeTensorArgDefs`.
 static constexpr llvm::StringLiteral kShapeTensorArgStructName =
     "_MoggShapeTensorArg";
 static constexpr llvm::StringLiteral kShapeTensorArgDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import DenseTensor, Tensor, TileTensorable
+from extensibility import Tensor, TileTensorable
 
 
 struct _MoggShapeTensorArg[
@@ -4751,10 +4749,9 @@ struct _MoggShapeTensorArg[
     Copyable,
     Movable,
     Tensor,
-    # `_data_visible` gates `DenseTensor`/`TileTensorable` off for a bare
-    # `Tensor` bound, so such an argument cannot reach element values and
-    # AddFallbackShapeFuncs leaves it on its device.
-    DenseTensor where _data_visible,
+    # `_data_visible` gates `TileTensorable` off for a bare `Tensor` bound, so
+    # such an argument cannot reach element values and AddFallbackShapeFuncs
+    # leaves it on its device.
     TileTensorable where _data_visible,
 ):
     comptime mut = False

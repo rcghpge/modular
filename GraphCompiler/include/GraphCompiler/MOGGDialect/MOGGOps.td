@@ -1338,7 +1338,7 @@ def MOGG_TraitCreateOp : MOGG_Op<"trait.create", [
   let summary = "Re-present a codegen tensor as its conforming trait argument.";
   let description = [{
     Inserted by `ConformCallOperands` for an operand the callee declares
-    against a trait bound (`Tensor` / `DenseTensor` / `TileTensorable`), which
+    against a trait bound (`Tensor` / `TileTensorable`), which
     a `ManagedTensorSlice` does not satisfy. Emit wraps it in
     `_MoggDenseTensorArg` (execute) or `_MoggShapeTensorArg` (shape,
     `role = none`) per `$contract`. The result keeps the operand's
