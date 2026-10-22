@@ -209,10 +209,9 @@ class TokenGenerationScheduler(Scheduler):
             )
 
         with Tracer(f"adding_to_batch_constructor: {len(items)} items"):
-            tracing_enabled = _tracing_enabled()
             for context in items:
                 self.batch_constructor.enqueue_new_request(context)
-                if tracing_enabled:
+                if self._tracing:
                     parent = _parent_trace_context(context)
                     self._prefill_spans[context.request_id] = (
                         _tracer.start_span(
@@ -347,7 +346,6 @@ class TokenGenerationScheduler(Scheduler):
         self, inputs: TextGenerationInputs[TextContext], lagged: bool = False
     ) -> int:
         """Returns the number of terminated requests."""
-        tracing_enabled = _tracing_enabled()
         batch_id = self._batch_counter
         self._batch_counter += 1
 
@@ -366,7 +364,7 @@ class TokenGenerationScheduler(Scheduler):
                 if not ctx._is_padding_ctx
                 and ctx.request_id not in replica.tg_reqs
             }
-            if tracing_enabled
+            if self._tracing
             else None
         )
         # With tracing off, this test and its twin after execute are all a
@@ -385,7 +383,7 @@ class TokenGenerationScheduler(Scheduler):
         # root span per forward pass escapes parent-based sampling, which is
         # too much export volume to be always-on.
         batch_span: otel_trace.Span = otel_trace.INVALID_SPAN
-        if tracing_enabled and (
+        if self._tracing and (
             traced_level is not None or self._batch_spans_enabled
         ):
             assert ce_ids_before is not None

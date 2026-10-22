@@ -210,6 +210,8 @@ def inject_trace_carrier(context: BaseContextType) -> None:
     parent = _phase_parent_ctx.get()
     if parent is None:
         parent = request_trace_ctx.get()
+        if parent is None and not telemetry._trace_level_header_enabled:
+            return
     carrier: dict[str, str] = {}
     otel_propagate.inject(carrier, context=parent)
     if telemetry._trace_level_header_enabled:

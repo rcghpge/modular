@@ -199,15 +199,10 @@ async def _start_stream(
     chunk, after closing ``stream``; otherwise ``None`` and a stream
     equivalent to ``stream``.
     """
-
-    async def empty() -> AsyncGenerator[_T, None]:
-        return
-        yield  # unreachable; makes this an async generator
-
     try:
         first = await stream.__anext__()
     except StopAsyncIteration:
-        return None, empty()
+        return None, stream
 
     if isinstance(first, JSONResponse):
         # The caller returns this and drops the generator, suspended in the
@@ -215,7 +210,7 @@ async def _start_stream(
         # the max.request span and records the request metrics runs in this
         # task, before the response goes out.
         await stream.aclose()
-        return first, empty()
+        return first, stream
 
     async def chained() -> AsyncGenerator[_T, None]:
         yield first

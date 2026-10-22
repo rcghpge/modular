@@ -475,14 +475,20 @@ def _log_exporter() -> OTLPLogExporter:
 # 3rd party imports whose logging you wish to capture.
 # Note that the color is not propagated to subprocesses. eg: ModelWorker
 def configure_logging(
-    settings: Settings, color: str | None = None, silent: bool = True
+    settings: Settings,
+    color: str | None = None,
+    silent: bool = True,
+    *,
+    sets_request_ids: bool = True,
 ) -> None:
     # Structured logs carry request_id; only traced requests capture the
     # trace context, so without tracing there is no dd.trace_id field.
     correlate = _tracing_enabled()
-    json_formatter = (
+    json_formatter: type[jsonlogger.JsonFormatter] = (
         _CorrelatedJsonFormatter if correlate else _RequestIdJsonFormatter
     )
+    if not (correlate or sets_request_ids):
+        json_formatter = jsonlogger.JsonFormatter
     trace_id_field = " %(dd.trace_id)s" if correlate else ""
     otlp_level = get_log_level(settings)
     egress_enabled = not _telemetry_disabled(settings)

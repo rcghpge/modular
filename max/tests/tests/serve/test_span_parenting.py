@@ -284,6 +284,7 @@ async def test_tracing_off_leaves_the_phase_parent_unset(
         patch("max.serve.router.openai_routes.METRICS", MagicMock()),
         patch("max.serve.router.openai_routes.record_request_start"),
         patch("max.serve.router.openai_routes.record_request_end"),
+        patch.object(otel_propagate, "inject", side_effect=AssertionError),
     ):
         await generator_type(pipeline).complete([_mock_request()])
 

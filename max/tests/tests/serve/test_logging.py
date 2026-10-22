@@ -154,7 +154,7 @@ def reset_request_context() -> Iterator[None]:
         common._batch_id_ctx.reset(batch_token)
 
 
-def _configure_structured(log_path: Path) -> None:
+def _configure_structured(log_path: Path, request_ids: bool = True) -> None:
     configure_logging(
         Settings(
             logs_console_level=None,
@@ -162,7 +162,8 @@ def _configure_structured(log_path: Path) -> None:
             logs_file_path=str(log_path),
             structured_logging=True,
             disable_telemetry=True,
-        )
+        ),
+        sets_request_ids=request_ids,
     )
 
 
@@ -252,6 +253,20 @@ def test_middleware_stamps_both_ids_on_an_arbitrary_route(
     done = json.loads(structured.read_text().splitlines()[-1])
     assert done["message"] == f"Request {rid} returned status 200"
     assert (done["request_id"], done["dd.trace_id"]) == (rid, _TRACE_ID_HEX)
+
+
+@pytest.mark.parametrize("tracing", [False, True], ids=["off", "tracing"])
+def test_a_process_without_request_ids_reads_none_unless_tracing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tracing: bool
+) -> None:
+    monkeypatch.setattr(common, "_tracing_enabled", lambda: tracing)
+    log_path = tmp_path / "max-serve.json"
+    _configure_structured(log_path, request_ids=False)
+    common._request_id_ctx.set("req-1234")
+
+    record = _emit_structured(log_path, "max.pipelines", "in-batch")
+
+    assert record["request_id"] == ("req-1234" if tracing else None)
 
 
 def _run_forward_pass(

@@ -234,6 +234,7 @@ def _harness(
             memory_plan=None,
             kernel_capture=capture,
         )
+    monkeypatch.setattr(text_generation_scheduler, "_tracing_enabled", None)
     harness = _Harness(
         scheduler=scheduler,
         pipeline=pipeline,

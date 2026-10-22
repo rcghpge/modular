@@ -371,7 +371,7 @@ class ModelWorker:
         # Tracing first: configure_logging adds the dd.trace_id field only
         # when tracing is on.
         _configure_worker_tracing(settings, pipeline_config.profiling)
-        configure_logging(settings)
+        configure_logging(settings, sets_request_ids=False)
         configure_kernel_tracing(settings)
         pipeline_role = pipeline_config.runtime.pipeline_role
         _warn_raised_kernel_trace_limits(
