@@ -73,7 +73,7 @@ modular_shared_library(
         "//GraphCompiler:MEFModel",
         "//GraphCompiler:SafeTensor",
         "//Init",
-        "//Kernels:WeightsRegistry",
+        "//Kernels/lib/max_license:WeightsRegistry",
         "//Support:Context",
         "//Support:Globals",
         "//Support:SpanGuard",

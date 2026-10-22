@@ -1,6 +1,7 @@
 load("//bazel:api.bzl", "modular_cc_library", "modular_nanobind_library")
 load("//bazel:config.bzl", "KERNEL_PROFILING_LOCAL_DEFINES")
-load("//max/python/max/_core/max_license/mlir_nanobind:tblgen.bzl", "mlir_nanobind", "tblgen_nanobind")  # buildifier: disable=bzl-visibility
+load("//bazel:tablegen.bzl", "mlir_nanobind")
+load("//max/python/max/_core/max_license/mlir_nanobind:tblgen.bzl", "tblgen_nanobind")  # buildifier: disable=bzl-visibility
 
 package(default_visibility = ["//max:consumers"])
 
@@ -86,7 +87,7 @@ modular_nanobind_library(
     deps = [
         ":DLPackPython",
         ":DriverPython",
-        "//Kernels:WeightsRegistry",
+        "//Kernels/lib/max_license:WeightsRegistry",
         "//Support:Configuration",
         "//Support:ProfilerHostGlue",
         "//Support:Profiling",
@@ -111,7 +112,7 @@ modular_nanobind_library(
     hdrs = glob(["include/_core/Profiler/*.h"]),
     local_defines = KERNEL_PROFILING_LOCAL_DEFINES,
     deps = [
-        "//Kernels:Tracing",
+        "//Kernels/lib/max_license:Tracing",
     ],
 )
 
