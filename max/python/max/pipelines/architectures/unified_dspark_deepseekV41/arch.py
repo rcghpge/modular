@@ -39,4 +39,5 @@ unified_dspark_deepseekV41_speculator = Speculator(
     # bucket); every input, including the pinned Engram tables, is bound as
     # a buffer so a replay sees fresh values.
     supports_device_graph_capture=True,
+    supports_spec_decode_mixed_batches=True,
 )

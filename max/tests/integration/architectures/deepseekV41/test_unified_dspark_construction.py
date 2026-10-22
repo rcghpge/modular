@@ -57,10 +57,11 @@ TESTDATA = Path(__file__).parent / "testdata"
 NUM_SPECULATIVE_TOKENS = 5
 
 
-def _speculative() -> SpeculativeConfig:
+def _speculative(mixed_width: int | None = None) -> SpeculativeConfig:
     return SpeculativeConfig(
         speculative_method="dspark",
         num_speculative_tokens=NUM_SPECULATIVE_TOKENS,
+        num_speculative_tokens_mixed_batch=mixed_width,
     )
 
 
@@ -116,18 +117,31 @@ def _fix_up_weight_names(module: Module) -> None:
 
 
 @pytest.mark.parametrize(
-    ("num_devices", "data_parallel_degree", "expert_parallel"),
-    [(1, 1, False), (4, 1, False), (4, 4, False), (4, 4, True)],
+    ("num_devices", "data_parallel_degree", "expert_parallel", "mixed_width"),
+    [
+        (1, 1, False, None),
+        (4, 1, False, None),
+        (4, 4, False, None),
+        (4, 4, True, None),
+        (1, 1, False, 2),
+        (4, 4, False, 2),
+    ],
 )
 def test_unified_dspark_graph_traces(
-    num_devices: int, data_parallel_degree: int, expert_parallel: bool
+    num_devices: int,
+    data_parallel_degree: int,
+    expert_parallel: bool,
+    mixed_width: int | None,
 ) -> None:
     """One spec-decode step traces; a weightless driver declares its inputs.
 
     With a data-parallel degree of 4 each device verifies and drafts its own
     replica's requests; with ``expert_parallel`` the verification's routed
     experts dispatch their rows to the owning devices, which reads the
-    expert-parallel graph inputs.
+    expert-parallel graph inputs. With ``mixed_width`` set, a mixed prefill
+    and decode step verifies fewer drafts than a decode step; the step's
+    verification width is a graph dimension, so the same graph serves both
+    kinds of step and still drafts the full block.
     """
     config = AutoConfig.from_pretrained(str(TESTDATA / "config.json"))
     devices = [DeviceRef.GPU(i) for i in range(num_devices)]
@@ -155,7 +169,7 @@ def test_unified_dspark_graph_traces(
     trailing_types = [lookback, *tables]
     signature = UnifiedDSparkDeepseekV41(
         model_config,
-        _speculative(),
+        _speculative(mixed_width),
         specs,
         model=None,
         trailing_input_types=trailing_types,
@@ -185,7 +199,7 @@ def test_unified_dspark_graph_traces(
         _fix_up_weight_names(nn_model)
         driver = UnifiedDSparkDeepseekV41(
             model_config,
-            _speculative(),
+            _speculative(mixed_width),
             specs,
             model=nn_model,
             trailing_input_types=trailing_types,

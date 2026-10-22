@@ -66,3 +66,6 @@ def test_unified_dspark_deepseekV41_speculator_registered() -> None:
     # Inherited from the base, so `--speculative-method dspark` resolves
     # num_speculative_tokens to the checkpoint's block size.
     assert derived.checkpoint_draft_width is dspark_draft_width
+    # Mixed prefill and decode steps verify the decode rows' drafts.
+    assert speculator.supports_spec_decode_mixed_batches is True
+    assert derived.supports_spec_decode_mixed_batches is True

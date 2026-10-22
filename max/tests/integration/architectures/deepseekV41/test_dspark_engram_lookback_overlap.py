@@ -60,7 +60,7 @@ from max.pipelines.context import SpecDecodingState, TextContext, TokenBuffer
 from max.pipelines.lib.graph_capture import ServeGraphCaptureRunner
 from max.pipelines.lib.interfaces.batch_processor import BatchProcessorRuntime
 from max.pipelines.lib.pipeline_variants.overlap_text_generation import (
-    _OOB_IDX,
+    in_flight_draft_placeholders,
 )
 from max.pipelines.lib.pipeline_variants.utils import (
     update_spec_decode_context_and_prepare_responses,
@@ -214,6 +214,10 @@ class _Stats:
     from_history: int = 0
     host_window_stale: int = 0
     accepted_before_history_read: set[int] = field(default_factory=set)
+    mixed_verify_steps: int = 0
+    """Steps that verified drafts while some row still prefilled."""
+    from_history_after_mixed: int = 0
+    """Rows that read a window a mixed verify step recorded."""
 
 
 class _Pipeline:
@@ -226,10 +230,13 @@ class _Pipeline:
         overlap: bool,
         dp: int,
         rng: np.random.Generator,
+        mixed: bool = False,
     ) -> None:
         self._lookback = lookback
         self._processor = _processor(lookback.device, dp)
         self._overlap = overlap
+        self._mixed = mixed
+        self._prev_was_mixed = False
         self._rng = rng
         self._prev: _Step | None = None
         self._num_decode_rows = 0
@@ -248,12 +255,12 @@ class _Pipeline:
                 size = r.chunks.pop(0)
                 if size < r.ctx.tokens.active_length:
                     r.ctx.tokens.chunk(size)
-        # DSpark V4.1 does not verify on mixed prefill+decode steps.
-        k = (
-            NUM_DRAFTS
-            if all(c.tokens.generated_length for c in contexts)
-            else 0
-        )
+        # A pure decode step verifies drafts; with ``mixed``, so does a
+        # prefill+decode step, whose prefill rows carry only placeholders.
+        decoding = [bool(c.tokens.generated_length) for c in contexts]
+        verifies = all(decoding) or (self._mixed and any(decoding))
+        k = NUM_DRAFTS if verifies else 0
+        is_mixed = verifies and not all(decoding)
         # `_execute_spec_decode`: the drafts the host has, or placeholders.
         for c in contexts:
             state = c.spec_decoding_state
@@ -334,6 +341,9 @@ class _Pipeline:
         stats = self.stats
         stats.rows += len(flat)
         stats.from_history += int(np.sum(source >= 0))
+        stats.mixed_verify_steps += int(is_mixed)
+        if self._prev_was_mixed:
+            stats.from_history_after_mixed += int(np.sum(source >= 0))
         stats.host_window_stale += int(
             np.sum(np.any(host_window != expected, axis=1))
         )
@@ -356,6 +366,7 @@ class _Pipeline:
                     r.truth.append(int(bonus[row]))
 
         launched = _Step(contexts, drafts, accepted, bonus, next_drafts)
+        self._prev_was_mixed = is_mixed
         if self._overlap:
             if prev is not None:
                 self._sync(prev)
@@ -373,7 +384,9 @@ class _Pipeline:
     def _mark_in_flight(self, contexts: Sequence[TextContext], k: int) -> None:
         for c in contexts:
             c.update_with_future_token()
-            c.spec_decoding_state.maybe_accepted_draft_tokens = [_OOB_IDX] * k
+            c.spec_decoding_state.maybe_accepted_draft_tokens = (
+                in_flight_draft_placeholders(c, k)
+            )
             if c.tokens.generated_length and self._overlap:
                 c.spec_decoding_state.draft_tokens_to_verify = []
 
@@ -395,6 +408,7 @@ def _run(
     overlap: bool,
     dp: int,
     num_steps: int = 48,
+    mixed: bool = False,
 ) -> _Stats:
     """Runs a schedule that joins, chunks, skips, reorders and preempts.
 
@@ -403,7 +417,7 @@ def _run(
     while its step is in flight and runs again at once, and another finishes.
     """
     rng = np.random.default_rng(1234 + dp + 10 * overlap)
-    pipeline = _Pipeline(lookback, overlap=overlap, dp=dp, rng=rng)
+    pipeline = _Pipeline(lookback, overlap=overlap, dp=dp, rng=rng, mixed=mixed)
     joins = {
         0: [[7], [2], [4, 1, 6]],
         9: [[1, 1, 1, 5]],
@@ -450,6 +464,22 @@ def test_verify_lookback_follows_accepted_drafts(
     assert stats.accepted_before_history_read == set(range(NUM_DRAFTS + 1))
     # The schedule does exercise the stale host window.
     assert stats.host_window_stale > 0
+
+
+@pytest.mark.parametrize("dp", [1, 2])
+def test_mixed_verify_lookback_follows_accepted_drafts(
+    lookback_device: _Device, dp: int
+) -> None:
+    """Mixed prefill+decode steps that verify keep every window exact.
+
+    A prefill row in such a step carries placeholder drafts and accepts
+    none, so the window it records ends at its chunk; its decode rows record
+    the window past their accepted drafts, as in a pure decode step.
+    """
+    stats = _run(lookback_device, overlap=True, dp=dp, mixed=True)
+    assert stats.mixed_verify_steps > 0
+    assert stats.from_history_after_mixed > 0
+    assert stats.accepted_before_history_read == set(range(NUM_DRAFTS + 1))
 
 
 def test_without_overlap_the_host_window_is_used(
