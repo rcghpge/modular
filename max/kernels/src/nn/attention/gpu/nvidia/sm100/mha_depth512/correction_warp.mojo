@@ -32,7 +32,7 @@ from max.gpu.compute.arch.tcgen05 import (
     tcgen05_fence_before,
     tcgen05_fence_after,
 )
-from max.gpu.primitives.warp import _vote_nvidia_helper
+from max.gpu.primitives.warp import vote
 from max.gpu.sync import umma_arrive_leader_cta
 from linalg.matmul.gpu.sm100_structured.structured_kernels.tmem import (
     TmemAddress,
@@ -245,7 +245,7 @@ def depth512_correction[
         pipeline_c.wait()
         var c_scalar: Scalar[accum_type] = correction_smem[0]
 
-        var change = _vote_nvidia_helper(c_scalar < 1.0) != 0
+        var change = vote[.uint32](c_scalar < 1.0) != 0
 
         comptime if config.split_o:
             # Phase 1: rescale O_lo (all 128 threads, o_cols cols each).

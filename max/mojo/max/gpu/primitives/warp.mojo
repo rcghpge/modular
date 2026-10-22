@@ -32,10 +32,8 @@ integers, floats, and half-precision floats, with SIMD vectorization.
 """
 
 from std.sys import (
-    CompilationTarget,
     bit_width_of,
     is_amd_gpu,
-    is_apple_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
     size_of,
@@ -50,7 +48,7 @@ from std.memory import bitcast
 
 from max._plugin import CurrentMaxPlugin
 from max.gpu.globals import WARP_SIZE
-from max.gpu.intrinsics import permlane_shuffle, readfirstlane
+from max.gpu.intrinsics import permlane_shuffle
 
 comptime _FULL_MASK = UInt(2**WARP_SIZE - 1)
 
@@ -1077,48 +1075,6 @@ def broadcast[
 
 
 @inline(.always)
-def _vote_nvidia_helper(vote: Bool) -> UInt32:
-    return llvm_intrinsic[
-        "llvm.nvvm.vote.ballot.sync",
-        UInt32,
-        UInt32,
-        Bool,
-        has_side_effect=False,
-    ](0xFFFFFFFF, vote).cast[.uint32]()
-
-
-@inline(.always)
-def _vote_amd_helper[ret_type: DType](vote: Bool) -> Scalar[ret_type]:
-    comptime assert ret_type in (
-        DType.uint32,
-        DType.uint64,
-    ), "Unsupported return type"
-
-    comptime instruction = String(
-        "llvm.amdgcn.ballot.i", bit_width_of[ret_type]()
-    )
-    return llvm_intrinsic[
-        instruction,
-        Scalar[ret_type],
-        has_side_effect=False,
-    ](vote)
-
-
-@inline(.always)
-def _vote_apple_helper[ret_type: DType](vote: Bool) -> Scalar[ret_type]:
-    comptime assert ret_type in (
-        DType.uint32,
-        DType.uint64,
-    ), "Unsupported return type"
-
-    # AIR has a dedicated 32-bit ballot intrinsic; narrowing the 64-bit
-    # `simd_ballot`/`simd_vote` form instead crashes the Metal shader
-    # compiler at pipeline-state creation.
-    var mask32 = llvm_intrinsic["llvm.air.simd_ballot.i32", UInt32](vote)
-    return mask32.cast[ret_type]()
-
-
-@inline(.always)
 def vote[ret_type: DType](val: Bool) -> Scalar[ret_type]:
     """Creates a 32 or 64 bit mask among all threads in the warp, where each bit is set to 1 if the
     corresponding thread voted True, and 0 otherwise.
@@ -1139,17 +1095,11 @@ def vote[ret_type: DType](val: Bool) -> Scalar[ret_type]:
         A mask containing the vote of all threads in the warp.
     """
 
-    comptime if is_nvidia_gpu():
-        comptime assert ret_type == .uint32, "Unsupported return type"
-        return rebind[Scalar[ret_type]](_vote_nvidia_helper(val))
-    elif is_amd_gpu():
-        return _vote_amd_helper[ret_type](val)
-    elif is_apple_gpu():
-        return _vote_apple_helper[ret_type](val)
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name()
-        ]()
+    comptime assert ret_type in (
+        DType.uint32,
+        DType.uint64,
+    ), "vote ret_type must be DType.uint32 or DType.uint64"
+    return CurrentMaxPlugin.vote_fn[ret_type](val)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1198,10 +1148,10 @@ def match_any[
         a bit-equal `value`.
 
     Constraints:
-        Only NVIDIA, AMD, and Apple Silicon GPUs are supported. `dtype` must be
-        a 32- or 64-bit type and `mask_type` must be `DType.uint32` or
-        `DType.uint64` (NVIDIA returns a 32-bit mask, so `mask_type` must be
-        `DType.uint32` there).
+        Requires a GPU target with warp shuffles. `dtype` must be a 32- or
+        64-bit type and `mask_type` must be `DType.uint32` or `DType.uint64`
+        (NVIDIA returns a 32-bit mask, so `mask_type` must be `DType.uint32`
+        there).
     """
     comptime assert mask_type in (
         DType.uint32,
@@ -1214,61 +1164,7 @@ def match_any[
     comptime bits_type = DType.uint32 if size_of[dtype]() == 4 else DType.uint64
     var bits = bitcast[bits_type](value)
 
-    comptime if is_nvidia_gpu():
-        comptime assert (
-            mask_type == .uint32
-        ), "NVIDIA match_any returns a 32-bit mask (mask_type == DType.uint32)"
-        comptime if size_of[dtype]() == 4:
-            return rebind[Scalar[mask_type]](
-                inlined_assembly[
-                    "match.any.sync.b32 $0, $1, $2;",
-                    UInt32,
-                    constraints="=r,r,r",
-                    has_side_effect=False,
-                ](bits, UInt32(0xFFFFFFFF))
-            )
-        else:
-            return rebind[Scalar[mask_type]](
-                inlined_assembly[
-                    "match.any.sync.b64 $0, $1, $2;",
-                    UInt32,
-                    constraints="=r,l,r",
-                    has_side_effect=False,
-                ](bits, UInt32(0xFFFFFFFF))
-            )
-    elif is_amd_gpu():
-        # CDNA has no match op, so fold with ROCm's `__match_any` idiom
-        # (amd_warp_sync_functions.h): loop while any lane is still unmatched;
-        # each round the lowest unmatched lane broadcasts its bits via
-        # `readfirstlane` and a ballot over the unmatched lanes picks out the
-        # ones that match -- their group -- which then drop out.  (ROCm reads
-        # the group off `__activemask()` under branch divergence; a converged
-        # ballot of the match predicate is the same set and survives the Mojo ->
-        # LLVM lowering.)  O(distinct values), far below `WARP_SIZE` for the few
-        # distinct keys a warp usually holds.
-        var done = False
-        var result = Scalar[mask_type](0)
-        while vote[mask_type](not done) != Scalar[mask_type](0):
-            if not done:
-                var matches = readfirstlane(bits) == bits
-                var group = vote[mask_type](matches)
-                if matches:
-                    result = group
-                    done = True
-        return result
-    elif is_apple_gpu():
-        # Apple Silicon has neither a match op nor a ballot, so emulate with a
-        # fully-unrolled sweep of `WARP_SIZE` shuffles: each lane reads every
-        # lane's bits and sets the bit for those that match.
-        var result = Scalar[mask_type](0)
-        comptime for l in range(WARP_SIZE):
-            if shuffle_idx(bits, UInt32(l)) == bits:
-                result |= Scalar[mask_type](1) << Scalar[mask_type](l)
-        return result
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name(),
-        ]()
+    return CurrentMaxPlugin.match_any_fn[mask_type](bits)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1316,10 +1212,10 @@ def match_all[
         bit-equal `value`, otherwise 0.
 
     Constraints:
-        Only NVIDIA, AMD, and Apple Silicon GPUs are supported. `dtype` must be
-        a 32- or 64-bit type and `mask_type` must be `DType.uint32` or
-        `DType.uint64` (NVIDIA returns a 32-bit mask, so `mask_type` must be
-        `DType.uint32` there).
+        Requires a GPU target with warp shuffles. `dtype` must be a 32- or
+        64-bit type and `mask_type` must be `DType.uint32` or `DType.uint64`
+        (NVIDIA returns a 32-bit mask, so `mask_type` must be `DType.uint32`
+        there).
     """
     comptime assert mask_type in (
         DType.uint32,
@@ -1332,50 +1228,4 @@ def match_all[
     comptime bits_type = DType.uint32 if size_of[dtype]() == 4 else DType.uint64
     var bits = bitcast[bits_type](value)
 
-    comptime if is_nvidia_gpu():
-        comptime assert (
-            mask_type == .uint32
-        ), "NVIDIA match_all returns a 32-bit mask (mask_type == DType.uint32)"
-        # `match.all.sync` writes the membermask (all agree) or 0 into `$0` and
-        # the agreement into a predicate `p` we do not need (the mask already
-        # encodes it as non-zero / zero).
-        comptime if size_of[dtype]() == 4:
-            return rebind[Scalar[mask_type]](
-                inlined_assembly[
-                    "{ .reg .pred p; match.all.sync.b32 $0|p, $1, $2; }",
-                    UInt32,
-                    constraints="=r,r,r",
-                    has_side_effect=False,
-                ](bits, UInt32(0xFFFFFFFF))
-            )
-        else:
-            return rebind[Scalar[mask_type]](
-                inlined_assembly[
-                    "{ .reg .pred p; match.all.sync.b64 $0|p, $1, $2; }",
-                    UInt32,
-                    constraints="=r,l,r",
-                    has_side_effect=False,
-                ](bits, UInt32(0xFFFFFFFF))
-            )
-    elif is_amd_gpu():
-        # All lanes agree iff the lanes matching the lowest lane's bits
-        # (`readfirstlane`) are exactly the active lanes.
-        var chosen = readfirstlane(bits)
-        var matched = vote[mask_type](bits == chosen)
-        var active = vote[mask_type](True)
-        return matched if matched == active else Scalar[mask_type](0)
-    elif is_apple_gpu():
-        # No ballot: broadcast the lowest lane's bits, check every lane matches,
-        # and return the full warp mask iff so.
-        var chosen = shuffle_idx(bits, UInt32(0))
-        var all_same = True
-        var active = Scalar[mask_type](0)
-        comptime for l in range(WARP_SIZE):
-            if shuffle_idx(bits, UInt32(l)) != chosen:
-                all_same = False
-            active |= Scalar[mask_type](1) << Scalar[mask_type](l)
-        return active if all_same else Scalar[mask_type](0)
-    else:
-        CompilationTarget.unsupported_target_error[
-            operation=__get_current_function_name(),
-        ]()
+    return CurrentMaxPlugin.match_all_fn[mask_type](bits)

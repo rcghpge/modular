@@ -42,7 +42,7 @@ from max.gpu import (
 from max.gpu.sync import barrier
 from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.primitives.grid_controls import launch_dependent_grids
-from max.gpu.primitives.warp import _vote_nvidia_helper
+from max.gpu.primitives.warp import vote
 from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.memory import external_memory, fence_async_view_proxy
@@ -966,7 +966,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             tcgen05_load_wait()
             c_cons.release()
             var scale_value = scale_value_tuple[0]
-            var change = _vote_nvidia_helper(scale_value < 1.0) != 0
+            var change = vote[.uint32](scale_value < 1.0) != 0
 
             comptime o_range = Self.config.depth // Self.BN_PV
             comptime o_stride = Self.BN_PV // 2

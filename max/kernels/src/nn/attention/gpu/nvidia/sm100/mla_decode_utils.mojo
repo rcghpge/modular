@@ -46,7 +46,7 @@ from max.gpu.compute.arch.tcgen05 import (
     tcgen05_st,
     tcgen05_store_wait,
 )
-from max.gpu.primitives.warp import _vote_nvidia_helper
+from max.gpu.primitives.warp import vote
 from max.gpu.compute.arch.mma_nvidia_sm100 import MMASmemDescriptorPair
 from layout import TileTensor, row_major, Idx, stack_allocation, coord
 from std.utils.coord import coord_to_index_list
@@ -4833,7 +4833,7 @@ struct MLA_SM100_Decode_Common[
             tcgen05_load_wait()
             c_cons.release()
             var scale_value = scale_value_tuple[0]
-            var change = _vote_nvidia_helper(scale_value < 1.0) != 0
+            var change = vote[.uint32](scale_value < 1.0) != 0
             comptime num_o_tiles = Self.config.MMA_PV_N // (
                 Self.output_tile_width * 2
             )

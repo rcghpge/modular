@@ -14,7 +14,8 @@
 from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
 from std.memory import bitcast
-from std.sys import bit_width_of, llvm_intrinsic
+from std.sys import bit_width_of, llvm_intrinsic, size_of
+from std.sys._assembly import inlined_assembly
 from std.sys.info import CompilationTarget
 
 from max.gpu.globals import WARP_SIZE
@@ -185,3 +186,74 @@ struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
         return _shuffle["bfly", WIDTH_MASK=Int32(_WIDTH_MASK)](
             mask, val, offset
         )
+
+    @inline(.always)
+    @staticmethod
+    def vote_fn[ret_type: DType](val: Bool) -> Scalar[ret_type]:
+        comptime assert ret_type == .uint32, "Unsupported return type"
+        return rebind[Scalar[ret_type]](
+            llvm_intrinsic[
+                "llvm.nvvm.vote.ballot.sync",
+                UInt32,
+                UInt32,
+                Bool,
+                has_side_effect=False,
+            ](0xFFFFFFFF, val).cast[.uint32]()
+        )
+
+    @inline(.always)
+    @staticmethod
+    def match_any_fn[
+        dtype: DType, //, mask_type: DType
+    ](bits: Scalar[dtype]) -> Scalar[mask_type]:
+        comptime assert (
+            mask_type == .uint32
+        ), "NVIDIA match_any returns a 32-bit mask (mask_type == DType.uint32)"
+        comptime if size_of[dtype]() == 4:
+            return rebind[Scalar[mask_type]](
+                inlined_assembly[
+                    "match.any.sync.b32 $0, $1, $2;",
+                    UInt32,
+                    constraints="=r,r,r",
+                    has_side_effect=False,
+                ](bits, UInt32(0xFFFFFFFF))
+            )
+        else:
+            return rebind[Scalar[mask_type]](
+                inlined_assembly[
+                    "match.any.sync.b64 $0, $1, $2;",
+                    UInt32,
+                    constraints="=r,l,r",
+                    has_side_effect=False,
+                ](bits, UInt32(0xFFFFFFFF))
+            )
+
+    @inline(.always)
+    @staticmethod
+    def match_all_fn[
+        dtype: DType, //, mask_type: DType
+    ](bits: Scalar[dtype]) -> Scalar[mask_type]:
+        comptime assert (
+            mask_type == .uint32
+        ), "NVIDIA match_all returns a 32-bit mask (mask_type == DType.uint32)"
+        # `match.all.sync` writes the membermask (all agree) or 0 into `$0` and
+        # the agreement into a predicate `p` we do not need (the mask already
+        # encodes it as non-zero / zero).
+        comptime if size_of[dtype]() == 4:
+            return rebind[Scalar[mask_type]](
+                inlined_assembly[
+                    "{ .reg .pred p; match.all.sync.b32 $0|p, $1, $2; }",
+                    UInt32,
+                    constraints="=r,r,r",
+                    has_side_effect=False,
+                ](bits, UInt32(0xFFFFFFFF))
+            )
+        else:
+            return rebind[Scalar[mask_type]](
+                inlined_assembly[
+                    "{ .reg .pred p; match.all.sync.b64 $0|p, $1, $2; }",
+                    UInt32,
+                    constraints="=r,l,r",
+                    has_side_effect=False,
+                ](bits, UInt32(0xFFFFFFFF))
+            )

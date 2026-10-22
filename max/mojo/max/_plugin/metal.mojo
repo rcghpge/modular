@@ -155,3 +155,12 @@ struct MetalMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
         return _shuffle_apple_helper["xor", dtype, simd_width](
             mask, val, offset
         )
+
+    @inline(.always)
+    @staticmethod
+    def vote_fn[ret_type: DType](val: Bool) -> Scalar[ret_type]:
+        # AIR has a dedicated 32-bit ballot intrinsic; narrowing the 64-bit
+        # `simd_ballot`/`simd_vote` form instead crashes the Metal shader
+        # compiler at pipeline-state creation.
+        var mask32 = llvm_intrinsic["llvm.air.simd_ballot.i32", UInt32](val)
+        return mask32.cast[ret_type]()

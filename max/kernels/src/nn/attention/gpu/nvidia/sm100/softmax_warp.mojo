@@ -41,7 +41,7 @@ from max.gpu.compute.arch.tcgen05 import (
     tcgen05_release_allocation_lock,
     tcgen05_store_wait,
 )
-from max.gpu.primitives.warp import _vote_nvidia_helper
+from max.gpu.primitives.warp import vote
 from layout.swizzle import make_swizzle
 from layout.tma_async import RaggedTMA3DTile
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -4001,7 +4001,7 @@ def fa4_softmax[
         var diff_true = sub_ftz(tile_max, m_true)
         comptime if use_fma:
             diff_true = mul_ftz(diff_true, scale_log2e)
-        var would_skip = _vote_nvidia_helper(
+        var would_skip = vote[.uint32](
             diff_true < blasst_log_threshold
         ) == UInt32(0xFFFFFFFF)
         # `pipeline_s.state.phase()` is the S-consumer generation of the block

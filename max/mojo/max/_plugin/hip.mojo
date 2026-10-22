@@ -19,6 +19,7 @@ from std.sys import bit_width_of, llvm_intrinsic, size_of
 from std.sys.defines import get_defined_bool
 from std.sys.info import CompilationTarget
 
+from max.gpu.intrinsics import readfirstlane
 from max.gpu.sync.sync import (
     _BarrierPluginHookFnType,
     _SyncwarpPluginHookFnType,
@@ -98,3 +99,52 @@ struct HipMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     ]:
         # FIXME: Set the EXECute mask register to the mask
         return _shuffle_amd_helper(offset, val)
+
+    @inline(.always)
+    @staticmethod
+    def vote_fn[ret_type: DType](val: Bool) -> Scalar[ret_type]:
+        comptime instruction = String(
+            "llvm.amdgcn.ballot.i", bit_width_of[ret_type]()
+        )
+        return llvm_intrinsic[
+            instruction,
+            Scalar[ret_type],
+            has_side_effect=False,
+        ](val)
+
+    @inline(.always)
+    @staticmethod
+    def match_any_fn[
+        dtype: DType, //, mask_type: DType
+    ](bits: Scalar[dtype]) -> Scalar[mask_type]:
+        # CDNA has no match op, so fold with ROCm's `__match_any` idiom
+        # (amd_warp_sync_functions.h): loop while any lane is still unmatched;
+        # each round the lowest unmatched lane broadcasts its bits via
+        # `readfirstlane` and a ballot over the unmatched lanes picks out the
+        # ones that match -- their group -- which then drop out.  (ROCm reads
+        # the group off `__activemask()` under branch divergence; a converged
+        # ballot of the match predicate is the same set and survives the Mojo ->
+        # LLVM lowering.)  O(distinct values), far below `WARP_SIZE` for the few
+        # distinct keys a warp usually holds.
+        var done = False
+        var result = Scalar[mask_type](0)
+        while Self.vote_fn[mask_type](not done) != Scalar[mask_type](0):
+            if not done:
+                var matches = readfirstlane(bits) == bits
+                var group = Self.vote_fn[mask_type](matches)
+                if matches:
+                    result = group
+                    done = True
+        return result
+
+    @inline(.always)
+    @staticmethod
+    def match_all_fn[
+        dtype: DType, //, mask_type: DType
+    ](bits: Scalar[dtype]) -> Scalar[mask_type]:
+        # All lanes agree iff the lanes matching the lowest lane's bits
+        # (`readfirstlane`) are exactly the active lanes.
+        var chosen = readfirstlane(bits)
+        var matched = Self.vote_fn[mask_type](bits == chosen)
+        var active = Self.vote_fn[mask_type](True)
+        return matched if matched == active else Scalar[mask_type](0)

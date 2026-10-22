@@ -25,6 +25,7 @@ from max.gpu.memory.memory import (
     _AsyncCopyGroupPluginHookFnType,
     _AsyncCopyWaitGroupPluginHookFnType,
 )
+from max.gpu.primitives.warp import _FULL_MASK
 from max.gpu.sync.sync import (
     _BarrierPluginHookFnType,
     _SyncwarpPluginHookFnType,
@@ -235,6 +236,85 @@ trait MaxPluginHooks:
         return Self.shuffle_idx_fn(
             mask, val, src_lane.lt(UInt32(WARP_SIZE)).select(src_lane, lane)
         )
+
+    @staticmethod
+    def vote_fn[ret_type: DType](val: Bool) -> Scalar[ret_type]:
+        """Lowers `vote()`, which returns the mask of warp lanes that voted
+        `True`.
+
+        A GPU plugin has to provide this. A target that doesn't override it
+        rejects `vote()` at compile time.
+
+        Parameters:
+            ret_type: The mask type, `DType.uint32` or `DType.uint64`.
+
+        Args:
+            val: The calling lane's vote.
+
+        Returns:
+            The mask with bit `l` set for each lane `l` that voted `True`.
+        """
+        CompilationTarget.unsupported_target_error[operation="vote"]()
+
+    @inline(.always)
+    @staticmethod
+    def match_any_fn[
+        dtype: DType, //, mask_type: DType
+    ](bits: Scalar[dtype]) -> Scalar[mask_type]:
+        """Lowers `match_any()`, which returns the mask of warp lanes whose
+        bits equal the caller's.
+
+        The default needs only `shuffle_idx_fn`: each lane reads every lane's
+        bits, which costs `WARP_SIZE` shuffles. A plugin with a match
+        instruction, or a cheaper way to group equal lanes, overrides it.
+
+        Parameters:
+            dtype: The bits' type, `DType.uint32` or `DType.uint64`.
+            mask_type: The mask type, `DType.uint32` or `DType.uint64`.
+
+        Args:
+            bits: The bits of the calling lane's value.
+
+        Returns:
+            The mask with bit `l` set for each lane `l` holding equal bits.
+        """
+        var result = Scalar[mask_type](0)
+        comptime for l in range(WARP_SIZE):
+            if Self.shuffle_idx_fn(_FULL_MASK, bits, UInt32(l)) == bits:
+                result |= Scalar[mask_type](1) << Scalar[mask_type](l)
+        return result
+
+    @inline(.always)
+    @staticmethod
+    def match_all_fn[
+        dtype: DType, //, mask_type: DType
+    ](bits: Scalar[dtype]) -> Scalar[mask_type]:
+        """Lowers `match_all()`, which returns the mask of warp lanes if they
+        all hold the caller's bits, and 0 otherwise.
+
+        The default needs only `shuffle_idx_fn`: each lane compares every
+        lane's bits with the first lane's, which costs `WARP_SIZE` shuffles.
+        A plugin with a match instruction, or a cheaper way to compare the
+        lanes, overrides it.
+
+        Parameters:
+            dtype: The bits' type, `DType.uint32` or `DType.uint64`.
+            mask_type: The mask type, `DType.uint32` or `DType.uint64`.
+
+        Args:
+            bits: The bits of the calling lane's value.
+
+        Returns:
+            The mask of all lanes if they hold equal bits, otherwise 0.
+        """
+        var chosen = Self.shuffle_idx_fn(_FULL_MASK, bits, 0)
+        var all_same = True
+        var active = Scalar[mask_type](0)
+        comptime for l in range(WARP_SIZE):
+            if Self.shuffle_idx_fn(_FULL_MASK, bits, UInt32(l)) != chosen:
+                all_same = False
+            active |= Scalar[mask_type](1) << Scalar[mask_type](l)
+        return active if all_same else Scalar[mask_type](0)
 
 
 struct DefaultMaxPlugin(MaxPlugin):

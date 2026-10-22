@@ -47,7 +47,24 @@ mojo_test(
     srcs = ["test_shuffle_codegen.mojo"],
     target_compatible_with = select({
         "//:use_prebuilt_mojo_toolchain_disabled": ["@platforms//:incompatible"],
-        # Same comptime retargeting and asan timeout as `test_sync_codegen.mojo`.
+        # TODO(MOCO-3794): Same comptime retargeting and asan timeout as
+        # `test_sync_codegen.mojo`.
+        "//:asan": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
+)
+
+mojo_test(
+    name = "test_vote_match_codegen.mojo.test",
+    srcs = ["test_vote_match_codegen.mojo"],
+    target_compatible_with = select({
+        "//:use_prebuilt_mojo_toolchain_disabled": ["@platforms//:incompatible"],
+        # TODO(MOCO-3794): Same comptime retargeting and asan timeout as
+        # `test_sync_codegen.mojo`.
         "//:asan": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),
