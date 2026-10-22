@@ -204,11 +204,7 @@ def mha_sm90_dispatch[
         config.dtype == KVType.dtype and config.dtype == q_type
     ), "config, kv, and q types must all match for FA3."
     comptime swizzle_mode = TensorMapSwizzle.SWIZZLE_128B
-    var q = (
-        q_arg.unsafe_ptr()
-        .unsafe_bitcast[Scalar[KVType.dtype]]()
-        .unsafe_origin_cast[MutAnyOrigin]()
-    )
+    var q = q_arg.unsafe_ptr().unsafe_bitcast[Scalar[KVType.dtype]]()
 
     comptime decoding: Bool = MaxPromptLenType.static_value.or_else(0) == 1
     comptime new_config = MHAConfig[config.dtype](

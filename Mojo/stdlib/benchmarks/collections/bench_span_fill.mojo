@@ -66,7 +66,7 @@ def bench_span_fill_elementwise[size: Int](mut b: Bencher) raises:
         var s = allocation.unsafe_span()
         ref value = black_box(FILL_VALUE)
         for ref element in s:
-            var p = Pointer(to=element).unsafe_mut_cast[True]()
+            var p = Pointer(to=element)
             p[] = value
         keep(s)
 

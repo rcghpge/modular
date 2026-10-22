@@ -1161,9 +1161,7 @@ struct VariadicList[
         """
         # Convert the !lit.ref to a pointer, then cast to a pointer to
         # the first element.
-        var array_up = Pointer(
-            to=Pointer(_mlir_value=value)[]
-        ).unsafe_origin_cast[ImmUntrackedOrigin]()
+        var array_up = Pointer(to=Pointer(_mlir_value=value)[])
         var elt_ptr = Pointer[_, ImmUntrackedOrigin](
             _mlir_value=__mlir_op.`pop.array.gep`(
                 array_up._get_kgen_pointer(),

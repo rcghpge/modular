@@ -2702,6 +2702,4 @@ struct Pointer[
         """
         __get_address_as_uninit_lvalue(
             self.unsafe_address_space_cast[.GENERIC]()._mlir_value
-        ) = __get_address_as_owned_value(
-            src.unsafe_address_space_cast[.GENERIC]()._mlir_value
-        )
+        ) = __get_address_as_owned_value(src._mlir_value)

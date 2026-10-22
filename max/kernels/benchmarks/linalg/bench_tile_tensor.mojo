@@ -145,19 +145,15 @@ def matmul_unrolled(mut C: Matrix, A: Matrix, B: Matrix):
 
 def matmul_tiled_layout(mut C: Matrix, A: Matrix, B: Matrix):
     var dst = TileTensor(
-        C.data.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
+        C.data.unsafe_ptr(),
         row_major[M, N](),
     )
     var lhs = TileTensor(
-        A.data.unsafe_ptr()
-        .unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin](),
+        A.data.unsafe_ptr(),
         row_major[M, K](),
     )
     var rhs = TileTensor(
-        B.data.unsafe_ptr()
-        .unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin](),
+        B.data.unsafe_ptr(),
         row_major[K, N](),
     )
 
@@ -209,19 +205,15 @@ def matmul_tiled_layout(mut C: Matrix, A: Matrix, B: Matrix):
 
 def matmul_tiled_layout_cache(mut C: Matrix, A: Matrix, B: Matrix):
     var dst = TileTensor(
-        C.data.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
+        C.data.unsafe_ptr(),
         row_major[M, N](),
     )
     var lhs = TileTensor(
-        A.data.unsafe_ptr()
-        .unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin](),
+        A.data.unsafe_ptr(),
         row_major[M, K](),
     )
     var rhs = TileTensor(
-        B.data.unsafe_ptr()
-        .unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin](),
+        B.data.unsafe_ptr(),
         row_major[K, N](),
     )
 
@@ -281,19 +273,15 @@ def matmul_tiled_layout_cache(mut C: Matrix, A: Matrix, B: Matrix):
 
 def matmul_layout_transposed(mut C: Matrix, A: Matrix, B: Matrix):
     var dst = TileTensor(
-        C.data.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
+        C.data.unsafe_ptr(),
         row_major[M, N](),
     )
     var lhs = TileTensor(
-        A.data.unsafe_ptr()
-        .unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin](),
+        A.data.unsafe_ptr(),
         row_major[M, K](),
     )
     var rhs = TileTensor(
-        B.data.unsafe_ptr()
-        .unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin](),
+        B.data.unsafe_ptr(),
         row_major[K, N](),
     )
 

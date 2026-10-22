@@ -384,9 +384,7 @@ def run_spike[
     var ref_desc = create_tma_descriptor[dtype, 2, swizzle](
         DeviceBuffer(
             ctx,
-            head_base.unsafe_mut_cast[True]().unsafe_address_space_cast[
-                .GENERIC
-            ](),
+            head_base,
             1,
             owning=False,
         ),
@@ -425,9 +423,7 @@ def run_spike[
         var test_desc = create_tma_descriptor[dtype, 5, swizzle](
             DeviceBuffer(
                 ctx,
-                gmem_ptr.unsafe_mut_cast[True]().unsafe_address_space_cast[
-                    .GENERIC
-                ](),
+                gmem_ptr,
                 1,
                 owning=False,
             ),

@@ -52,11 +52,9 @@ struct TensorMemory(TrivialRegisterPassable):
             num_cols: The number of columns to allocate.
         """
         # Bitcast to avoid `cannot implicitly convert` error.
-        self.ptr = (
-            external_memory[UInt32, address_space=.SHARED, alignment=16]()
-            .unsafe_bitcast[UInt32]()
-            .unsafe_origin_cast[MutUntrackedOrigin]()
-        )
+        self.ptr = external_memory[
+            UInt32, address_space=.SHARED, alignment=16
+        ]().unsafe_bitcast[UInt32]()
         self.num_cols = num_cols
 
 

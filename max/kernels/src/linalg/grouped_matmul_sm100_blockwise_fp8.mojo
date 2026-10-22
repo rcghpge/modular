@@ -2163,7 +2163,7 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
 
     # Load warp as producer and mma warp as consumer
     var load_mma_pipeline = ProducerConsumerPipeline[num_pipeline_stages](
-        load_mma_mbar_ptr.unsafe_origin_cast[MutUntrackedOrigin]()
+        load_mma_mbar_ptr
     )
 
     var mma_output_mbar_ptr = load_mma_mbar_ptr.unsafe_offset(
@@ -2171,7 +2171,7 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
     )
     var mma_output_pipeline = ProducerConsumerPipeline[
         config.num_accum_pipeline_stages
-    ](mma_output_mbar_ptr.unsafe_origin_cast[MutUntrackedOrigin]())
+    ](mma_output_mbar_ptr)
 
     var clc_full_mbar_ptr = mma_output_mbar_ptr.unsafe_offset(
         2 * config.num_accum_pipeline_stages
@@ -2186,11 +2186,7 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
     # there will be no guarantee they get balanced number of tiles.
     var load_clc_pipeline = ProducerConsumerPipeline[
         config.num_clc_pipeline_stages
-    ](
-        (
-            clc_empty_mbar_ptr.unsafe_offset(config.num_clc_pipeline_stages)
-        ).unsafe_origin_cast[MutUntrackedOrigin]()
-    )
+    ](clc_empty_mbar_ptr.unsafe_offset(config.num_clc_pipeline_stages))
 
     var clc_response_ptr = (
         clc_empty_mbar_ptr.unsafe_offset(3 * config.num_clc_pipeline_stages)

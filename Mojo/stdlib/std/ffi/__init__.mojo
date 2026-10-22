@@ -430,7 +430,7 @@ struct OwnedDLHandle(Boolable, Movable):
         if not ptr:
             raise Error(t"symbol not found: {name}")
         return _DLCallable[return_type, origin_of(self)](
-            ptr.unsafe_value().unsafe_origin_cast[MutUntrackedOrigin](),
+            ptr.unsafe_value(),
             Pointer(to=self),
         )
 

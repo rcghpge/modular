@@ -471,10 +471,8 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     # +1 advances the Signal pointer by sizeof(Signal) bytes, stepping
     # past the Signal header to reach the scratch region of the buffer.
     var scratch_fp8 = (
-        rank_sigs[_my_rank]
-        .unsafe_address_space_cast[.GENERIC]()
-        .unsafe_offset(1)
-    ).unsafe_bitcast[Scalar[out_dtype]]()
+        rank_sigs[_my_rank].unsafe_offset(1).unsafe_bitcast[Scalar[out_dtype]]()
+    )
     var scratch_scale = scratch_fp8.unsafe_offset(fp8_per_rank).unsafe_bitcast[
         Scalar[scales_dtype]
     ]()
@@ -487,7 +485,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     comptime Fp8PtrType = MutPointer[Scalar[out_dtype], MutAnyOrigin]
     var fp8_ptrs = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> Fp8PtrType: (
-            rank_sigs[i].unsafe_address_space_cast[.GENERIC]().unsafe_offset(1)
+            rank_sigs[i].unsafe_offset(1)
         ).unsafe_bitcast[Scalar[out_dtype]]()
     )
 
@@ -495,7 +493,6 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     var scale_ptrs = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> ScalePtrType: (
             rank_sigs[i]
-            .unsafe_address_space_cast[.GENERIC]()
             .unsafe_offset(1)
             .unsafe_bitcast[Scalar[out_dtype]]()
             .unsafe_offset(fp8_per_rank)

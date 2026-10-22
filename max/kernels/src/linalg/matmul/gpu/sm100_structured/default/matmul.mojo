@@ -1127,7 +1127,7 @@ def _splitk_context(ctx: DeviceContext) raises -> _SplitKContext:
         var buf = ctx.enqueue_create_buffer[DType.uint8](
             _SPLITK_WORKSPACE_BYTES
         )
-        workspace = buf.take_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+        workspace = buf.take_ptr()
     var state = alloc[_SplitKContext]({length = 1}).unsafe_leak()
     state.unsafe_write(_SplitKContext(workspace, slot))
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](

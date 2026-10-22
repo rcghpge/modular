@@ -1289,7 +1289,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             )
             async_copy[16, fill=UInt8(0)](
                 src.unsafe_address_space_cast[.GLOBAL](),
-                dst.unsafe_address_space_cast[.SHARED](),
+                dst,
                 src_size=Int32(16) if row >= 0 else Int32(0),
             )
         async_copy_arrive[noinc=True](k_mbar)

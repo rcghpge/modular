@@ -319,7 +319,7 @@ def broadcast_pull_2stage_kernel[
     comptime PtrType = MutPointer[Scalar[dtype], MutAnyOrigin]
     var payloads = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> PtrType: (
-            rank_sigs[i].unsafe_address_space_cast[.GENERIC]().unsafe_offset(1)
+            rank_sigs[i].unsafe_offset(1)
         ).unsafe_bitcast[Scalar[dtype]]()
     )
 

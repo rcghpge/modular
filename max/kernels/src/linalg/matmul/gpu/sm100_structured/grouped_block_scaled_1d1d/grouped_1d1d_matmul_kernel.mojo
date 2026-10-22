@@ -2342,7 +2342,7 @@ struct Grouped1D1DMatmulKernel[
                                         ).unsafe_address_space_cast[.GLOBAL](),
                                         sfb_smem_tile._storage.unsafe_offset(
                                             smem_offset
-                                        ).unsafe_address_space_cast[.SHARED](),
+                                        ),
                                         src_size=Int32(
                                             copy_size
                                         ) if is_valid else Int32(0),

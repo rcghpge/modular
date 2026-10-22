@@ -71,9 +71,7 @@ def _get_fft_workarea(
         device_ptr.unsafe_bitcast[NoneType](),
     )
 
-    return device_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
-        MutUntrackedOrigin
-    ]()
+    return device_ptr.unsafe_bitcast[NoneType]()
 
 
 def _get_fft_plan[

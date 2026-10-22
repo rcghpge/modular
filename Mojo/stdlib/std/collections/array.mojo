@@ -1081,7 +1081,6 @@ struct Array[T: AnyType, length: Int](
             Pointer(to=self._array)
             .unsafe_bitcast[Self.T]()
             .unsafe_origin_cast[origin]()
-            .unsafe_address_space_cast[address_space]()
         )
 
     @inline(.always)

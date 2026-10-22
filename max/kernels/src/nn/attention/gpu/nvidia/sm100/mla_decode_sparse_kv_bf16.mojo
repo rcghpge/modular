@@ -764,9 +764,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                         cta_group=1,
                         eviction_policy=CacheEviction.EVICT_LAST,
                     ](
-                        kv_stage_ptr.unsafe_offset(elem_off).unsafe_mut_cast[
-                            True
-                        ](),
+                        kv_stage_ptr.unsafe_offset(elem_off),
                         desc_ptr,
                         mbar_ptr,
                         Int32(cg * box_w),

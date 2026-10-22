@@ -2399,9 +2399,7 @@ struct TMATensorTile[
             .unsafe_bitcast[UInt8]()
             .unsafe_address_space_cast[.GLOBAL]()
         )
-        var dst_desc = smem_tma_descriptor_ptr.unsafe_bitcast[
-            UInt8
-        ]().unsafe_mut_cast[True]()
+        var dst_desc = smem_tma_descriptor_ptr.unsafe_bitcast[UInt8]()
 
         comptime simd_width = simd_width_of[DType.uint8]()
         comptime src_align = align_of[SIMD[.uint8, simd_width]]()
@@ -3024,7 +3022,7 @@ def create_tma_tile_gather4[
     return create_tma_descriptor[dtype, 2, swizzle_mode, l2_promotion](
         DeviceBuffer(
             ctx,
-            ptr.unsafe_address_space_cast[.GENERIC](),
+            ptr,
             1,
             owning=False,
         ),
@@ -3407,7 +3405,7 @@ def _create_split_tma_folded[
     # rank-3/4/5 `TMATensorTile` are distinct nominal types).
     var device_buf = DeviceBuffer(
         ctx,
-        ptr.unsafe_address_space_cast[.GENERIC](),
+        ptr,
         1,
         owning=False,
     )

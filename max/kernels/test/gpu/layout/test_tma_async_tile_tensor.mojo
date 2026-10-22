@@ -203,7 +203,7 @@ def tma_store_rank_kernel[
     fence_async_view_proxy()
 
     if thread_idx.x == 0:
-        var src = TileTensor(ptr.unsafe_mut_cast[False](), row_major[size]())
+        var src = TileTensor(ptr.as_imm(), row_major[size]())
         comptime if generic:
             var coords = StaticTuple[UInt32, rank]()
             comptime for i in range(rank):

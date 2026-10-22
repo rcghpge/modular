@@ -507,7 +507,7 @@ def prefetch[
     ]:
         _prefetch(
             addr.unsafe_bitcast[NoneType]()
-            .unsafe_mut_cast[False]()
+            .as_imm()
             .unsafe_origin_cast[ImmUntrackedOrigin]()
         )
     else:

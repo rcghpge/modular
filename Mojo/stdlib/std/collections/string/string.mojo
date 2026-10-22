@@ -1421,12 +1421,7 @@ struct String(
 
         if self._is_inline():
             # The string itself holds the data.
-            return (
-                Pointer(to=self)
-                .unsafe_bitcast[Byte]()
-                .as_imm()
-                .unsafe_origin_cast[origin_of(self)]()
-            )
+            return Pointer(to=self).unsafe_bitcast[Byte]().as_imm()
         else:
             return self._ptr_or_data.as_imm().unsafe_origin_cast[
                 origin_of(self)

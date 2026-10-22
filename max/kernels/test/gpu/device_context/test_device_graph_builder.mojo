@@ -1759,16 +1759,8 @@ def test_create_collective_stable_slots(ctx: DeviceContext) raises:
     var buf0 = ctx.enqueue_create_buffer[.float32](length)
     var buf1 = ctx.enqueue_create_buffer[.float32](length)
 
-    var source0 = (
-        buf0.unsafe_ptr()
-        .unsafe_bitcast[NoneType]()
-        .unsafe_origin_cast[MutUntrackedOrigin]()
-    )
-    var source1 = (
-        buf1.unsafe_ptr()
-        .unsafe_bitcast[NoneType]()
-        .unsafe_origin_cast[MutUntrackedOrigin]()
-    )
+    var source0 = buf0.unsafe_ptr().unsafe_bitcast[NoneType]()
+    var source1 = buf1.unsafe_ptr().unsafe_bitcast[NoneType]()
 
     # Slot addresses as observed from each region, for cross-region checks.
     # Written through an untracked pointer so the build closures can record

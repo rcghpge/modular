@@ -2694,9 +2694,7 @@ def _create_prefill_q_tma[
         comptime assert (
             depth * size_of[dtype]() == SW.bytes()
         ), "interleaved Q needs depth rows of exactly one swizzle atom"
-        var q_buf = DeviceBuffer(
-            ctx, q_ptr.unsafe_address_space_cast[.GENERIC](), 1, owning=False
-        )
+        var q_buf = DeviceBuffer(ctx, q_ptr, 1, owning=False)
         var desc = create_tma_descriptor[dtype, 3, SW](
             q_buf,
             IndexList[3](num_heads, num_q_tokens, depth),

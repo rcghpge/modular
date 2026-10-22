@@ -3995,7 +3995,6 @@ struct DeviceExternalFunction[
             var ptr = (
                 Pointer(to=metal_args)
                 .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
                 .as_unsafe_any_origin()
             )
             var metal_args_addrs = [ptr]
@@ -4006,7 +4005,7 @@ struct DeviceExternalFunction[
                     grid_dim,
                     block_dim,
                     shared_mem_bytes.or_else(0),
-                    attributes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                    attributes.unsafe_ptr(),
                     len(attributes),
                     metal_args_addrs.unsafe_ptr().as_unsafe_any_origin(),
                     UInt32(num_args),
@@ -4022,7 +4021,7 @@ struct DeviceExternalFunction[
                 grid_dim,
                 block_dim,
                 shared_mem_bytes.or_else(0),
-                attributes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+                attributes.unsafe_ptr(),
                 len(attributes),
                 dense_args_addrs.unsafe_ptr().as_unsafe_any_origin(),
                 UInt32(num_args),
@@ -4803,7 +4802,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                 Pointer(to=cpp_handle),
                 Pointer(to=device_ptr),
                 self._handle,
-                host_ptr.unsafe_origin_cast[MutUntrackedOrigin](),
+                host_ptr,
                 c_size_t(size),
                 c_size_t(elem_size),
             ),

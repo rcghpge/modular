@@ -320,8 +320,4 @@ trait __Enum(EnumLike):
     ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
         id
     ]:
-        return (
-            self.__get_enum_storage()
-            .payload_ptr[id]()
-            .unsafe_origin_cast[origin_of(self)]()[]
-        )
+        return self.__get_enum_storage().payload_ptr[id]()[]

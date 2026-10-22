@@ -682,17 +682,13 @@ struct Span[
             Self.T
         ]:
             unsafe_uninit_copy_n[overlapping=False](
-                # TODO(MOCO-4220) once fixed remove the unsafe_mut_cast
-                dest=self.unsafe_ptr().unsafe_mut_cast[True](),
+                dest=self.unsafe_ptr(),
                 src=other.unsafe_ptr(),
                 count=len(self),
             )
         else:
             for i in range(len(self)):
-                # TODO(MOCO-4220) once fixed this is self[i] = other[i].copy()
-                self.unsafe_ptr().unsafe_mut_cast[True]()[
-                    unsafe_offset=i
-                ] = other[i].copy()
+                self[i] = other[i].copy()
 
     def __bool__(self) -> Bool:
         """Check if a span is non-empty.
@@ -803,8 +799,7 @@ struct Span[
             "Index `b` out of bounds: ",
             b,
         )
-        # TODO(MOCO-4220) once fixed remove unsafe_mut_cast
-        var ptr = self.unsafe_ptr().unsafe_mut_cast[True]()
+        var ptr = self.unsafe_ptr()
 
         # `a` and `b` may be equal, so we cannot use `swap` directly.  The
         # unsafe_origin_cast silence the (correct) exclusivity error.

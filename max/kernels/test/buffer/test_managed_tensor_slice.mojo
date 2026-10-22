@@ -422,7 +422,7 @@ def _check_value_form_rank2[dtype: DType]() raises:
     comptime ROWS = 3
     comptime COLS = 4
     var storage = Array[Scalar[dtype], ROWS * COLS](fill={})
-    var base = storage.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+    var base = storage.unsafe_ptr()
     comptime spec = get_row_major_tensor_spec_static[dtype, 2, ROWS, COLS]()
     var out = ManagedTensorSlice[io_spec=IOSpec.Output, static_spec=spec](
         base, (ROWS, COLS)

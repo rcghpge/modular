@@ -3515,7 +3515,7 @@ def _sparse_indices_ptr[
         or sparse_indices.dim_size(1) != indices_stride
     ):
         raise Error("sparse_indices must be [query tokens, indices_stride]")
-    return sparse_indices.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin]()
+    return sparse_indices.unsafe_ptr()
 
 
 @inline(.always)
@@ -3768,11 +3768,7 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
         var logical_indices_ptr = OptionalReg[MutPointer[Int32, MutAnyOrigin]]()
         comptime if index_share:
             if max_prompt_length.unsafe_ptr()[0] > 1:
-                logical_indices_ptr = (
-                    sparse_indices.unsafe_ptr().unsafe_origin_cast[
-                        MutAnyOrigin
-                    ]()
-                )
+                logical_indices_ptr = sparse_indices.unsafe_ptr()
 
         with Trace[TraceLevel.OP, target=target](
             "mo.mla.graph.decode.paged.fp8.sparse",

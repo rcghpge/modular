@@ -206,11 +206,7 @@ struct OwnedPointer[T: AnyType](
         Returns:
             A pointer to the `OwnedPointer`'s contents.
         """
-        return (
-            self._inner.unsafe_ptr()
-            .unsafe_mut_cast[origin.mut]()
-            .unsafe_origin_cast[origin]()
-        )
+        return self._inner.unsafe_ptr().unsafe_origin_cast[origin]()
 
     @doc_hidden
     @deprecated(use=ptr)

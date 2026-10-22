@@ -536,9 +536,7 @@ def run_qk_spike[
         var k_desc = create_tma_descriptor[ab_type, 2, swizzle_mode](
             DeviceBuffer(
                 ctx,
-                k_ptr.unsafe_mut_cast[True]().unsafe_address_space_cast[
-                    .GENERIC
-                ](),
+                k_ptr,
                 1,
                 owning=False,
             ),

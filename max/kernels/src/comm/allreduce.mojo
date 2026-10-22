@@ -845,9 +845,7 @@ def _allreduce_2stage_kernel[
         comptime PtrType = MutPointer[Scalar[dtype], MutAnyOrigin]
         var tmps = Array[_, ngpus](
             fill_with_unrolled=lambda [i: Int]() -> PtrType: (
-                rank_sigs[circular_add[ngpus](_my_rank, i)]
-                .unsafe_address_space_cast[.GENERIC]()
-                .unsafe_offset(1)
+                rank_sigs[circular_add[ngpus](_my_rank, i)].unsafe_offset(1)
             ).unsafe_bitcast[Scalar[dtype]]()
         )
 

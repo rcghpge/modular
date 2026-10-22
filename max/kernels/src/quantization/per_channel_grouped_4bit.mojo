@@ -342,9 +342,7 @@ struct Q4sym[
                 var encoded_data = Q4sym[Self.group_size, Self.float_dtype](
                     loaded_group
                 )
-                var src_ptr = Pointer(
-                    to=encoded_data
-                ).unsafe_address_space_cast[output_ptr.address_space]()
+                var src_ptr = Pointer(to=encoded_data)
                 unsafe_memcpy(
                     dest=output_ptr,
                     src=src_ptr,

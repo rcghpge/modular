@@ -2884,7 +2884,7 @@ struct Struct_ep_combine_skip_a2a:
             context,
             output_fn,
             router_weights_fn,
-            topk_ids._ptr.as_imm().unsafe_origin_cast[ImmUntrackedOrigin](),
+            topk_ids._ptr.as_imm(),
         )
 
 

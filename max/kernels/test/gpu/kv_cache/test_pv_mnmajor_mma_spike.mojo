@@ -489,9 +489,7 @@ def run_pv_spike[
         var v_desc = create_tma_descriptor[ab_type, 2, swizzle_mode](
             DeviceBuffer(
                 ctx,
-                v_ptr.unsafe_mut_cast[True]().unsafe_address_space_cast[
-                    .GENERIC
-                ](),
+                v_ptr,
                 1,
                 owning=False,
             ),

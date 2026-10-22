@@ -245,9 +245,7 @@ def main() raises:
                     b_tensor,
                     gamma_tensor,
                     eps,
-                    counter_buf.unsafe_ptr()
-                    .unsafe_mut_cast[True]()
-                    .as_unsafe_any_origin(),
+                    counter_buf.unsafe_ptr().as_unsafe_any_origin(),
                     ctx,
                 )
             else:

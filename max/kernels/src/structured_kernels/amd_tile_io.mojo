@@ -340,7 +340,7 @@ struct _IndexedSubTileLayout[
         var dst_ptr = dst.ptr.unsafe_offset(strip * Self.sub_rows * Self.cols)
         _global_load_to_lds[width=Self.chunk_width](
             src.unsafe_address_space_cast[.GLOBAL](),
-            dst_ptr.unsafe_address_space_cast[.SHARED](),
+            dst_ptr,
         )
 
     @staticmethod
@@ -1988,9 +1988,7 @@ struct SubTileLoaderLDS[
             var src_dist = src_partitions.vectorize[1, load_width]().distribute[
                 thread_layout
             ](umod(swizzled_worker_idx, WARP_SIZE))
-            var dst_ptr = dst_partitions.ptr.unsafe_address_space_cast[
-                .SHARED
-            ]()
+            var dst_ptr = dst_partitions.ptr
 
             var desc_ptr_ = MutPointer[
                 BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE

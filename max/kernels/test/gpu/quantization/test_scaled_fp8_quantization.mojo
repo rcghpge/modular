@@ -687,7 +687,7 @@ def test_dynamic_fp8_quant_row_bounded[
             offsets_device.unsafe_ptr()
             .unsafe_offset(3)
             .unsafe_origin_cast[MutUntrackedOrigin]()
-            .unsafe_mut_cast[False]()
+            .as_imm()
         ),
     )
     ctx.enqueue_copy(got_out_ptr, out_device)

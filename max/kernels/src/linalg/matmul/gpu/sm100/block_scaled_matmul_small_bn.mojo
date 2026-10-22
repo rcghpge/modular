@@ -1173,9 +1173,7 @@ def _sfb_cpasync_produce_tile[
                                 (
                                     sfb_global_ptr.unsafe_offset(global_offset)
                                 ).unsafe_address_space_cast[.GLOBAL](),
-                                (
-                                    sfb_smem_tile_ptr.unsafe_offset(smem_offset)
-                                ).unsafe_address_space_cast[.SHARED](),
+                                sfb_smem_tile_ptr.unsafe_offset(smem_offset),
                             )
                         else:
                             sfb_smem_tile_ptr.unsafe_offset(
@@ -1320,9 +1318,7 @@ def _sfb_cpasync_produce_tile_warpwide[
                         sfb_global_ptr.unsafe_offset(
                             global_offset
                         ).unsafe_address_space_cast[.GLOBAL](),
-                        sfb_smem_tile_ptr.unsafe_offset(
-                            smem_offset
-                        ).unsafe_address_space_cast[.SHARED](),
+                        sfb_smem_tile_ptr.unsafe_offset(smem_offset),
                     )
                 else:
                     sfb_smem_tile_ptr.unsafe_offset(smem_offset).unsafe_store(

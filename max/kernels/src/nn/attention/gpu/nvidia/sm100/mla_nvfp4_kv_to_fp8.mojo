@@ -274,14 +274,8 @@ def mla_prefill_sparse_nvfp4_via_fp8[
     )
     page_slots_buf.enqueue_fill(_NO_PAGE)
 
-    var fp8_bytes = (
-        fp8_buf.unsafe_ptr()
-        .unsafe_bitcast[Scalar[DType.uint8]]()
-        .unsafe_origin_cast[MutAnyOrigin]()
-    )
-    var page_slots = page_slots_buf.unsafe_ptr().unsafe_origin_cast[
-        MutAnyOrigin
-    ]()
+    var fp8_bytes = fp8_buf.unsafe_ptr().unsafe_bitcast[Scalar[DType.uint8]]()
+    var page_slots = page_slots_buf.unsafe_ptr()
     var row_offsets = input_row_offsets.ptr.unsafe_mut_cast[
         True
     ]().as_unsafe_any_origin()
@@ -297,7 +291,7 @@ def mla_prefill_sparse_nvfp4_via_fp8[
     var remap_threads = num_tokens * dense_stride // _REMAP_WIDTH
     ctx.enqueue_function[_remap_kernel[page_size]](
         indices,
-        dense_buf.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+        dense_buf.unsafe_ptr(),
         page_slots,
         Int32(indices_stride),
         Int32(top_k),
@@ -320,7 +314,7 @@ def mla_prefill_sparse_nvfp4_via_fp8[
         MutAnyOrigin,
     ]
     var scratch_blocks = TileTensor(
-        fp8_buf.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
+        fp8_buf.unsafe_ptr(),
         row_major(
             Int64(num_pages),
             Idx[1],
