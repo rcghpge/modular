@@ -13,9 +13,10 @@
 
 from __future__ import annotations
 
+import gc
 import queue
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from types import ModuleType
@@ -104,6 +105,15 @@ from tests.serve.scheduler.common import (
 # its dispatcher drain loop, so this constant dominates suite wall time.
 TIMEOUT = 0.2
 _T = TypeVar("_T")
+
+
+@pytest.fixture(autouse=True)
+def _collect_di_scheduler_cycles() -> Generator[None]:
+    yield
+    # Scheduler callbacks form cycles that retain NIXL progress threads.
+    # Rust-backed Jenga pools trigger less Python GC, so collect between tests
+    # instead of letting idle agents burn CPU throughout subsequent tests.
+    gc.collect()
 
 
 @dataclass
