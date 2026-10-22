@@ -17,12 +17,27 @@ including the **MAX Framework**🧑‍🚀 and the **Mojo Language**🔥.
 
 ## Get started
 
-To get started with the Modular Platform and serve a model using the MAX
-framework, see
-[the MAX quickstart guide](https://max.modular.com/get-started).
+Want to use MAX and Mojo in your own projects? Check out the
+[MAX get started guide](https://max.modular.com/get-started) and the
+[Mojo get started guide](https://mojolang.org/docs/manual/quickstart/).
 
-To get started with the Mojo language, see
-[the Mojo quickstart guide](https://mojolang.org/docs/manual/quickstart/).
+Want to experiment with functionality in MAX or Mojo? Work from the
+repository:
+
+- Run `mojo` on a file:
+
+  ```bash
+  ./bazelw run //Mojo:mojo -- Mojo/examples/hello.mojo
+  ```
+
+- Run `max` to generate text with a model (requires a
+  [compatible GPU](https://max.modular.com/packages#gpu-compatibility)):
+
+  ```bash
+  ./bazelw run //max/python/max/_entrypoints:pipelines -- generate \
+    --model Qwen/Qwen3.5-0.8B --max-batch-size 1 --max-length 10000 \
+    --prompt "The sky is blue because"
+  ```
 
 ## About the repo
 

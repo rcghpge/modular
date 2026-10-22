@@ -192,6 +192,7 @@
 /max/tests/integration/interfaces/ @modular/max-sdk
 /max/tests/integration/kv_cache/ @modular/max-serve
 /max/tests/integration/nn/ @modular/max-sdk
+/max/tests/integration/readme/ @modular/mojo-docs
 /max/tests/integration/serve/ @modular/max-serve
 /max/tests/integration/tensor @modular/max-sdk
 /max/tests/integration/unorganized/sampling @modular/max-serve

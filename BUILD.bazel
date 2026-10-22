@@ -15,8 +15,20 @@ package_group(
 )
 
 exports_files([
+    "README.md",
     "pyproject.toml",
 ])
+
+# The README of the public repo, under one label in both repos: here it is this
+# directory's README.md, internally it lives under oss/modular.
+alias(
+    name = "public_readme",
+    testonly = True,
+    actual = "README.md",
+    # Internally the tests reach the README through the alias in the root
+    # BUILD.bazel; this one is only used in the public repo.
+    tags = [ALLOW_UNUSED_TAG],
+)
 
 mojo_binary(
     name = "repro",
