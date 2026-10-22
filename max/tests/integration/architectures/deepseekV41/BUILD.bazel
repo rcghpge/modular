@@ -380,7 +380,11 @@ modular_py_test(
 # Checks the absolute-slot boundary used by trimmed decoder SWA reads.
 modular_py_test(
     name = "test_swa_floor",
+    # It compiles several graphs and times out frequently at the default
+    # `moderate` timeout (300s), so it gets `long` and runs in postsubmit only.
+    timeout = "long",
     srcs = ["test_swa_floor.py"],
+    tags = ["postsubmit"],
     deps = [
         "//max/python/max/driver",
         "//max/python/max/dtype",
