@@ -26,7 +26,10 @@ from max.gpu import thread_idx, block_idx, warp_id
 from max.gpu.sync import barrier
 from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.host import DeviceBuffer, DeviceContext
-from max.gpu.host.nvidia.tma import TensorMapSwizzle, create_tma_descriptor
+from max.gpu.host.nvidia.tma import (
+    TensorMapSwizzle,
+    create_tma_descriptor,
+)
 from max.gpu.host.info import B200
 from max.gpu.memory import fence_async_view_proxy
 from max.gpu.primitives.grid_controls import launch_dependent_grids

@@ -87,7 +87,10 @@ from max.gpu.memory import (
     cp_async_bulk_tensor_shared_cluster_global,
     external_memory,
 )
-from max.gpu.host.nvidia.tma import TensorMapSwizzle, create_tma_descriptor
+from max.gpu.host.nvidia.tma import (
+    TensorMapSwizzle,
+    create_tma_descriptor,
+)
 from std.memory import unsafe_memset_zero, unsafe_stack_allocation
 from std.sys import size_of
 from std.utils.index import Index, IndexList

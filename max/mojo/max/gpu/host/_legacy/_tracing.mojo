@@ -20,7 +20,7 @@ from std.sys.defines import get_defined_int
 
 from std.utils.variant import Variant
 
-from ..host import default_accelerator
+from ..info import default_accelerator
 
 # ===-----------------------------------------------------------------------===#
 # Library Load

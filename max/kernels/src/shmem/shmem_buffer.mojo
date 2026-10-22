@@ -21,7 +21,11 @@ from std.sys import CompilationTarget, size_of
 from std.ffi import external_call
 
 from max.gpu.host import DeviceContext, HostBuffer
-from max.gpu.host.device_context import _checked, _CString, _DeviceContextPtr
+from max.gpu.host._legacy.device_context import (
+    _checked,
+    _CString,
+    _DeviceContextPtr,
+)
 
 from .shmem_api import shmem_free, shmem_malloc
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder

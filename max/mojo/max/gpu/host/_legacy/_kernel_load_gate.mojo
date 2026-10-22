@@ -26,7 +26,7 @@ from std.builtin._coroutine import AnyCoroutine, _suspend_async
 from std.ffi import external_call
 from std.runtime._asyncrt import _Chain, _async_and_then, _del_asyncrt_chain
 
-from .device_context import DeviceContext
+from max.gpu.host import DeviceContext
 
 
 struct CollectiveGate:

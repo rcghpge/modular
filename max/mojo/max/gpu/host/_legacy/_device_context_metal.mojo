@@ -20,7 +20,7 @@ from std.collections.optional import Optional
 from std.memory import unsafe_stack_allocation
 from std.reflection import SourceLocation
 from std.sys import size_of
-from .info import _device_type_encoder_target
+from ..info import _device_type_encoder_target
 
 from .device_context import (
     _checked_call,

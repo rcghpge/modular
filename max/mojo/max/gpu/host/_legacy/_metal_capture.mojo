@@ -21,7 +21,7 @@ captured command buffers are replayable.
 
 from std.ffi import CStringSpan, external_call
 
-from max.gpu.host.device_context import (
+from max.gpu.host._legacy.device_context import (
     DeviceContext,
     _CString,
     _DeviceContextPtr,

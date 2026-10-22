@@ -19,7 +19,7 @@ from std.sys.info import CompilationTarget
 
 from std.compile import CompiledFunctionInfo, compile_info
 
-from max.gpu.host import default_accelerator, get_gpu_target
+from .info import default_accelerator, get_gpu_target
 
 # ===-----------------------------------------------------------------------===#
 # Compilation

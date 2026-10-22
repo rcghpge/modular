@@ -28,7 +28,7 @@ from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.testing import assert_equal, assert_true, TestSuite
 
 from max.gpu.host import DeviceContext, DevicePointer
-from max.gpu.host._device_context_metal import MetalDeviceTypeEncoder
+from max.gpu.host._legacy._device_context_metal import MetalDeviceTypeEncoder
 
 
 # The device image of `PtrPair`: each member is the bare device pointer that

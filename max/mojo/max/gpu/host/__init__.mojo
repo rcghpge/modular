@@ -15,9 +15,9 @@
 
 from .info import default_accelerator, get_gpu_target
 
-from .constant_memory_mapping import ConstantMemoryMapping
-from .device_attribute import DeviceAttribute
-from .device_context import (
+from ._legacy.constant_memory_mapping import ConstantMemoryMapping
+from ._legacy.device_attribute import DeviceAttribute
+from ._legacy.device_context import (
     CompletionFlag,
     DeviceBuffer,
     DeviceContext,
@@ -30,10 +30,10 @@ from .device_context import (
     DeviceStream,
     HostBuffer,
 )
-from .dim import Dim
-from .func_attribute import Attribute, FuncAttribute
-from .launch_attribute import LaunchAttribute
-from .device_graph import (
+from ._legacy.dim import Dim
+from ._legacy.func_attribute import Attribute, FuncAttribute
+from ._legacy.launch_attribute import LaunchAttribute
+from ._legacy.device_graph import (
     DeviceGraph,
     DeviceGraphBuilder,
     DeviceGraphCache,

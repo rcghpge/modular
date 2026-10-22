@@ -51,7 +51,10 @@ from max.gpu.host import (
     default_accelerator,
 )
 from max.gpu.memory import external_memory
-from max.gpu.host.nvidia.tma import TensorMapSwizzle, create_tma_descriptor
+from max.gpu.host.nvidia.tma import (
+    TensorMapSwizzle,
+    create_tma_descriptor,
+)
 from max.gpu.compute.arch.mma_nvidia_sm100 import mma_arrive
 from max.gpu.compute.arch.tcgen05 import (
     tcgen05_alloc,

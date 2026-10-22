@@ -72,12 +72,13 @@ from std.builtin._coroutine import (
 
 from std.utils import Variant
 from std.utils._serialize import _serialize_elements
-from .info import _device_type_encoder_target, is_cpu
+from std.utils.static_tuple import StaticTuple
 
-from max.gpu.host.info import get_gpu_info, default_accelerator
+from ..info import _device_type_encoder_target, is_cpu
 
+from ..info import get_gpu_info, default_accelerator
 
-from .compile import (
+from ..compile import (
     _compile_code,
     _cross_compilation,
     _ptxas_compile,
@@ -90,7 +91,8 @@ from ._device_context_metal import (
     call_with_pack_metal,
 )
 
-from . import _launch_args
+from .. import _launch_args
+
 from ._device_context_extras import *
 
 
@@ -1807,7 +1809,7 @@ struct DeviceBuffer[dtype: DType](
         oob_fill: Int32,
     ) raises:
         """Encodes an im2col TMA descriptor for this buffer via AsyncRT. Used by
-        `max.gpu.host._tensormap.create_tensormap_im2col`."""
+        `max.gpu.host._legacy._tensormap.create_tensormap_im2col`."""
 
         comptime assert (
             default_accelerator().is_nvidia_gpu()
@@ -4925,7 +4927,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
         ```text
         from max.gpu.host import DeviceContext
-        from max.gpu.host.device_context import DeviceExternalFunction
+        from max.gpu.host._legacy.device_context import DeviceExternalFunction
 
         def func_signature(
             # Arguments being passed to the assembly code

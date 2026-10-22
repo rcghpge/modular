@@ -22,12 +22,10 @@ to a scoped callback.
 Graph capture is currently implemented for CUDA and HIP devices only.
 Creating a graph on any other device, such as an Apple GPU or a CPU, raises."""
 
-from max.gpu.host import (
-    ConstantMemoryMapping,
-    Dim,
-    FuncAttribute,
-    LaunchAttribute,
-)
+from .constant_memory_mapping import ConstantMemoryMapping
+from .dim import Dim
+from .func_attribute import FuncAttribute
+from .launch_attribute import LaunchAttribute
 
 from std.collections.optional import OptionalReg
 from std.ffi import c_size_t, external_call
@@ -40,7 +38,7 @@ from std.builtin.device_passable import DevicePassable
 
 from max.runtime.async_value import AnyAsyncValueRef
 
-from max.gpu.host.device_context import (
+from .device_context import (
     DeviceBuffer,
     DeviceContext,
     DeviceExternalFunction,
