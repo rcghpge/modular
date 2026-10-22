@@ -111,6 +111,10 @@ This version is still a work in progress.
   copyable, and `Optional[FileDescriptor]` is the size of a single
   descriptor. `RawFileDescriptor` gains a raising `close()` method.
 
+- Added `BorrowedFileDescriptor` to `std.io`, a copyable, non-owning view
+  of a `FileDescriptor` that carries the owner's origin, so it can be
+  passed around without closing the descriptor or outliving its owner.
+
 ## GPU programming
 
 - Added the `apple-m6` and `apple-m6-metal4` accelerator targets, and

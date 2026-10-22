@@ -13,7 +13,7 @@
 
 from std.collections import Optional
 from std.ffi import c_int, get_errno
-from std.io import FileDescriptor, RawFileDescriptor
+from std.io import BorrowedFileDescriptor, FileDescriptor, RawFileDescriptor
 from std.sys import size_of
 from std.sys._io import stdin, stdout, stderr
 from std.sys._libc import FcntlCommands, fcntl, pipe
@@ -74,18 +74,6 @@ def _is_open(fd: c_int) -> Bool:
     return fcntl(fd, FcntlCommands.F_GETFD) != -1
 
 
-def _read_exact(mut fd: FileDescriptor, count: Int) raises -> String:
-    # A single `read` may return fewer bytes than requested.
-    var buffer = List[Byte](length=count, fill=0)
-    var filled = 0
-    while filled < count:
-        var n = fd.read_bytes(Span(buffer)[filled:])
-        if n == 0:
-            raise Error("unexpected EOF after ", filled, " bytes")
-        filled += n
-    return String(StringSlice(unsafe_from_utf8=Span(buffer)))
-
-
 def test_close_closes_fd() raises:
     var read_fd, write_fd = _make_pipe()
     var owned = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(write_fd))
@@ -99,29 +87,6 @@ def test_close_closes_fd() raises:
     RawFileDescriptor(read_fd).close()
 
 
-def test_write_then_read_through_pipe() raises:
-    var read_fd, write_fd = _make_pipe()
-    var writer = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(write_fd))
-    writer.write_string("hello ")
-    try:
-        writer.write_bytes_exact("fd".as_bytes())
-    finally:
-        # Closing the write end lets the reader observe EOF.
-        writer^.close()
-
-    var reader = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(read_fd))
-    var buffer = List[Byte](length=1, fill=0)
-    var text: String
-    var eof_read: Int
-    try:
-        text = _read_exact(reader, 8)
-        eof_read = reader.read_bytes(buffer)
-    finally:
-        reader^.close()
-    assert_equal(text, "hello fd")
-    assert_equal(eof_read, 0)
-
-
 def test_move_only() raises:
     assert_true(conforms_to(FileDescriptor, Movable))
     assert_false(conforms_to(FileDescriptor, Copyable))
@@ -133,76 +98,41 @@ def test_optional_owned_fd_uses_niche() raises:
     )
 
 
-def test_read_bytes_raises_on_invalid_fd() raises:
-    var fd = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(9999))
-    var buffer = List[Byte](length=4, fill=0)
-    var read_raised = False
-    try:
-        _ = fd.read_bytes(buffer)
-    except:
-        read_raised = True
-    # Nothing owns descriptor 9999, so closing it fails too.
-    with assert_raises():
-        fd^.close()
-    assert_true(read_raised)
-
-
-def test_write_bytes_returns_count() raises:
+def test_borrowed_does_not_close_owner() raises:
     var read_fd, write_fd = _make_pipe()
-    var writer = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(write_fd))
-    var n: Int
-    try:
-        n = writer.write_bytes("abc".as_bytes())
-    finally:
-        writer^.close()
-
-    var reader = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(read_fd))
-    var text: String
-    try:
-        text = _read_exact(reader, n)
-    finally:
-        reader^.close()
-    assert_equal(n, 3)
-    assert_equal(text, "abc")
+    var owner = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(write_fd))
+    var view = BorrowedFileDescriptor(owner)
+    var copy = view
+    # Destroying the views leaves the descriptor open; only the owner closes.
+    _ = view
+    _ = copy
+    var was_open = _is_open(write_fd)
+    owner^.close()
+    RawFileDescriptor(read_fd).close()
+    assert_true(was_open)
+    assert_false(_is_open(write_fd))
 
 
-def test_write_bytes_raises_on_invalid_fd() raises:
-    var fd = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(9999))
-    var write_raised = False
-    var exact_raised = False
-    try:
-        _ = fd.write_bytes("x".as_bytes())
-    except:
-        write_raised = True
-    try:
-        fd.write_bytes_exact("x".as_bytes())
-    except:
-        exact_raised = True
-    with assert_raises():
-        fd^.close()
-    assert_true(write_raised)
-    assert_true(exact_raised)
-
-
-def test_read_bytes_honors_buffer_length() raises:
-    var read_fd, write_fd = _make_pipe()
-    var writer = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(write_fd))
-    writer.write_string("abcdef")
-    writer^.close()
-
-    var reader = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(read_fd))
-    var buffer = List[Byte](length=4, fill=0)
-    var n: Int
-    var tail: String
-    try:
-        n = reader.read_bytes(buffer)
-        tail = _read_exact(reader, 6 - n)
-    finally:
-        reader^.close()
-    assert_true(n > 0 and n <= 4)
-    assert_equal(
-        String(StringSlice(unsafe_from_utf8=Span(buffer)[:n])) + tail, "abcdef"
+def test_optional_borrowed_fd_uses_niche() raises:
+    comptime assert (
+        size_of[Optional[BorrowedFileDescriptor[ImmStaticOrigin]]]()
+        == size_of[BorrowedFileDescriptor[ImmStaticOrigin]]()
     )
+
+    var read_fd, write_fd = _make_pipe()
+    var owner = FileDescriptor(unsafe_raw_fd=RawFileDescriptor(write_fd))
+    var view: Optional[
+        BorrowedFileDescriptor[origin_of(owner)]
+    ] = BorrowedFileDescriptor(owner)
+    var was_some = Bool(view)
+    view = None
+    var was_none = not view
+    var still_open = _is_open(write_fd)
+    owner^.close()
+    RawFileDescriptor(read_fd).close()
+    assert_true(was_some)
+    assert_true(was_none)
+    assert_true(still_open)
 
 
 def main() raises:

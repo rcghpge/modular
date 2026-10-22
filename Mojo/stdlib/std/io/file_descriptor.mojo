@@ -225,7 +225,6 @@ struct FileDescriptor(
     not Deinitable else "close it with `fd^.close()`, since closing can fail",
     Movable,
     UnsafeSingleNicheable,
-    Writer,
 ):
     """Owning file descriptor that is closed explicitly with `close()`.
 
@@ -236,8 +235,7 @@ struct FileDescriptor(
         ```mojo
         from std.io import FileDescriptor
 
-        def write_greeting(var fd: FileDescriptor) raises:
-            fd.write_string("hello\\n")
+        def release(var fd: FileDescriptor) raises:
             fd^.close()
         ```
     """
@@ -279,66 +277,54 @@ struct FileDescriptor(
     def isa_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> Bool:
         return memory.unsafe_bitcast[c_int]()[] == RawFileDescriptor._InvalidFd
 
-    def write_bytes(mut self, bytes: Span[Byte, _]) raises -> Int:
-        """Writes at most `len(bytes)` bytes to the file.
 
-        A single call may write fewer bytes than requested. Use
-        `write_bytes_exact()` to write the whole span.
+struct BorrowedFileDescriptor[origin: ImmOrigin](
+    TrivialRegisterPassable, UnsafeSingleNicheable
+):
+    """Copyable, non-owning view of a `FileDescriptor`.
 
-        Args:
-            bytes: The bytes to write.
+    The view carries the owner's origin, so it cannot outlive the owner, and
+    it never closes the descriptor. `-1` is the niche, so
+    `Optional[BorrowedFileDescriptor]` is the size of a descriptor.
 
-        Returns:
-            The number of bytes written.
+    Parameters:
+        origin: The origin of the `FileDescriptor` this view refers to.
 
-        Raises:
-            If the write fails.
-        """
-        var written = external_call["write", c_ssize_t](
-            self._value._value, bytes.unsafe_ptr(), len(bytes)
-        )
-        if written < 0:
-            raise Error("write failed err: ", String(get_errno()))
-        return Int(written)
+    Examples:
+        ```mojo
+        from std.io import BorrowedFileDescriptor, FileDescriptor
 
-    def write_bytes_exact(mut self, bytes: Span[Byte, _]) raises:
-        """Writes all of `bytes` to the file.
+        def share(var fd: FileDescriptor) raises:
+            var first = BorrowedFileDescriptor(fd)
+            var second = first
+            fd^.close()
+        ```
+    """
 
-        Args:
-            bytes: The bytes to write.
+    var _value: RawFileDescriptor
+    """The viewed descriptor; the owning `FileDescriptor` closes it."""
 
-        Raises:
-            If a write fails before every byte is written.
-        """
-        var remaining = bytes
-        while len(remaining) > 0:
-            remaining = remaining[self.write_bytes(remaining) :]
-
-    def write_string(mut self, string: StringSpan):
-        """Writes a string to the file.
-
-        `Writer` requires this method to be non-raising; use
-        `write_bytes_exact()` to observe write errors.
+    @implicit
+    def __init__(out self, ref[Self.origin] fd: FileDescriptor):
+        """Constructs a view of a `FileDescriptor`.
 
         Args:
-            string: The string to write.
+            fd: The owning descriptor to view.
         """
-        self._value.write_bytes(string.as_bytes())
+        self._value = fd._value
 
+    # ===------------------------------------------------------------------===#
+    # UnsafeSingleNicheable
+    # ===------------------------------------------------------------------===#
+
+    @staticmethod
     @inline(.always)
-    def read_bytes(mut self, buffer: MutSpan[Byte, _]) raises -> Int:
-        """Reads at most `len(buffer)` bytes into `buffer`.
+    @doc_hidden
+    def write_niche(memory: MutPointer[MaybeUninit[Self], _]):
+        memory.unsafe_bitcast[c_int]().write(RawFileDescriptor._InvalidFd)
 
-        A single call may read fewer bytes than requested. A return value of
-        `0` means the end of the file was reached.
-
-        Args:
-            buffer: The buffer to read bytes into.
-
-        Returns:
-            The number of bytes read.
-
-        Raises:
-            If the read fails.
-        """
-        return self._value.read_bytes(buffer)
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def isa_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> Bool:
+        return memory.unsafe_bitcast[c_int]()[] == RawFileDescriptor._InvalidFd
