@@ -63,15 +63,88 @@ OverloadSet::OverloadSet(StringRef baseName, ArrayRef<ASTDecl *> fnDecls,
     : baseName(baseName), fnDecls(fnDecls.begin(), fnDecls.end()),
       explicitParamBindings(std::move(paramBindings)),
       contextualType(contextualType), syntax(syntax), erroneous(erroneous) {
-  assert(llvm::all_of(fnDecls,
-                      [](ASTDecl *decl) {
-                        return decl->resolvedness >=
-                               DeclResolvedness::signature;
-                      }) &&
-         "Overload set must contain fully resolved declarations");
+  for (auto fnDecl : fnDecls) {
+    assert(fnDecl->resolvedness >= DeclResolvedness::signature &&
+           "Overload set must contain fully resolved declarations");
+
+    // TODO: partially bind the call target here using contextual type.
+  }
 }
 
 SMLoc OverloadSet::getExprLoc() const { return getExpr()->getLoc(); }
+
+/// Create a (possibly partially unbound) set of bindings for the given type.
+/// This can be used to initialize the binding set for methods. If the given
+/// type is not a parametric user defined type, this returns empty bindings.
+
+/// TODO: Just return a ParamExprArrayAttr here, the binding here is already
+/// verified (otherwise we won't be able to construct the type at the first
+/// place).
+static ParamBindings getBindingsForDeclaredType(ASTDecl &declScope,
+                                                ASTType type,
+                                                const ExprNode *expr) {
+  // We need to do extra work to forward a generator's parameters.
+  assert(!sugarIsa<GeneratorType>(type.extractMetaType()));
+
+  ParamBindings paramBindings(declScope, expr);
+  ASTDecl *decl = type.getDecl(declScope.getShared());
+
+  auto traitSelfName = StringAttr::get(decl->getContext(), "_Self");
+  // When binding a trait function, add the self type bindings.
+  if (isa_and_nonnull<TraitASTDecl>(decl)) {
+    auto typeAttr = PValue(type).get();
+
+    // The source value be something of trait type like Movable, or it may be
+    // something of AnyTraitType type, like
+    //   def ex[Trait: MovableMetaType, T: Trait](argument: T):
+    // where T is some type that is known to conform to Movable.  In the latter
+    // case we just know that the input type conforms to Movable, and we want to
+    // look up members to bind in Movable, so bind the Trait type here.  If this
+    // is a struct, or simple trait, keep it.
+    if (auto paramType = sugarDynCast<ParamType>(type.extractMetaType())) {
+      auto simpleTraitType =
+          sugarCast<AnyTraitType>(paramType.getParam().getType())
+              .getTraitType();
+      // Upcast from a parametric type of trait metatype value (e.g. "some
+      // type that conforms to Movable) to the simple trait type (Movable)
+      // so we can substitute the value into the signature.
+      typeAttr = UpcastAttr::get(simpleTraitType, PValue(type));
+    }
+    paramBindings.add(expr, typeAttr, traitSelfName);
+  } else if (isa<TraitType>(decl->getIfTypeValue())) {
+    // If this is a trait composition, the method signature's self type won't
+    // match directly (need to upcast the composition into the trait type that
+    // declared the method). Add as _not_ prechecked.
+    paramBindings.add(expr, PValue(type), traitSelfName);
+  }
+
+  ArrayRef<TypedAttr> paramValues = type.getParamBindings();
+  if (!paramValues.empty()) {
+    ArrayRef<PogMetadataAttr> pogs =
+        type.getWithoutParameters(declScope.getShared())
+            .getSignature()
+            .getParamListAttrs()
+            .getPogs();
+    assert(paramValues.size() <= pogs.size());
+
+    // Since we prepend struct parameters as inferred only, specify the name
+    // here to make sure we can verify the pog list correctly.
+    for (auto [value, pog] : llvm::zip(paramValues, pogs)) {
+      if (auto idxRef = dyn_cast<ParamIndexRefAttr>(value);
+          idxRef && idxRef.getDepth() == 0 &&
+          sugarIsa<GeneratorType>(type.extractMetaType())) {
+        // This is a index ref reference to the generator input, it means it
+        // has an unknown value.
+        paramBindings.add(expr, UnboundAttr::get(idxRef.getType()),
+                          pog.getName());
+      } else {
+        paramBindings.add(expr, value, pog.getName());
+      }
+    }
+  }
+
+  return paramBindings;
+}
 
 ParamBindings OverloadSet::getParamBindings() const {
   ParamBindings result(getDeclScope(), getExpr());
@@ -88,12 +161,13 @@ ParamBindings OverloadSet::getParamBindings() const {
       result.addConstraints(genType.getBodyConstraints());
       for (auto [type, pog] :
            llvm::zip_equal(genAttr.getInputParamTypes(), pogs)) {
-        // TODO: We really should unify `getForDeclaredType` with `getFullSig`.
+        // TODO: We really should unify `getBindingsForDeclaredType` with
+        // `getFullSig`.
         result.add(getExpr(), UnboundAttr::get(type), pog.getName());
       }
     } else {
-      result = ParamBindings::getForDeclaredType(getDeclScope(), contextualType,
-                                                 getExpr());
+      result =
+          getBindingsForDeclaredType(getDeclScope(), contextualType, getExpr());
     }
   }
 

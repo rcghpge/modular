@@ -66,13 +66,10 @@ collectMethodsWithNameFromDecls(ASTDecl &structDecl, StringAttr methodName,
 }
 
 /// Get specialized signature of a trait function with a struct (who implements
-/// the trait) type. Also return parameter bindings for specializing the
-/// expected struct method with the current struct type.
-static std::pair<FnTypeGeneratorType, ParamBindings>
+/// the trait) type.
+static FnTypeGeneratorType
 getTraitFunctionSignature(ASTDecl &declScope, FnTypeGeneratorType fullSig,
-                          ASTType structSelfType, TraitSymbolAttr traitSymbol,
-                          const ExprNode *expr,
-                          ParameterEvaluator &traitAliasReplacer) {
+                          ASTType structSelfType, TraitSymbolAttr traitSymbol) {
   ASTDecl &traitDecl = declScope.getShared().declResolver->getDeclForTypeSymbol(
       traitSymbol.getSymbol());
   LogicalResult result = declScope.getShared().declResolver->resolveSignature(
@@ -89,11 +86,6 @@ getTraitFunctionSignature(ASTDecl &declScope, FnTypeGeneratorType fullSig,
 
   // Add trait's _Self param replacement.
   params.push_back(TypeParamAttr::get(structSelfType, trait));
-  auto bindings =
-      ParamBindings::getForDeclaredType(declScope, structSelfType, expr);
-
-  // Only bind the `Self`, leave the rest unbound.
-  bindings.relaxBindingKindTo(ParamBindings::kWithEllipsis);
 
   // Leave the rest alone.
   for (Type type : paramTypes.drop_front())
@@ -101,9 +93,7 @@ getTraitFunctionSignature(ASTDecl &declScope, FnTypeGeneratorType fullSig,
 
   FnTypeGeneratorType newSignature = fullSig.getSpecializedGenerator(
       params, &declScope.getShared().getEvaluationContext());
-
-  newSignature = traitAliasReplacer.replace(newSignature);
-  return {newSignature, std::move(bindings)};
+  return newSignature;
 }
 
 /// Used to determine if this particular child def op of a struct.decl op is one
@@ -156,8 +146,7 @@ static bool isInheritedFnOp(FnOp fnOp) {
 // is a valid override - we discard the stub.
 static LogicalResult signatureResolveDefaultTraitFnStubs(
     StructASTDecl &structDecl, ASTDecl &traitDecl, StringAttr name,
-    ArrayRef<ASTDecl *> candidates, ParameterEvaluator &traitAliasReplacer,
-    ConstraintAttr conformanceConstraint) {
+    ArrayRef<ASTDecl *> candidates, ConstraintAttr conformanceConstraint) {
 
   auto &shared = structDecl.getShared();
 
@@ -175,10 +164,9 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     FnOp traitFn = traitFnDecl->getOp();
 
     SyntheticNode syntheticNode(structDecl.getLoc());
-    auto [wrapperSignature, bindings] = getTraitFunctionSignature(
+    auto wrapperSignature = getTraitFunctionSignature(
         structDecl, traitFn.getFullSignature(), structSelfType,
-        TraitSymbolAttr::get(traitDecl.getSymbolRef()), &syntheticNode,
-        traitAliasReplacer);
+        TraitSymbolAttr::get(traitDecl.getSymbolRef()));
 
     // If a function with matching signature is defined in the same trait we're
     // golden since existing machinery takes care of reporting there is a
@@ -217,8 +205,13 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     //
     // Defer to using filterOverloadSetForValueType since it already handles
     // such differences.
+    // Only bind the `Self` through the contextual type, leave the rest
+    // unbound.
+    ParamBindings bindings(structDecl, &syntheticNode);
+    bindings.relaxBindingKindTo(ParamBindings::kWithEllipsis);
     OverloadSet ov(name, structDefinesMethods, std::move(bindings),
-                   CallSyntax::kMethodCallSynthetic);
+                   CallSyntax::kMethodCallSynthetic,
+                   /*contextualType=*/structSelfType);
     // This runs in the struct's scope, not the conformance's, so the
     // conformance `where` clause is not among the scope's own assumptions and
     // has to be handed over explicitly.
@@ -492,37 +485,18 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
   // We simply look to see if the trait's `def zork(self) -> Int` (the needle)
   // exists in the struct too, which it does.
   //
-  // Things get trickier when aliases are involved though, like:
+  // Trait aliases in the needle are `get_witness<_Self, MyTrait, "X">`, so
+  // specializing `_Self` to the struct resolves them to the struct's values.
   //
-  //     trait MyTrait:
-  //         alias X: AnyType
-  //         def zork(self) -> X:
-  //             ...
-  //     struct MyStruct:
-  //         alias X: AnyType = Int
-  //         def zork(self) -> Int
-  //
-  // We can't just check if `def zork(self) -> X` exists in the struct, because
-  // it doesn't.
-  // Instead, we need to substitute all the struct alias values (like `Int`)
-  // into the needle.
-  // Substituting the struct's `Int` in for `X`, the
-  // `def zork(self) -> X` needle becomes the correct
-  // `def zork(self) -> Int` needle.
-  // We then check if that exists in the struct and it does, excellent.
-  //
-  // These traitAliasReplacer help us do the needle substitutions later.
+  // Alias requirements are not specialized that way: their types and
+  // defaulted values still mention `_Self` by name, so rebind it here.
   //
   // TODO(MOCO-1993): Consolidate docs on this.
-  auto structSelf = PValue(structDecl.getSelfType());
   auto traitSelfDecl =
       cast<ParamDeclRefAttr>(PValue(traitDecl.getSelfType()).get());
-  ParameterEvaluator traitAliasReplacer = shared.getParameterEvaluator();
-  for (size_t i = 0; i < parent.getParamValues().size(); i++) {
-    traitAliasReplacer.setDeclBinding(
-        traitDeclOp.getSignature().getParamName(i), parent.getParamValues()[i]);
-  }
-  traitAliasReplacer.setDeclBinding(traitSelfDecl.getName(), structSelf);
+  ParameterEvaluator traitSelfBinder = shared.getParameterEvaluator();
+  traitSelfBinder.setDeclBinding(traitSelfDecl.getName(),
+                                 PValue(structDecl.getSelfType()));
 
   // Prepare an error. It will be abandoned if the check succeeds.
   diag = shared.emitError(structDecl.getLoc())
@@ -564,9 +538,8 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
     // the current trait here. We have to do this before the upcoming signature
     // resolution of all decls with a matching name to avoid cycles between
     // verifyConformance and signature resolution for FnOps.
-    if (failed(signatureResolveDefaultTraitFnStubs(structDecl, traitDecl, name,
-                                                   decls, traitAliasReplacer,
-                                                   op.getConstraintAttr()))) {
+    if (failed(signatureResolveDefaultTraitFnStubs(
+            structDecl, traitDecl, name, decls, op.getConstraintAttr()))) {
       diag->abandon();
       return failure();
     }
@@ -581,20 +554,22 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
     }
 
     SyntheticNode syntheticNode(structDecl.getLoc());
-    auto [traitSignature, bindings] =
-        getTraitFunctionSignature(conformanceDecl, fullSig, selfType, parent,
-                                  &syntheticNode, traitAliasReplacer);
+    auto traitSignature =
+        getTraitFunctionSignature(conformanceDecl, fullSig, selfType, parent);
 
     // Every candidate goes to the overload set, which decides each one against
     // the conformance constraint: a candidate whose `where` clause contradicts
     // it is rejected, one that can be neither proven nor disproven is
     // inconclusive and blocks selection entirely (we cannot rule it out as the
     // witness), and what remains must name a single winner.
-    // `bindings` is scoped to the conformance decl, which carries the
+    // The bindings are scoped to the conformance decl, which carries the
     // conformance's `where` clause as a known assumption, so candidate
     // filtering picks it up from the scope without being handed it here.
+    ParamBindings bindings(conformanceDecl, &syntheticNode);
+    bindings.relaxBindingKindTo(ParamBindings::kWithEllipsis);
     OverloadSet ov(name, decls, std::move(bindings),
-                   CallSyntax::kMethodCallSynthetic);
+                   CallSyntax::kMethodCallSynthetic,
+                   /*contextualType=*/selfType);
     auto emitError = [&](SMLoc loc) -> MojoInflightDiag & {
       // `attachNote(decl)` also appends the requirement's synthesized
       // signature, redundant with the "no candidates have type" note below;
@@ -639,8 +614,7 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
       return success();
     }
 
-    Type traitAliasType =
-        traitAliasReplacer.getReboundType(traitAlias.getType());
+    Type traitAliasType = traitSelfBinder.getReboundType(traitAlias.getType());
 
     ArrayRef<ASTDecl *> decls = structDecl.lookupInCurrentScope(name);
     // If there is no user defined alias nor defaulted alias, raise an error.
@@ -670,9 +644,8 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
       if (ConstraintAttr conformanceConstraint = op.getConstraintAttr())
         conformanceAssumptions.push_back(conformanceConstraint);
 
-      // We don't yet put initializerExpr into the traitAliasReplacer because
-      // they need to be converted first to the trait's alias's type (see
-      // SAVMBCTATBS).
+      // The witness must hold the value converted to the trait alias's type
+      // (see SAVMBCTATBS), so first check that the conversion is possible.
       SyntheticNode synthNode(structAliasDecl->getLoc());
       if (!IREmitter::canImplicitlyConvertToType(
               {initializerExpr, &synthNode}, traitAliasType,
@@ -704,18 +677,16 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
       // Notice the X: Copyable.
       // That means that the struct's `X` has a value that's a TypeParamAttr,
       // basically an `Int` that's masquerading as a `Copyable`.
-      // Unfortunately, when we do our substitution into our
-      // `def zork(self) -> Container[X]` needle, it becomes a
-      // `def zork(self) -> Container[Int as Copyable] needle, which is both
-      // wrong and also doesn't exist in the struct, because the struct
-      // contains: `def zork(self) -> Container[Int as AnyType]. I say it's
-      // wrong because an "Int as Copyable" parameter-value cannot be given to a
+      // The needle `def zork(self) -> Container[X]` refers to `X` through
+      // `get_witness<MyStruct, MyTrait, "X">`, which resolves to the witness
+      // value. If that were `Int as Copyable`, the needle would become
+      // `Container[Int as Copyable]`, which is both wrong and doesn't exist in
+      // the struct, because the struct contains `Container[Int as AnyType]`.
+      // An "Int as Copyable" parameter-value cannot be given to a
       // parameter-decl that expects an AnyType. The vtables don't line up.
       //
-      // So, to fix that, when we substitute into the needle, we first convert
-      // the struct alias's value (Int as Copyable) to the trait alias's type
-      // (AnyType).
-      // Here, we do it ahead of time, just before putting it into the replacer.
+      // So the witness holds the struct alias's value converted to the trait
+      // alias's type (AnyType).
       //
       // TODO(MOCO-1993): Make sure this is consistently followed other places
       // we do trait substitution, and maybe centralize this arcana to
@@ -762,7 +733,7 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
                                      firstConformanceOp.getOperation());
         clonedDefault = cast<AliasDeclOp>(builder.clone(*defaultAliasOp));
         Attribute newValAttr =
-            traitAliasReplacer.replace(clonedDefault->getAttrDictionary());
+            traitSelfBinder.replace(clonedDefault->getAttrDictionary());
         clonedDefault->setAttrs(cast<DictionaryAttr>(newValAttr));
         structAliasDecl->setOp(clonedDefault);
         structAliasDecl->resolvedness = DeclResolvedness::body;

@@ -78,15 +78,6 @@ public:
   /// Replace our bindings with another set.
   void operator=(ParamBindings &&other);
 
-  /// Create a (possibly partially unbound) set of bindings for the given type.
-  /// This can be used to initialize the binding set for methods. If the given
-  /// type is not a parametric user defined type, this returns empty bindings.
-  /// If the caller provides a known parent trait type, this will upcast the
-  /// given type to it.
-  static ParamBindings getForDeclaredType(ASTDecl &declScope, ASTType type,
-                                          const ExprNode *expr,
-                                          Type optionalParentTraitType = {});
-
   /// The overall expression this was formed for.
   const ExprNode *getExpr() const { return parameters.callExpr; }
   SMLoc getExprLoc() const;
