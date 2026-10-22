@@ -130,6 +130,12 @@ This version is still a work in progress.
   `populate` members. Kernels can no longer capture implicitly, so these
   were always empty.
 
+- The AMD-only intrinsics `readfirstlane()`, `sendmsg()`, and
+  `implicitarg_ptr()` moved from `std.sys.intrinsics` to `max.gpu.intrinsics`,
+  next to the other vendor-specific GPU intrinsics. Import them from there
+  instead. `std.sys.intrinsics.ballot()` is removed; use
+  `max.gpu.primitives.warp.vote()`, which works on every GPU vendor.
+
 ## Fixed
 
 - `SIMD.slice()` no longer passes `llvm.vector.extract` an offset that is not

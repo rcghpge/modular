@@ -104,11 +104,8 @@ from max.gpu.host import DeviceContext
 from std.math import ceildiv
 from max.gpu.sync import s_waitcnt
 from std.sys._assembly import inlined_assembly
-from std.sys.intrinsics import (
-    likely,
-    llvm_intrinsic,
-    readfirstlane,
-)
+from std.sys.intrinsics import likely, llvm_intrinsic
+from max.gpu.intrinsics import readfirstlane
 from std.utils import StaticTuple
 
 from layout import TensorEngine, TensorLayout, TileTensor

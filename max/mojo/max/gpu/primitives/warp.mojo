@@ -42,7 +42,6 @@ from std.sys import (
 )
 from std.sys._assembly import inlined_assembly
 from std.sys.info import _cdna_4_or_newer, _cdna_5_or_newer
-from std.sys.intrinsics import readfirstlane
 
 from std.bit import log2_floor
 from std.math.math import max as _max, min as _min
@@ -50,7 +49,7 @@ from std._gpu import lane_id
 from std.memory import bitcast
 
 from max.gpu.globals import WARP_SIZE
-from max.gpu.intrinsics import permlane_shuffle
+from max.gpu.intrinsics import permlane_shuffle, readfirstlane
 
 # TODO (#24457): support shuffles with width != 32
 comptime _WIDTH_MASK = WARP_SIZE - 1

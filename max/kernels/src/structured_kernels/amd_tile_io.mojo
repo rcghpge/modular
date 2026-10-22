@@ -76,6 +76,7 @@ from max.gpu import lane_id, thread_idx, WARP_SIZE
 from max.gpu.intrinsics import (
     AMDBufferResource,
     ds_read_tr8_b64,
+    readfirstlane,
 )
 from max.gpu._utils import to_i32, to_i64
 from max.gpu.memory import CacheOperation
@@ -83,7 +84,6 @@ from std.memory.unsafe import bitcast
 from std.math import ceildiv, min
 from std.math.uutils import udivmod, umod, ufloordiv
 from std.sys._assembly import inlined_assembly
-from std.sys.intrinsics import readfirstlane
 from std.utils import IndexList
 from layout import Coord, Idx, TileTensor, TensorLayout
 from layout.coord import crd2idx

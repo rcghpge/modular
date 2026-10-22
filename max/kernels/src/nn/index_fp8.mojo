@@ -14,7 +14,7 @@
 from std.math.uutils import ufloordiv, udivmod
 from std.memory import unsafe_stack_allocation
 from std.sys import size_of, simd_width_of
-from std.sys.intrinsics import ballot, llvm_intrinsic, readfirstlane
+from std.sys.intrinsics import llvm_intrinsic
 from std.sys.info import (
     _accelerator_arch,
     _cdna_4_or_newer,
@@ -37,7 +37,7 @@ from max.gpu import WARP_SIZE, block_idx, lane_id, thread_idx
 from max.gpu.primitives import warp
 from max.gpu.compute.mma import mma as gpu_mma
 from max.gpu.host import DeviceContext, FuncAttribute, default_accelerator
-from max.gpu.intrinsics import AMDBufferResource, permlane_swap
+from max.gpu.intrinsics import AMDBufferResource, permlane_swap, readfirstlane
 from max.gpu.sync import barrier, s_waitcnt
 from max.gpu.memory import external_memory
 from kv_cache.types import create_flat_kv_tma_tile
@@ -468,7 +468,7 @@ def _fp8_index_score_amd_kernel[
             )
             tiles = ceildiv(max(0, last - first), BLOCK_M)
         var end = warp.prefix_sum(Int32(tiles))
-        var hits = ballot[DType.int64](tile < end)
+        var hits = warp.vote[DType.uint64](tile < end)
         if hits != 0:
             var hit = UInt32(count_trailing_zeros(hits))
             var row = Int32(first) + (end - 1 - tile) * Int32(BLOCK_M)

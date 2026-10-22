@@ -30,7 +30,7 @@ from max.gpu import (
 from max.gpu.host import DeviceContext
 from max.gpu.sync import schedule_barrier, s_waitcnt
 from std.sys import llvm_intrinsic
-from std.sys.intrinsics import readfirstlane
+from max.gpu.intrinsics import readfirstlane
 
 from std.utils import Index, IndexList, StaticTuple
 from std.utils.numerics import get_accum_type

@@ -22,7 +22,7 @@ Two-phase QK matmul per tile:
 
 from std.math.uutils import ufloordiv
 from std.sys import align_of, simd_width_of
-from std.sys.intrinsics import readfirstlane
+from max.gpu.intrinsics import readfirstlane
 from max.gpu import warp_id as get_warp_id
 from std.memory import bitcast, unsafe_stack_allocation
 from layout.swizzle import Swizzle

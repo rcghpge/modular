@@ -36,7 +36,6 @@ through a single body: MMA shape and BK select on dtype.
 from std.bit import log2_floor
 from std.math import ceildiv
 from std.sys import align_of, size_of, llvm_intrinsic
-from std.sys.intrinsics import readfirstlane
 from std.utils import Index, IndexList, StaticTuple
 from std.collections import Array
 from std.utils.numerics import get_accum_type
@@ -50,7 +49,7 @@ from max.gpu import (
 )
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import MI355X
-from max.gpu.intrinsics import AMDBufferResource
+from max.gpu.intrinsics import AMDBufferResource, readfirstlane
 from max.gpu.sync import schedule_barrier, s_waitcnt
 
 from layout import Coord, TensorLayout, TensorEngine, TileTensor

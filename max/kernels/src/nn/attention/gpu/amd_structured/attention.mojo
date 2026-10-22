@@ -29,7 +29,7 @@ from std.math.uutils import udivmod
 from std.memory import bitcast, unsafe_stack_allocation
 from layout.tile_tensor import stack_allocation as tt_stack_allocation
 from std.sys import align_of, simd_width_of
-from std.sys.intrinsics import readfirstlane
+from max.gpu.intrinsics import readfirstlane
 from max.gpu import block_idx, lane_id, thread_idx
 from layout import TileTensor
 from layout import row_major

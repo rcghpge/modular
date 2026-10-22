@@ -33,7 +33,7 @@ V always lives in slot 0.
 """
 
 from std.sys import get_defined_bool
-from std.sys.intrinsics import readfirstlane
+from max.gpu.intrinsics import readfirstlane
 from std.math import ceildiv
 from std.math.uutils import umod, ufloordiv
 from max.gpu import block_idx

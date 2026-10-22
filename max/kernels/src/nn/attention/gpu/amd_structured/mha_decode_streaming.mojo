@@ -19,7 +19,7 @@ Uses DecodeStreamingKVBuffer for single-buffer, per-strip DRAM→SMEM staging
 (no KVCacheIterator; strips are sub-tiled from an external DRAM tile).
 """
 
-from std.sys.intrinsics import readfirstlane
+from max.gpu.intrinsics import readfirstlane
 from max.gpu import block_idx
 from max.gpu.sync import barrier
 from max.gpu import warp_id as get_warp_id

@@ -12,9 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.sys import align_of
-from std.sys.intrinsics import readfirstlane
 
-from max.gpu.intrinsics import AMDBufferResource
+from max.gpu.intrinsics import AMDBufferResource, readfirstlane
 from layout import *
 
 from std.utils import IndexList

@@ -75,8 +75,7 @@ SRD-OOB or filter-zero multiplies in the MMA.
 from std.math import ceildiv, min
 from std.sys import size_of, simd_width_of
 from max.gpu import WARP_SIZE
-from max.gpu.intrinsics import AMDBufferResource
-from std.sys.intrinsics import readfirstlane
+from max.gpu.intrinsics import AMDBufferResource, readfirstlane
 from std.collections import Optional
 
 from layout import TensorEngine, TensorLayout, TileTensor

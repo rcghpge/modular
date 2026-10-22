@@ -14,17 +14,13 @@
 
 from std.collections import Array
 from std.atomic import Atomic, Ordering
-from std.sys.intrinsics import (
-    ballot,
-    implicitarg_ptr,
-    llvm_intrinsic,
-    readfirstlane,
-    sendmsg,
-)
+from std.sys.intrinsics import llvm_intrinsic
 
 from std._gpu.primitives.id import lane_id
 from std.collections import Span
 from std.memory.pointer import _Null
+
+from .hip_intrinsics import ballot, implicitarg_ptr, readfirstlane, sendmsg
 
 # NOTE: MOST OF THE CODE HERE IS ADAPTED FROM
 # AMD'S `device-libs`.
