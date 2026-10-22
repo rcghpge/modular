@@ -1477,9 +1477,7 @@ def with_mask_flash_attention_split_kv_cpu_shape(
     comptime assert (
         type_of(v_cache).rank == type_of(q).rank + 1
     ), "v_cache rank must be q rank + 1"
-    return rebind[IndexList[type_of(q).rank]](
-        coord_to_index_list(q.shape().tuple())
-    )
+    return rebind[IndexList[type_of(q).rank]](coord_to_index_list(q.shape()))
 
 
 @extensibility.register("mo.composite.masked_flash_attention_cpu")

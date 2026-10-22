@@ -399,7 +399,7 @@ def causal_conv1d_varlen_update_shape(
     comptime assert (
         type_of(conv_state_indices).dtype == .int32
     ), "conv_state_indices dtype must be int32"
-    return rebind[IndexList[3]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[3]](coord_to_index_list(x.shape()))
 
 
 # ============================================================================
@@ -512,8 +512,8 @@ def causal_conv1d_varlen_states_shape(
     comptime assert (
         type_of(cu_seqlens).dtype == .int32
     ), "cu_seqlens dtype must be int32"
-    var batch = coord_to_index_list(cu_seqlens.shape().tuple())[0] - 1
-    var dim = coord_to_index_list(x.shape().tuple())[1]
+    var batch = coord_to_index_list(cu_seqlens.shape())[0] - 1
+    var dim = coord_to_index_list(x.shape())[1]
     # state_len is derived from the output tensor shape at runtime
     # Return a placeholder shape; actual shape determined by output allocation
     return IndexList[3](batch, dim, 0)

@@ -312,7 +312,7 @@ def selective_scan_fwd_shape(
     comptime assert (
         type_of(delta_bias).dtype == type_of(u).dtype
     ), "delta_bias dtype must match u dtype"
-    return rebind[IndexList[3]](coord_to_index_list(u.shape().tuple()))
+    return rebind[IndexList[3]](coord_to_index_list(u.shape()))
 
 
 @extensibility.register("selective_scan_fwd_minimal")
@@ -533,7 +533,7 @@ def selective_scan_fwd_minimal_shape(
     comptime assert (
         type_of(C).dtype == type_of(u).dtype
     ), "C dtype must match u dtype"
-    return rebind[IndexList[3]](coord_to_index_list(u.shape().tuple()))
+    return rebind[IndexList[3]](coord_to_index_list(u.shape()))
 
 
 @extensibility.register("selective_scan_update")
@@ -807,6 +807,6 @@ def selective_scan_update_shape(
         type_of(dt_bias).dtype == type_of(state_in).dtype
     ), "dt_bias dtype must match state_in dtype"
     return (
-        rebind[IndexList[3]](coord_to_index_list(state_in.shape().tuple())),
-        rebind[IndexList[2]](coord_to_index_list(x.shape().tuple())),
+        rebind[IndexList[3]](coord_to_index_list(state_in.shape())),
+        rebind[IndexList[2]](coord_to_index_list(x.shape())),
     )

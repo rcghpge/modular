@@ -244,14 +244,14 @@ struct TraitComputeOutputTileOnSignature:
 def trait_shape_fn_with_role[
     T: Input & TileTensorable
 ](x: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape()))
 
 
 # A shape-function tensor argument carrying `Fused`. Fusion is an `execute`-only
 # concept; rejected on a shape-fn arg.
 @extensibility.register_shape_function("trait_shape_fn_fused")
 def trait_shape_fn_fused[T: Fused & TileTensorable](x: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape()))
 
 
 # A shape-function tensor argument carrying `Loadable` (a fusion access
@@ -261,7 +261,7 @@ def trait_shape_fn_fused[T: Fused & TileTensorable](x: T) -> IndexList[T.rank]:
 def trait_shape_fn_loadable[
     T: Loadable & TileTensorable
 ](x: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape()))
 
 
 # ========================================================================== #
@@ -301,7 +301,7 @@ struct TraitStableFused:
 def trait_shape_fn_stable[
     T: Stable & TileTensorable
 ](x: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape()))
 
 
 # Unbound IO parameters must not hide a legacy shape-function tensor argument.

@@ -116,7 +116,8 @@ struct _MoggInputLoadFusionTensor[
     comptime alignment = Self._alignment
     comptime device_passable = Self._device_passable
     comptime access_enabled = Self._access_enabled
-    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime _shape_types = Self.LayoutType._shape_types
+    comptime __shape_types = Self.LayoutType.__shape_types
     var in_fusion: Self._InFusion
     var _layout: Self.LayoutType
 
@@ -164,8 +165,8 @@ struct _MoggInputLoadFusionTensor[
         return String("_MoggInputLoadFusionTensor")
 
     @inline(.always)
-    def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self._layout.shape_coord())
+    def shape(self) -> Coord[*Self._shape_types]:
+        return self._layout.shape_coord()
 
     @inline(.always)
     def load[
@@ -247,7 +248,8 @@ struct _MoggOutputStoreFusionTensor[
     comptime alignment = Self._alignment
     comptime device_passable = Self._device_passable
     comptime access_enabled = Self._access_enabled
-    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime _shape_types = Self.LayoutType._shape_types
+    comptime __shape_types = Self.LayoutType.__shape_types
     var out_fusion: Self._OutFusion
     var _layout: Self.LayoutType
 
@@ -296,8 +298,8 @@ struct _MoggOutputStoreFusionTensor[
         return String("_MoggOutputStoreFusionTensor")
 
     @inline(.always)
-    def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self._layout.shape_coord())
+    def shape(self) -> Coord[*Self._shape_types]:
+        return self._layout.shape_coord()
 
     @inline(.always)
     def store[
@@ -378,7 +380,8 @@ struct _MoggTransformFusionTensor[
     comptime mut = Self._mut
     comptime device_passable = Self._device_passable
     comptime access_enabled = Self._access_enabled
-    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime _shape_types = Self.LayoutType._shape_types
+    comptime __shape_types = Self.LayoutType.__shape_types
     var transform_fusion: Self._TransformFusion
     var _layout: Self.LayoutType
     var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
@@ -443,8 +446,8 @@ struct _MoggTransformFusionTensor[
         return String("_MoggTransformFusionTensor")
 
     @inline(.always)
-    def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self._layout.shape_coord())
+    def shape(self) -> Coord[*Self._shape_types]:
+        return self._layout.shape_coord()
 
     @inline(.always)
     def layout(self) -> Self.LayoutType:

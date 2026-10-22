@@ -311,7 +311,7 @@ def reduce_row_mean_of_squares_shape(input: Some[Tensor]) -> IndexList[2]:
         mean of squares.
     """
     comptime assert type_of(input).rank == 2, "input must be rank 2"
-    var input_shape = coord_to_index_list(input.shape().tuple())
+    var input_shape = coord_to_index_list(input.shape())
     return Index(input_shape[0], 1)
 
 
@@ -388,7 +388,7 @@ def reduce_row_mean_of_squares_qk_shape(
     comptime assert (
         type_of(q).rank == 2 and type_of(k).rank == 2
     ), "q and k must be rank 2"
-    var q_shape = coord_to_index_list(q.shape().tuple())
+    var q_shape = coord_to_index_list(q.shape())
     return Index(q_shape[0], 2)
 
 
@@ -677,7 +677,7 @@ def reduce_layer_norm_shape(
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
     comptime assert type_of(beta).rank == 1, "beta must be rank 1"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -798,7 +798,7 @@ def reduce_rms_norm_shape(
     ), "gamma dtype must match input dtype"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -947,7 +947,7 @@ def composite_rms_norm_rope_shape(
         type_of(sin_vals).rank == type_of(input).rank
     ), "sin_vals rank must match input rank"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -1096,7 +1096,7 @@ def composite_layer_norm_rope_ragged_shape(
     comptime assert type_of(start_pos).rank == 1, "start_pos must be rank 1"
     comptime assert type_of(freqs_cis).rank == 2, "freqs_cis must be rank 2"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -1197,7 +1197,7 @@ def reduce_group_norm_shape(
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
     comptime assert type_of(beta).rank == 1, "beta must be rank 1"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -1280,7 +1280,7 @@ def reduce_reduce_min_and_max_shape[
         The output shape with `axis` replaced by 2 (for min and max).
     """
     var new_shape = rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
     new_shape[_unsafe_normalize_neg_index(axis, type_of(input).rank)] = 2
 
@@ -1462,7 +1462,7 @@ def composite_rms_norm_fused_residual_add_shape(
     comptime assert type_of(gamma1).rank == 1, "gamma1 must be rank 1"
     comptime assert type_of(gamma2).rank == 1, "gamma2 must be rank 1"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -1628,7 +1628,7 @@ def composite_rms_norm_residual_add_shape(
     ), "gamma dtype must match input dtype"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 

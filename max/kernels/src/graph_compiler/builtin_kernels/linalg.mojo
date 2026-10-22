@@ -217,7 +217,7 @@ def composite_matmul_fused_partial_rms_norm_shape(
     # Return the input shape for normed output
     # The actual shape split is handled by the op semantics
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 

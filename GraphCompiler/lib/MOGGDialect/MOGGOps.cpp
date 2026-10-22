@@ -4627,7 +4627,8 @@ struct _MoggTensorArg[
     comptime mut = Self._io.is_mut()
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
-    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime _shape_types = Self.LayoutType._shape_types
+    comptime __shape_types = Self.LayoutType.__shape_types
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
     comptime Engine = Self._Engine
@@ -4697,8 +4698,8 @@ struct _MoggTensorArg[
         return name^
 
     @inline(.always)
-    def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self._layout.shape_coord())
+    def shape(self) -> Coord[*Self._shape_types]:
+        return self._layout.shape_coord()
 
     @inline(.always)
     def layout(self) -> Self.LayoutType:
@@ -4757,7 +4758,8 @@ struct _MoggShapeTensorArg[
     comptime mut = False
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
-    comptime ShapeType = Coord[*Self.LayoutType._shape_types]
+    comptime _shape_types = Self.LayoutType._shape_types
+    comptime __shape_types = Self.LayoutType.__shape_types
     comptime rank = Self.LayoutType.rank
     comptime alignment = Self._alignment
     var handle: Pointer[Scalar[Self.dtype], UntrackedOrigin[mut = Self.mut]]
@@ -4775,8 +4777,8 @@ struct _MoggShapeTensorArg[
         self._layout = layout
 
     @inline(.always)
-    def shape(self) -> Self.ShapeType:
-        return rebind[Self.ShapeType](self.layout().shape_coord())
+    def shape(self) -> Coord[*Self._shape_types]:
+        return self.layout().shape_coord()
 
     @inline(.always)
     def layout(self) -> Self.LayoutType:

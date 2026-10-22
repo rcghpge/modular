@@ -263,9 +263,7 @@ struct Foo:
 def imposter_add_shape(
     x: Some[Tensor], y: Some[Tensor]
 ) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 # Same as `imposter_add`, but its shape function raises, so the generated shape
@@ -296,9 +294,7 @@ def imposter_add_raising_shape_shape(
 ) raises -> IndexList[type_of(x).rank]:
     if type_of(x).rank == 0:
         raise "imposter_add_raising_shape: rank-0 is not supported"
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 # Device entry for the GPU negate path: one thread per flat element, negating
@@ -1758,9 +1754,7 @@ struct FooWithStructParam[flip: Bool]:
 def imposter_add_struct_param_shape(
     x: Some[Tensor],
 ) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 def _matmul(
@@ -1820,8 +1814,8 @@ def imposter_matmul_shape(
     a: Some[Tensor],
     b: Some[Tensor],
 ) -> IndexList[2]:
-    var shape = coord_to_index_list(a.shape().tuple())
-    shape[1] = coord_to_index_list(b.shape().tuple())[1]
+    var shape = coord_to_index_list(a.shape())
+    shape[1] = coord_to_index_list(b.shape())[1]
     return rebind[IndexList[2]](shape)
 
 
@@ -1845,9 +1839,7 @@ struct PrintTensorSpecOp:
 
 @extensibility.register_shape_function("print_tensor_spec")
 def print_tensor_spec_shape(x: Some[Tensor]) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 @extensibility.register("print_tensor")
@@ -1887,9 +1879,7 @@ struct PrintTensorSpecFusedOp:
 def print_tensor_spec_fused_shape(
     x: Some[Tensor],
 ) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 @extensibility.register("print_output_shape_strides_fused")
@@ -1921,9 +1911,7 @@ struct PrintOutputShapeStridesFusedOp:
 def print_output_shape_strides_fused_shape(
     x: Some[Tensor],
 ) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 @extensibility.register("test_monoid_mixed_fields")
@@ -2114,9 +2102,7 @@ struct AddComputeFusion:
 def imposter_add_compute_fusion_shape(
     x: Some[Tensor], y: Some[Tensor]
 ) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 @extensibility.register("imposter_add_fuse_output")
@@ -2173,8 +2159,8 @@ def matmul_fuse_out_shape(
     a: Some[Tensor],
     b: Some[Tensor],
 ) -> IndexList[2]:
-    var shape = coord_to_index_list(a.shape().tuple())
-    shape[1] = coord_to_index_list(b.shape().tuple())[1]
+    var shape = coord_to_index_list(a.shape())
+    shape[1] = coord_to_index_list(b.shape())[1]
     return rebind[IndexList[2]](shape)
 
 
@@ -2301,9 +2287,7 @@ struct ElementwisePrintShape:
 
 @extensibility.register_shape_function("print_shape_fused")
 def print_shape_fused_shape(x: Some[Tensor]) -> IndexList[type_of(x).rank]:
-    return rebind[IndexList[type_of(x).rank]](
-        coord_to_index_list(x.shape().tuple())
-    )
+    return rebind[IndexList[type_of(x).rank]](coord_to_index_list(x.shape()))
 
 
 # Raises if input shape is 10
@@ -2328,7 +2312,7 @@ def custom_op_that_raises_shape(
     x: Some[Tensor],
 ) raises -> IndexList[type_of(x).rank]:
     print("Hello")
-    var out_shape = coord_to_index_list(x.shape().tuple())
+    var out_shape = coord_to_index_list(x.shape())
     if out_shape[0] == 20:
         raise ("data.get_shape()[0] == 20")
     return rebind[IndexList[type_of(x).rank]](out_shape)
@@ -2536,7 +2520,7 @@ struct TestCustomOp:
 def test_custom_op_shape(input: Some[Tensor]) -> IndexList[type_of(input).rank]:
     print("Hello")
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -2567,7 +2551,7 @@ struct TraitMetadataShapeOp:
 def trait_metadata_shape_op_shape[
     T: TileTensorable
 ](input: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(input.shape()))
 
 
 # A custom op whose shape function binds the bare `Tensor` metadata trait
@@ -2595,7 +2579,7 @@ struct TraitTensorShapeOp:
 
 @extensibility.register_shape_function("trait_tensor_shape_op")
 def trait_tensor_shape_op_shape[T: Tensor](input: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(input.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(input.shape()))
 
 
 # A custom op whose shape function reads element values off a
@@ -2668,9 +2652,7 @@ struct TraitTensorTupleShapeOp:
 def trait_tensor_tuple_shape_op_shape[
     Ts: TypeList[Trait=Tensor, ...], //
 ](inputs: TensorTuple[*Ts]) -> IndexList[Ts[0].rank]:
-    return rebind[IndexList[Ts[0].rank]](
-        coord_to_index_list(inputs[0].shape().tuple())
-    )
+    return rebind[IndexList[Ts[0].rank]](coord_to_index_list(inputs[0].shape()))
 
 
 @extensibility.register("single_device_context")
@@ -2857,7 +2839,7 @@ def custom_op_with_custom_parameter_shape_func_shape[
     test_flag: Int
 ](input_tensor: Some[Tensor]) -> IndexList[type_of(input_tensor).rank]:
     return rebind[IndexList[type_of(input_tensor).rank]](
-        coord_to_index_list(input_tensor.shape().tuple())
+        coord_to_index_list(input_tensor.shape())
     )
 
 
@@ -2883,7 +2865,7 @@ def custom_op_with_mixed_bound_shape_func_shape(
     num_rows: Int32,
 ) -> IndexList[2]:
     _ = value_read.to_tile_tensor()
-    var cols = coord_to_index_list(metadata_only.shape().tuple())
+    var cols = coord_to_index_list(metadata_only.shape())
     return IndexList[2](Int(num_rows), cols[1])
 
 
@@ -3095,7 +3077,7 @@ def shape_func_with_mutable_shape(
     x: Some[Tensor],
 ) -> IndexList[2]:
     comptime assert type_of(x).rank == 2, "x must be rank 2"
-    return rebind[IndexList[2]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[2]](coord_to_index_list(x.shape()))
 
 
 @extensibility.register("elemwise_add_with_param")

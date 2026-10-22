@@ -214,7 +214,7 @@ def reduce_shape(
 
     # compute and return the output shape
     var output_shape = rebind[IndexList[type_of(input_buf).rank]](
-        coord_to_index_list(input_buf.shape().tuple())
+        coord_to_index_list(input_buf.shape())
     )
     output_shape[normalize_neg_index(axis, type_of(input_buf).rank)] = 1
     return output_shape
@@ -771,8 +771,8 @@ def roi_align_shape(
     """
     comptime assert type_of(input).rank == 4, "input must be rank 4"
     comptime assert type_of(rois).rank == 2, "rois must be rank 2"
-    var input_shape = coord_to_index_list(input.shape().tuple())
-    var rois_shape = coord_to_index_list(rois.shape().tuple())
+    var input_shape = coord_to_index_list(input.shape())
+    var rois_shape = coord_to_index_list(rois.shape())
 
     var shape = IndexList[4]()
     # input shape is [N, H, W, C]
@@ -840,7 +840,7 @@ def repeat_interleave_kernel_shape(
 
     return repeat_interleave_shape(
         rebind[IndexList[type_of(input).rank]](
-            coord_to_index_list(input.shape().tuple())
+            coord_to_index_list(input.shape())
         ),
         repeats.to_tile_tensor(),
         Int(normalize_neg_index(axis, type_of(input).rank)),
@@ -1041,13 +1041,13 @@ def concat_shape_impl[
 
     var concat_axis_dim_sum = 0
     var output_shape = rebind[IndexList[rank]](
-        coord_to_index_list(inputs[0].shape().tuple())
+        coord_to_index_list(inputs[0].shape())
     )
 
     comptime for i in range(len(Ins)):
         comptime assert Ins[i].rank == rank, "inputs must share a rank"
         var input_shape = rebind[IndexList[rank]](
-            coord_to_index_list(inputs[i].shape().tuple())
+            coord_to_index_list(inputs[i].shape())
         )
         concat_axis_dim_sum += input_shape[axis]
         if not shape_equal_ignore_axis(output_shape, input_shape):
@@ -1229,7 +1229,7 @@ def fold_kernel_shape[
         Int(kernel_size_tt[1]),
     )
     return fold_shape(
-        rebind[IndexList[3]](coord_to_index_list(input.shape().tuple())),
+        rebind[IndexList[3]](coord_to_index_list(input.shape())),
         output_size_tuple,
         kernel_size_tuple,
     )
@@ -3784,7 +3784,7 @@ def tpool_patch_merger_shape(
     comptime assert (
         type_of(_grid_thws).dtype == .int64
     ), "_grid_thws dtype must be int64"
-    var input_shape = coord_to_index_list(input.shape().tuple())
+    var input_shape = coord_to_index_list(input.shape())
     return IndexList[2](Int(total_output_patches), Int(input_shape[1]))
 
 
@@ -4035,9 +4035,7 @@ def gated_delta_conv1d_fwd_shape(
         type_of(input_row_offsets).dtype == .uint32
     ), "input_row_offsets dtype must be uint32"
     # conv_output_ragged has same shape as qkv_input_ragged
-    return rebind[IndexList[2]](
-        coord_to_index_list(qkv_input_ragged.shape().tuple())
-    )
+    return rebind[IndexList[2]](coord_to_index_list(qkv_input_ragged.shape()))
 
 
 @extensibility.register("gated_delta_conv1d_verify_fwd")
@@ -4418,15 +4416,9 @@ def gated_delta_recurrence_fwd_shape(
         type_of(input_row_offsets).dtype == .uint32
     ), "input_row_offsets dtype must be uint32"
     # recurrence_output: [total_seq_len, value_dim]
-    var qkv_conv_output_shape = coord_to_index_list(
-        qkv_conv_output.shape().tuple()
-    )
-    var decay_per_token_shape = coord_to_index_list(
-        decay_per_token.shape().tuple()
-    )
-    var recurrent_state_shape = coord_to_index_list(
-        recurrent_state.shape().tuple()
-    )
+    var qkv_conv_output_shape = coord_to_index_list(qkv_conv_output.shape())
+    var decay_per_token_shape = coord_to_index_list(decay_per_token.shape())
+    var recurrent_state_shape = coord_to_index_list(recurrent_state.shape())
     var total_seq_len = qkv_conv_output_shape[0]
     var num_value_heads = decay_per_token_shape[1]
     var value_head_dim = recurrent_state_shape[3]
@@ -5204,7 +5196,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
         and type_of(dt_bias).dtype == type_of(x).dtype
     ), "x, dt, A, B, C, D, and dt_bias must share a dtype"
     # y has the same shape as x: (total_len, nheads, head_dim).
-    return rebind[IndexList[3]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[3]](coord_to_index_list(x.shape()))
 
 
 @extensibility.register("mamba2_replay_fold")
@@ -5584,7 +5576,7 @@ def causal_conv1d_varlen_fwd_shape(
     comptime assert (
         type_of(update_state).dtype == .bool
     ), "update_state dtype must be bool"
-    return rebind[IndexList[2]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[2]](coord_to_index_list(x.shape()))
 
 
 # ===-----------------------------------------------------------------------===#
@@ -5700,7 +5692,7 @@ def gated_group_rmsnorm_shape(
     comptime assert (
         type_of(weight).dtype == .float32
     ), "weight dtype must be float32"
-    return rebind[IndexList[2]](coord_to_index_list(y.shape().tuple()))
+    return rebind[IndexList[2]](coord_to_index_list(y.shape()))
 
 
 # ===-----------------------------------------------------------------------===#

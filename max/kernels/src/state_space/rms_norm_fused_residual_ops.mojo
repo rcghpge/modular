@@ -237,5 +237,5 @@ def rms_norm_fused_residual_shape[
         type_of(gamma).dtype == dtype
     ), "gamma dtype must match the scalar dtype"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )

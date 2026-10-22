@@ -555,8 +555,8 @@ def squeeze_shape_fn(
         type_of(remove_indices).rank == 1
     ), "remove_indices must be rank 1"
     var out_dim = (
-        coord_to_index_list(input_shape.shape().tuple())[0]
-        - coord_to_index_list(remove_indices.shape().tuple())[0]
+        coord_to_index_list(input_shape.shape())[0]
+        - coord_to_index_list(remove_indices.shape())[0]
     )
 
     if out_dim < 0:
@@ -628,8 +628,8 @@ def unsqueeze_shape_fn(
         type_of(remove_indices).rank == 1
     ), "remove_indices must be rank 1"
     var out_dim = (
-        coord_to_index_list(input_shape.shape().tuple())[0]
-        + coord_to_index_list(remove_indices.shape().tuple())[0]
+        coord_to_index_list(input_shape.shape())[0]
+        + coord_to_index_list(remove_indices.shape())[0]
     )
     return IndexList[1](out_dim)
 
@@ -1306,7 +1306,7 @@ struct BroadcastTo:
     ]:
         comptime input_rank = type_of(input).rank
         comptime assert type_of(shape).rank == 1, "shape must be rank 1"
-        var input_shape = coord_to_index_list(input.shape().tuple())
+        var input_shape = coord_to_index_list(input.shape())
         var shape_tt = shape.to_tile_tensor()
         if output_rank != Int(shape_tt.dim(0)):
             raise Error(
@@ -1418,8 +1418,8 @@ def broadcast_shape_fn(
     """Computes the output shape for the `mo.broadcast_shape` graph op."""
     comptime assert type_of(lhs_buf).rank == 1, "lhs_buf must be rank 1"
     comptime assert type_of(rhs_buf).rank == 1, "rhs_buf must be rank 1"
-    var lhs_dim = coord_to_index_list(lhs_buf.shape().tuple())[0]
-    var rhs_dim = coord_to_index_list(rhs_buf.shape().tuple())[0]
+    var lhs_dim = coord_to_index_list(lhs_buf.shape())[0]
+    var rhs_dim = coord_to_index_list(rhs_buf.shape())[0]
     return IndexList[1](max(lhs_dim, rhs_dim))
 
 
@@ -1699,7 +1699,7 @@ struct Transpose:
                     " rank)"
                 )
 
-        var input_shape = coord_to_index_list(input.shape().tuple())
+        var input_shape = coord_to_index_list(input.shape())
         var out = IndexList[rank]()
 
         comptime for i in range(rank):
@@ -2329,7 +2329,7 @@ def split_ith_output_shape_fn(
     for i in range(num_splits):
         split_sizes_sum += Int(split_sizes[i])
     var output_shape = rebind[IndexList[rank]](
-        coord_to_index_list(input_buf.shape().tuple())
+        coord_to_index_list(input_buf.shape())
     )
     if split_sizes_sum != output_shape[normalized_split_axis]:
         raise Error(
@@ -2459,11 +2459,9 @@ def advanced_indexing_getitem_shape_fn[
         start_axis=start_axis, num_index_tensors=Indices.length
     ](
         rebind[IndexList[input_rank]](
-            coord_to_index_list(input_tensor.shape().tuple())
+            coord_to_index_list(input_tensor.shape())
         ),
-        rebind[IndexList[index_rank]](
-            coord_to_index_list(indices[0].shape().tuple())
-        ),
+        rebind[IndexList[index_rank]](coord_to_index_list(indices[0].shape())),
     )
 
 

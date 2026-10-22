@@ -416,7 +416,7 @@ def varlen_selective_scan_fwd_shape(
     comptime assert (
         type_of(has_initial_state).dtype == .bool
     ), "has_initial_state dtype must be bool"
-    return rebind[IndexList[2]](coord_to_index_list(u.shape().tuple()))
+    return rebind[IndexList[2]](coord_to_index_list(u.shape()))
 
 
 # ============================================================================
@@ -785,6 +785,6 @@ def varlen_selective_state_update_shape(
     comptime assert (
         type_of(state_batch_indices).dtype == .int32
     ), "state_batch_indices dtype must be int32"
-    var x_shape = rebind[IndexList[3]](coord_to_index_list(x.shape().tuple()))
-    var dstate = coord_to_index_list(A.shape().tuple())[2]
+    var x_shape = rebind[IndexList[3]](coord_to_index_list(x.shape()))
+    var dstate = coord_to_index_list(A.shape())[2]
     return ((x_shape[0], x_shape[1], x_shape[2], dstate), x_shape)

@@ -120,7 +120,7 @@ def mxf353_filter_shape(x: Some[TileTensorable]) raises -> IndexList[2]:
     data-dependent output row count for `mxf353_filter`.
     """
     var input = x.to_tile_tensor()
-    var shape = coord_to_index_list(x.shape().tuple())
+    var shape = coord_to_index_list(x.shape())
     var count = 0
     for row in range(shape[0]):
         if input[row, 0] > 0:

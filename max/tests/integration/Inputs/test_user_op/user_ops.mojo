@@ -127,13 +127,11 @@ def concat_opaque_shape_fn[
     axis: Int,
 ](inputs: TensorTuple[*Ins]) raises -> IndexList[Ins[0].rank]:
     comptime rank = Ins[0].rank
-    var shape = rebind[IndexList[rank]](
-        coord_to_index_list(inputs[0].shape().tuple())
-    )
+    var shape = rebind[IndexList[rank]](coord_to_index_list(inputs[0].shape()))
     var extent = 0
     comptime for i in range(len(Ins)):
         var input_shape = rebind[IndexList[rank]](
-            coord_to_index_list(inputs[i].shape().tuple())
+            coord_to_index_list(inputs[i].shape())
         )
         comptime for d in range(rank):
             if d != axis and input_shape[d] != shape[d]:

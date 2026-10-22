@@ -523,7 +523,7 @@ struct TraitNonFusedLoadStoreCapability:
 # tensor_arg_trait_invalid_stubs (io-role / Fused / Loadable).
 @extensibility.register_shape_function("trait_tensor_shape_fn")
 def trait_tensor_shape_fn[T: Tensor](x: T) -> IndexList[T.rank]:
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape()))
 
 
 # The `TileTensorable` bound: a shape function may read data as well as
@@ -534,7 +534,7 @@ def trait_tile_tensorable_shape_fn[
     T: TileTensorable
 ](x: T) -> IndexList[T.rank]:
     _ = x.to_tile_tensor()
-    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+    return rebind[IndexList[T.rank]](coord_to_index_list(x.shape()))
 
 
 # `Input & TileTensorable & Stable`: a slot-backed read-only input. Distills to

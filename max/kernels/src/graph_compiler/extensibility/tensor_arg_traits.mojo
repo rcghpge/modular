@@ -170,14 +170,20 @@ trait Tensor:
     """
 
     comptime dtype: DType
-    comptime ShapeType: CoordLike
     comptime rank: Int
 
-    def shape(self) -> Self.ShapeType:
+    # The shape is a `Coord` over these element types, not an opaque
+    # `CoordLike`, so a generic kernel body sees a `Coord` and overloads that
+    # take one (`row_major`, `coord_to_index_list`) resolve as they would on a
+    # concrete tensor.
+    comptime __shape_types: TypeList[Trait=CoordLike, _]._mlir_type
+    comptime _shape_types: TypeList[Trait=CoordLike, Self.__shape_types]
+
+    def shape(self) -> Coord[*Self._shape_types]:
         """Returns the tensor's runtime shape.
 
         Returns:
-            The shape as a `Coord` of the argument's `ShapeType`.
+            The shape as a `Coord`, one element per dimension.
         """
         ...
 

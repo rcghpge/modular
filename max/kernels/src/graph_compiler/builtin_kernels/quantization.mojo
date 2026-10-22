@@ -222,7 +222,7 @@ def composite_rms_norm_fused_quantize_dynamic_scaled_fp8_shape(
     ), "gamma dtype must match input dtype"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -481,8 +481,8 @@ def vroom_q4_0_matmul_shape(a: Some[Tensor], b: Some[Tensor]) -> IndexList[2]:
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
     return IndexList[2](
-        Int(coord_to_index_list(a.shape().tuple())[0]),
-        Int(coord_to_index_list(b.shape().tuple())[0]),
+        Int(coord_to_index_list(a.shape())[0]),
+        Int(coord_to_index_list(b.shape())[0]),
     )
 
 
@@ -513,9 +513,7 @@ def vroom_q4_0_repack_weights_shape(
     """
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
-    return rebind[IndexList[type_of(b).rank]](
-        coord_to_index_list(b.shape().tuple())
-    )
+    return rebind[IndexList[type_of(b).rank]](coord_to_index_list(b.shape()))
 
 
 @extensibility.register("ggml_q4_k_dequantize")
@@ -586,8 +584,8 @@ def vroom_q4_k_matmul_shape(a: Some[Tensor], b: Some[Tensor]) -> IndexList[2]:
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
     return IndexList[2](
-        Int(coord_to_index_list(a.shape().tuple())[0]),
-        Int(coord_to_index_list(b.shape().tuple())[0]),
+        Int(coord_to_index_list(a.shape())[0]),
+        Int(coord_to_index_list(b.shape())[0]),
     )
 
 
@@ -618,9 +616,7 @@ def vroom_q4_k_repack_weights_shape(
     """
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
-    return rebind[IndexList[type_of(b).rank]](
-        coord_to_index_list(b.shape().tuple())
-    )
+    return rebind[IndexList[type_of(b).rank]](coord_to_index_list(b.shape()))
 
 
 @extensibility.register("ggml_q6_k_dequantize")
@@ -694,8 +690,8 @@ def vroom_q6_k_matmul_shape(a: Some[Tensor], b: Some[Tensor]) -> IndexList[2]:
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
     return IndexList[2](
-        Int(coord_to_index_list(a.shape().tuple())[0]),
-        Int(coord_to_index_list(b.shape().tuple())[0]),
+        Int(coord_to_index_list(a.shape())[0]),
+        Int(coord_to_index_list(b.shape())[0]),
     )
 
 
@@ -726,9 +722,7 @@ def vroom_q6_k_repack_weights_shape(
     """
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
-    return rebind[IndexList[type_of(b).rank]](
-        coord_to_index_list(b.shape().tuple())
-    )
+    return rebind[IndexList[type_of(b).rank]](coord_to_index_list(b.shape()))
 
 
 @extensibility.register("qmatmul_b4_g32")
@@ -762,8 +756,8 @@ def qmatmul_b4_g32_shape(a: Some[Tensor], b: Some[Tensor]) -> IndexList[2]:
     comptime assert type_of(a).rank == 2, "a must be rank 2"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
     return IndexList[2](
-        Int(coord_to_index_list(a.shape().tuple())[0]),
-        Int(coord_to_index_list(b.shape().tuple())[0]),
+        Int(coord_to_index_list(a.shape())[0]),
+        Int(coord_to_index_list(b.shape())[0]),
     )
 
 
@@ -798,8 +792,8 @@ def qmatmul_b4_g128_shape(a: Some[Tensor], b: Some[Tensor]) -> IndexList[2]:
     comptime assert type_of(a).rank == 2, "a must be rank 2"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
     return IndexList[2](
-        Int(coord_to_index_list(a.shape().tuple())[0]),
-        Int(coord_to_index_list(b.shape().tuple())[0]),
+        Int(coord_to_index_list(a.shape())[0]),
+        Int(coord_to_index_list(b.shape())[0]),
     )
 
 
@@ -831,9 +825,7 @@ def GGUF_gpu_repack_q4_0_shape(
     """Computes the output shape for the `GGUF_gpu_repack_q4_0` graph op."""
     comptime assert type_of(b).dtype == .uint8, "b must be uint8"
     comptime assert type_of(b).rank == 2, "b must be rank 2"
-    return rebind[IndexList[type_of(b).rank]](
-        coord_to_index_list(b.shape().tuple())
-    )
+    return rebind[IndexList[type_of(b).rank]](coord_to_index_list(b.shape()))
 
 
 @extensibility.register("GPTQ_gpu_repack_b4_g128")

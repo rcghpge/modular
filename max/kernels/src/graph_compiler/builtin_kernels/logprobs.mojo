@@ -377,9 +377,7 @@ def compute_log_probabilities_ragged_shape[
     comptime assert (
         type_of(lp_output_offsets_host).rank == 1
     ), "lp_output_offsets_host must be rank 1"
-    var num_offsets = coord_to_index_list(
-        lp_output_offsets_host.shape().tuple()
-    )[0]
+    var num_offsets = coord_to_index_list(lp_output_offsets_host.shape())[0]
     return IndexList[2](
         Int(lp_output_offsets_host.to_tile_tensor()[num_offsets - 1]),
         2**levels,

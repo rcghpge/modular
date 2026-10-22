@@ -106,7 +106,7 @@ def convert_e4m3fn_to_e4m3fnuz_shape(
     ), "input dtype must be float8_e4m3fn"
     comptime assert type_of(input).rank == 2, "input must be rank 2"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -704,7 +704,7 @@ def conv2d_residual_add_shape(
     comptime assert type_of(bias).rank == 1, "bias must be rank 1"
     # Output shape is the same as source shape (residual tensor).
     return rebind[IndexList[type_of(source).rank]](
-        coord_to_index_list(source.shape().tuple())
+        coord_to_index_list(source.shape())
     )
 
 
@@ -858,9 +858,7 @@ struct ConvTransposeCPU:
         var scratch_buf = ctx.enqueue_create_buffer[dtype](
             Int(output.shape().product())
         )
-        # A trait-bound shape is only `CoordLike` here, which `row_major` reads
-        # as a single nested mode; `tuple()` gives it the dims as a `Coord`.
-        var scratch = TileTensor(scratch_buf, row_major(output.shape().tuple()))
+        var scratch = TileTensor(scratch_buf, row_major(output.shape()))
         _conv_transpose_cpu[filter_layout, has_epilogue_fusion=True](
             scratch,
             to_tile_tensor(input),
@@ -1004,7 +1002,7 @@ struct ConvTransposeGPU:
             output_paddings.to_tile_tensor(),
         )
         conv_transposed_gpu[type_of(input).dtype, type_of(filter).dtype, dtype](
-            row_major(output.shape().tuple()),
+            row_major(output.shape()),
             input_tt,
             filter_tt,
             attrs[0],

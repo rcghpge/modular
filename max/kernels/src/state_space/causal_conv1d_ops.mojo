@@ -311,7 +311,7 @@ def causal_conv1d_shape(
         type_of(bias).dtype == type_of(input).dtype
     ), "bias dtype must match input dtype"
     return rebind[IndexList[type_of(input).rank]](
-        coord_to_index_list(input.shape().tuple())
+        coord_to_index_list(input.shape())
     )
 
 
@@ -470,9 +470,9 @@ def causal_conv1d_update_shape(
     ), "bias dtype must match input dtype"
     return (
         rebind[IndexList[type_of(input).rank]](
-            coord_to_index_list(input.shape().tuple())
+            coord_to_index_list(input.shape())
         ),
         rebind[IndexList[type_of(input).rank]](
-            coord_to_index_list(conv_state_in.shape().tuple())
+            coord_to_index_list(conv_state_in.shape())
         ),
     )
