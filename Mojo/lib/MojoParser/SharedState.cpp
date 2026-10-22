@@ -1352,21 +1352,10 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
     return child->decl;
   }
 
-  // If the container is loaded from bytecode, the decl should already be
-  // defined within the container decl, look it up directly. This avoids going
-  // through the more complex resolution paths (which also resolve other things
-  // in the container that aren't needed for this lookup).
-  ArrayRef<ASTDecl *> result;
-  if (container.loadedFromBytecode) {
-    result = container.lookupInCurrentScope(name);
-  } else {
-    LookupResult lookup = lookupAndResolveDecl(name, loc, container,
-                                               /*searchParentScopes=*/false);
-    result = lookup.getIfSuccess();
-  }
-
-  // Find the entry that matches the full symbol name.
-  for (ASTDecl *decl : result) {
+  // The op is in the container's own symbol table, so its decl is declared in
+  // the container's own scope. Look it up there directly rather than through
+  // name resolution, which would also resolve things this lookup doesn't need.
+  for (ASTDecl *decl : container.lookupInCurrentScope(name)) {
     if (decl->getIfOperation() != declOp)
       continue;
     if (failed(declResolver->resolve(*decl, howResolved, loc)))
