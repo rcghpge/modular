@@ -390,6 +390,18 @@ class SpeculativeConfig(ConfigFileModel):
         ),
     )
 
+    draft_head_parallelism: Literal["device0", "replica"] = Field(
+        default="device0",
+        description=(
+            "Where a data-parallel block draft runs its sequential head. "
+            "'device0' (default) runs it on device 0 over the whole batch. "
+            "'replica' runs it on each replica's own device over that "
+            "replica's rows, trading extra device memory for a shorter "
+            "draft step. Has no effect without data parallelism or on an "
+            "architecture whose draft head is not split."
+        ),
+    )
+
     logit_penalties: bool = Field(
         default=False,
         description=(

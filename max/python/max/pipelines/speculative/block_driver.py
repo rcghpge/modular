@@ -565,6 +565,55 @@ class SampledDraftSampler(DraftSampler):
             return self._all_dists
         return ops.stack(self._next_dists, axis=1)
 
+    def split(
+        self,
+        select: Callable[[TensorValue], Sequence[TensorValue]],
+        rows: Sequence[DimLike],
+    ) -> list[SampledDraftSampler]:
+        """Returns samplers that each draw a subset of this one's rows.
+
+        A data-parallel head takes one per device, so each replica draws its
+        own rows. Every draw is keyed by its row's own seed and never by the
+        row's position in the batch, so a row draws the same token either way.
+
+        Args:
+            select: Maps a ``[rows]`` sampling parameter to its subsets, each
+                on the device that draws it.
+            rows: Each subset's row count.
+
+        Returns:
+            One sampler per subset. Their distributions come back through
+            :meth:`adopt_distributions`.
+        """
+        return [
+            SampledDraftSampler(
+                seed=seed,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                vocab_size=self._vocab_size,
+                rows=subset_rows,
+            )
+            for seed, temperature, top_k, top_p, subset_rows in zip(
+                select(self._seed),
+                select(self._temperature),
+                select(self._top_k),
+                select(self._top_p),
+                rows,
+                strict=True,
+            )
+        ]
+
+    def adopt_distributions(self, dists: TensorValue) -> None:
+        """Takes the distributions the :meth:`split` samplers drew.
+
+        Args:
+            dists: ``[rows, n, vocab_size]``, reassembled in this sampler's
+                row order on its device.
+        """
+        assert self._all_dists is None and not self._next_dists
+        self._all_dists = dists
+
 
 def _scatter_to_vocab(
     dist: TensorValue, token_ids: TensorValue, vocab_size: int
