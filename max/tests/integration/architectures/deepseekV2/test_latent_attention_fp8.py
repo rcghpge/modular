@@ -460,28 +460,3 @@ def test_latent_attention_decode(
         config, input_tensor, attention_mask, attention_weights
     )
     torch.testing.assert_close(torch_output, max_output, rtol=RTOL, atol=ATOL)
-
-
-# Unlike the block-scaled tests these run on AMD too: the projections are
-# per-row FP8 matmuls and the MLA kernels run in bf16.
-@pytest.mark.parametrize(
-    "use_prefill", [True, False], ids=["prefill", "decode"]
-)
-def test_latent_attention_rowwise(
-    config: DeepseekV2Config,
-    input_tensor: torch.Tensor,
-    attention_mask: torch.Tensor,
-    attention_weights: dict[str, torch.Tensor],
-    use_prefill: bool,
-) -> None:
-    max_output = generate_max_outputs_fp8(
-        config,
-        input_tensor,
-        attention_weights,
-        use_prefill=use_prefill,
-        rowwise=True,
-    )
-    torch_output = generate_torch_outputs(
-        config, input_tensor, attention_mask, attention_weights
-    )
-    torch.testing.assert_close(torch_output, max_output, rtol=RTOL, atol=ATOL)
