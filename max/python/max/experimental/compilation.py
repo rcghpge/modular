@@ -782,6 +782,8 @@ def stage(
             counted over the flattened input types. Defaults to after the
             last input. Set it to match a calling convention that fixes
             their position, such as an exported graph's.
+            Setting it keeps the signal buffer on a single accelerator,
+            which otherwise needs none.
 
     Returns:
         A function that takes one input type per tensor argument of ``fn``
@@ -791,7 +793,9 @@ def stage(
     def record(*args: Any, **kwargs: Any) -> StagedGraph[_P, _R]:
         layouts, treedef = _declared_layouts(args, kwargs)
         # Signal buffers are only needed when at least two accelerators take
-        # part in the graph.
+        # part in the graph, unless the caller places them: then they belong
+        # to its calling convention, as on one accelerator.
+        placed = signal_buffer_index is not None
         ids = tuple(
             dict.fromkeys(
                 device.id
@@ -799,7 +803,7 @@ def stage(
                     (
                         device
                         for layout in layouts
-                        if layout.mesh.num_devices > 1
+                        if placed or layout.mesh.num_devices > 1
                         for device in layout.mesh.devices
                     ),
                     _own_devices(fn),
@@ -808,7 +812,7 @@ def stage(
                 if isinstance(device, Accelerator)
             )
         )
-        ids = ids if len(ids) > 1 else ()
+        ids = ids if placed or len(ids) > 1 else ()
         graph = Graph(
             name or _sanitized_graph_name(fn),
             input_types=_with_signal_buffers(
