@@ -565,19 +565,26 @@ MatmulOp::inferReturnTypes(MLIRContext *context,
   auto lhsShape = cast<ShapeAttr>(getShapeOf(lhs));
   auto rhsShape = cast<ShapeAttr>(getShapeOf(rhs));
 
-  ErrorOr<DType> promotedDtype =
-      promoteDtype(lhs.getType().getDtype(), rhs.getType().getDtype());
-  if (promotedDtype.isError()) {
-    return mlir::emitOptionalError(location, "Failed to resolve valid dtype: ",
-                                   StringRef{promotedDtype.getError()});
-  }
   auto graphOp = lhs.getParentRegion()->getParentOfType<MO::GraphOp>();
   Location loc = location.value_or(graphOp.getLoc());
   MO::ShapeMaterializeResult result =
       MO::materializeRmoMatmulShape(graphOp, loc, lhsShape, rhsShape);
 
-  return runShapePropagation(adaptor.getOperands(), location, *promotedDtype,
-                             result, inferredReturnTypes, getDevice(lhs));
+  // The lhs dtype is a placeholder: the creator sets the result dtype.
+  return runShapePropagation(adaptor.getOperands(), location,
+                             lhs.getType().getDtype(), result,
+                             inferredReturnTypes, getDevice(lhs));
+}
+
+bool MatmulOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  for (auto [a, b] : llvm::zip_equal(lhs, rhs)) {
+    auto aAsTensor = dyn_cast<MO::TensorType>(a);
+    auto bAsTensor = dyn_cast<MO::TensorType>(b);
+    if (!aAsTensor || !bAsTensor ||
+        aAsTensor.cloneWith(bAsTensor.getDtype()) != bAsTensor)
+      return false;
+  }
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

@@ -737,18 +737,6 @@ struct LowerMatmul : public OpRewritePattern<RMO::MatmulOp> {
     size_t rhsRank = rhsShape.getRank();
     size_t fullRank = std::max(size_t(2), std::max(lhsRank, rhsRank));
 
-    auto lhsDtype = lhsType.getDtype();
-    auto rhsDtype = rhsType.getDtype();
-    auto resultDtype = op.getResult().getType().getDtype();
-    if (lhsDtype != resultDtype) {
-      lhsType = lhsType.cloneWith(resultDtype);
-      lhs = RMO::MOCastOp::create(rewriter, loc, lhsType, lhs);
-    }
-    if (rhsDtype != resultDtype) {
-      rhsType = rhsType.cloneWith(resultDtype);
-      rhs = RMO::MOCastOp::create(rewriter, loc, rhsType, rhs);
-    }
-
     // Reshape to ensure both tensors have same rank.
     auto [lhsReshapeTarget, rhsReshapeTarget] =
         expandMatmulInputsForBroadcasting(lhsShape, rhsShape);

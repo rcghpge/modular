@@ -530,10 +530,21 @@ class Op(DefMixin):
     def default_builders(self):  # noqa: ANN201
         name = Name.from_cpp_qualified_name(f"{self.type.cpp}::create")
         yield Function(name, self.results + self.arguments, self.type)
-        if (
-            InferTypeOpAdaptor := self.table.get("InferTypeOpAdaptor", None)
-        ) is not None and InferTypeOpAdaptor in self.traits:
+        if self.has_infer_type_op_adaptor:
             yield Function(name, self.arguments, self.type)
+
+    @property
+    def has_infer_type_op_adaptor(self) -> bool:
+        """Whether the op infers its result types, with either adaptor trait."""
+        traits = [
+            trait
+            for name in (
+                "InferTypeOpAdaptor",
+                "InferTypeOpAdaptorWithIsCompatible",
+            )
+            if (trait := self.table.get(name, None)) is not None
+        ]
+        return any(trait in self.traits for trait in traits)
 
     @property
     def arguments(self) -> ArgList:

@@ -490,7 +490,7 @@ def RMO_ShapeToTensorOp : RMO_Op<"shape_to_tensor", [
 }
 
 def RMO_MatmulOp : RMO_Op<"matmul", [
-  InferTypeOpAdaptor,
+  InferTypeOpAdaptorWithIsCompatible,
   MO_SingleDevice,
   Pure,
 ]> {
@@ -511,10 +511,12 @@ def RMO_MatmulOp : RMO_Op<"matmul", [
     [10, 4, K] @ [K, 6] -> [10, 4, 6]
     [10, 4, K] @ [K] -> [10, 4]
     [K] @ [10, 4, K, 7] -> [10, 4, 7]
+
+    Only the result shape is inferred. The creator picks the result dtype,
+    and the inputs keep their own, which may differ from each other and from
+    the result (for example bf16 x bf16 -> f32).
   }];
-  let arguments = (ins
-    MO_Tensor:$input_x,
-    MO_Tensor:$input_y);
+  let arguments = (ins MO_Tensor:$input_x, MO_Tensor:$input_y);
   let results = (outs MO_Tensor:$result);
 
   let assemblyFormat = [{

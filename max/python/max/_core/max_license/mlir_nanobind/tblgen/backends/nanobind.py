@@ -196,10 +196,6 @@ class NanobindBackend(Backend):
 
         op_arg_names = tuple(a.name for a in op.arguments)
         builder_arg_names = tuple(a.name for a in builder.args)
-        infer_type_op_adaptor = op.table.get("InferTypeOpAdaptor", None)
-        has_infer_trait = infer_type_op_adaptor is not None and any(
-            t == infer_type_op_adaptor for t in op.traits
-        )
         # The InferTypeOp codegen only knows how to marshal operands and
         # wrapped attributes. Anything else (e.g. a raw `unsigned` the
         # op-specific builder converts to an attribute internally) needs
@@ -210,7 +206,7 @@ class NanobindBackend(Backend):
             for a in builder.args
         )
         is_infer_type_op_overload = (
-            has_infer_trait
+            op.has_infer_type_op_adaptor
             and marshallable_args
             and builder_arg_names == op_arg_names
         )

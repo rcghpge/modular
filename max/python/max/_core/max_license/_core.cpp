@@ -324,8 +324,10 @@ NB_MODULE(_core, m) {
            nb::sig("def __eq__(self, arg: object, /) -> bool"))
       .def("__hash__",
            [](::mlir::Value &self) -> size_t { return mlir::hash_value(self); })
-      .def_prop_rw("type", &mlir::Value::getType, &mlir::Value::setType,
-                   nb::sig("def type(self) -> T"))
+      .def_prop_rw(
+          "type", &mlir::Value::getType, &mlir::Value::setType,
+          nb::for_getter<nb::sig>("def type(self) -> T"),
+          nb::for_setter<nb::sig>("def type(self, type: T, /) -> None"))
       .def_prop_ro(
           "owner",
           [](const mlir::Value &self) {
