@@ -131,20 +131,16 @@ mo.graph @success_reshape_both_sides(
   mo.output %out : !mo.tensor<[1, 1024, 128, 128], f32>
 }
 
-// including this case as the initial implementation of this optimization could cause an infinite loop
-// between this pattern and the BroadcastReshape and BinaryVectorPattern
+// The initial implementation of this optimization could loop forever with
+// BroadcastReshapePattern on this case. The reshapes fold away.
 //
 // CHECK-LABEL: mo.graph
 // CHECK-SAME: @minimal([[VARG0:[^ ]*]]: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> {
 // CHECK-NEXT: [[V0:[^ ]*]] = mo.constant <#M.dense_array<1.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
-// CHECK-NEXT: [[V1:[^ ]*]] = mo.static.reshape([[VARG0]]) : !mo.tensor<[300, 1], f32> -> !mo.tensor<[300], f32>
-// CHECK-NEXT: [[V2:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[300], f32>
-// CHECK-NEXT: [[V3:[^ ]*]] = mo.min([[V1]], [[V2]]) : !mo.tensor<[300], f32>
-// CHECK-NEXT: [[V4:[^ ]*]] = mo.static.reshape([[V3]]) : !mo.tensor<[300], f32> -> !mo.tensor<[300, 1], f32>
-// CHECK-NEXT: [[V5:[^ ]*]] = mo.static.reshape([[V4]]) : !mo.tensor<[300, 1], f32> -> !mo.tensor<[300], f32>
-// CHECK-NEXT: [[V6:[^ ]*]] = mo.relu([[V5]]) : !mo.tensor<[300], f32>
-// CHECK-NEXT: [[V7:[^ ]*]] = mo.static.reshape([[V6]]) : !mo.tensor<[300], f32> -> !mo.tensor<[300, 1], f32>
-// CHECK-NEXT: mo.output [[V7]] : !mo.tensor<[300, 1], f32>
+// CHECK-NEXT: [[V1:[^ ]*]] = mo.static.broadcast_to([[V0]]) : !mo.tensor<[], f32> -> !mo.tensor<[300, 1], f32>
+// CHECK-NEXT: [[V2:[^ ]*]] = mo.min([[VARG0]], [[V1]]) : !mo.tensor<[300, 1], f32>
+// CHECK-NEXT: [[V3:[^ ]*]] = mo.relu([[V2]]) : !mo.tensor<[300, 1], f32>
+// CHECK-NEXT: mo.output [[V3]] : !mo.tensor<[300, 1], f32>
 mo.graph @minimal(%arg0: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32> {
   %0 = mo.constant <#M.dense_array<1.000000e+00> : tensor<f32>> : !mo.tensor<[], f32>
   %1 = mo.static.reshape(%0) : !mo.tensor<[], f32> -> !mo.tensor<[], f32>
@@ -153,4 +149,31 @@ mo.graph @minimal(%arg0: !mo.tensor<[300, 1], f32>) -> !mo.tensor<[300, 1], f32>
   %4 = mo.min(%arg0, %3) : !mo.tensor<[300, 1], f32>
   %5 = mo.relu(%4) : !mo.tensor<[300, 1], f32>
   mo.output %5 : !mo.tensor<[300, 1], f32>
+}
+
+// On CPU, removing a trailing 1, adding a broadcast constant and putting the 1
+// back used to loop between the reshape patterns; the add now moves to [8, 1].
+// CHECK-LABEL: mo.graph @no_loop_squeeze_add_constant_unsqueeze
+// CHECK:       %[[C:.*]] = mo.constant
+// CHECK-NEXT:  %[[B:.*]] = mo.static.broadcast_to(%[[C]]) : !mo.tensor<[], f32> -> !mo.tensor<[8, 1], f32>
+// CHECK-NEXT:  %[[A:.*]] = mo.add(%{{.*}}, %[[B]]) : !mo.tensor<[8, 1], f32>
+mo.graph @no_loop_squeeze_add_constant_unsqueeze(%x: !mo.tensor<[8, 1], f32, cpu:0>) -> !mo.tensor<[8, 1], f32, cpu:0> {
+  %c = mo.constant <#M.dense_array<1.0> : tensor<f32>> : !mo.tensor<[], f32, cpu:0>
+  %cb = mo.static.broadcast_to(%c) : !mo.tensor<[], f32, cpu:0> -> !mo.tensor<[8], f32, cpu:0>
+  %r = mo.static.reshape(%x) : !mo.tensor<[8, 1], f32, cpu:0> -> !mo.tensor<[8], f32, cpu:0>
+  %a = mo.add(%r, %cb) : !mo.tensor<[8], f32, cpu:0>
+  %y = mo.static.reshape(%a) : !mo.tensor<[8], f32, cpu:0> -> !mo.tensor<[8, 1], f32, cpu:0>
+  mo.output %y : !mo.tensor<[8, 1], f32, cpu:0>
+}
+
+// The view is the si32 exponent of a pow with a constant f32 base: the pow
+// keeps its f32 result after the swim.
+// CHECK-LABEL: mo.graph @swim_reshape_of_exponent_through_pow
+// CHECK:       mo.pow({{.*}}) : !mo.tensor<[8, 1], f32>
+mo.graph @swim_reshape_of_exponent_through_pow(%e: !mo.tensor<[8, 1], si32>) -> !mo.tensor<[8], f32> {
+  %c = mo.constant <#M.dense_array<2.0> : tensor<f32>> : !mo.tensor<[], f32>
+  %cb = mo.static.broadcast_to(%c) : !mo.tensor<[], f32> -> !mo.tensor<[8], f32>
+  %r = mo.static.reshape(%e) : !mo.tensor<[8, 1], si32> -> !mo.tensor<[8], si32>
+  %p = mo.pow(%cb : !mo.tensor<[8], f32>, %r : !mo.tensor<[8], si32>) : !mo.tensor<[8], f32>
+  mo.output %p : !mo.tensor<[8], f32>
 }

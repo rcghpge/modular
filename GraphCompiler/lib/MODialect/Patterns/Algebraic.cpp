@@ -447,88 +447,6 @@ struct FlattenNestedConcatPattern
   }
 };
 
-struct ElementWiseUnaryVectorPattern
-    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
-                                       ElementWiseUnary> {
-  ElementWiseUnaryVectorPattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::ElementWiseUnary op,
-                             DeviceAwareRewriter &rewriter) const override {
-    if (!isOnHost(op))
-      return rewriter.notifyMatchFailure(op, "Operation not on host CPU");
-
-    Location loc = op.getLoc();
-    TensorValue input = op.getInput();
-
-    auto inType = llvm::cast<TensorType>(input.getType());
-
-    if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
-          inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    Value opRes = op.getResult();
-
-    TensorType finalOutputType = op.getResult().getType();
-    TensorType newTypeShape = inType.cloneWith(
-        SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
-    auto reshape = rewriter.create<Static::ReshapeOp>(
-        loc, newTypeShape.cloneWith(input.getType().getDtype()), input);
-    op.setInput(reshape.getResult());
-    op.getResult().setType(
-        newTypeShape.cloneWith(op.getResult().getType().getDtype()));
-    rewriter.setInsertionPointAfter(op);
-    auto out = rewriter.create<Static::ReshapeOp>(loc, finalOutputType,
-                                                  op.getResult());
-    rewriter.replaceAllUsesExcept(opRes, out.getResult(), out);
-    return mlir::success();
-  }
-};
-
-struct ElementWiseBinaryVectorPattern
-    : public DeviceAwareRewritePattern<OpInterfaceRewritePattern,
-                                       ElementWiseBinary> {
-  ElementWiseBinaryVectorPattern(MLIRContext *ctx)
-      : DeviceAwareRewritePattern(ctx, 2) {}
-
-  LogicalResult
-  deviceAwareMatchAndRewrite(MO::ElementWiseBinary op,
-                             DeviceAwareRewriter &rewriter) const override {
-    if (!isOnHost(op))
-      return rewriter.notifyMatchFailure(op, "Operation not on host CPU");
-
-    Location loc = op.getLoc();
-    TensorValue a = op.getLhsInput();
-    TensorValue b = op.getRhsInput();
-
-    auto inType = llvm::cast<TensorType>(a.getType());
-
-    if (!(inType.hasStaticShape() && inType.getRank() == 2 &&
-          inType.getIntDim(0) != 1 && inType.getIntDim(1) == 1))
-      return rewriter.notifyMatchFailure(op, "failed to match pattern");
-
-    TensorValue opRes = op.getResult();
-    TensorType oldTensorType = opRes.getType();
-    TensorType newTypeShape = inType.cloneWith(
-        SmallVector<int64_t>{inType.getIntDim(0)}, inType.getElementType());
-    auto reshapeA = rewriter.create<Static::ReshapeOp>(
-        loc, newTypeShape.cloneWith(a.getType().getDtype()), a);
-    auto reshapeB = rewriter.create<Static::ReshapeOp>(
-        loc, newTypeShape.cloneWith(b.getType().getDtype()), b);
-    rewriter.modifyOpInPlace(op, [&]() {
-      op.setLhsInput(reshapeA.getResult());
-      op.setRhsInput(reshapeB.getResult());
-      op.getResult().setType(newTypeShape.cloneWith(oldTensorType.getDtype()));
-    });
-    rewriter.setInsertionPointAfter(op);
-    auto out =
-        rewriter.create<Static::ReshapeOp>(loc, oldTensorType, op.getResult());
-    rewriter.replaceAllUsesExcept(opRes, out.getResult(), out);
-    return mlir::success();
-  }
-};
-
 struct BroadcastReshapePattern
     : public DeviceAwareRewritePattern<OpRewritePattern, Static::ReshapeOp> {
   BroadcastReshapePattern(MLIRContext *ctx)
@@ -2323,8 +2241,7 @@ void populateAlgebraicPatterns(mlir::RewritePatternSet &patterns,
            MathematicalSimplificationAddWithNegative,
            MathematicalSimplificationSubWithNegative>(context);
 
-  patterns.add<ElementWiseUnaryVectorPattern, ElementWiseBinaryVectorPattern,
-               BroadcastReshapePattern>(context);
+  patterns.add<BroadcastReshapePattern>(context);
 
   patterns.add<ConvertBatchMatmulToMatmulPattern,
                ConvertBatchMatmulBatchSizeOneToMatmulPattern,

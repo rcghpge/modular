@@ -45,36 +45,6 @@ static TensorType permuteDims(TensorType ty, ArrayRef<int64_t> perm) {
   return ty.cloneWith(ShapeAttr::get(permutedDims, shapeTy));
 }
 
-/// Check whether `val` comes from a reshape that eliminates the trailing 1s
-/// from input's shape.
-static bool shouldSkipPatternIfReshapeSqueezesFinalDims(Value val) {
-  // From PAQ-988, we skip these reshapes because the cycle creating patterns
-  // (ElementWiseUnaryVectorPattern and ElementWiseBinaryVectorPattern) are
-  // disabled on non-host devices.
-  if (!isOnHost(val.getDefiningOp()))
-    return false;
-
-  auto reshapeOp = val.getDefiningOp<MO::Static::ReshapeOp>();
-  if (!reshapeOp) {
-    assert(!val.getDefiningOp<MO::ReshapeOp>());
-    return false;
-  }
-
-  auto inputShape = reshapeOp.getInput().getType().getShape();
-  auto outputShape = reshapeOp.getType().getShape();
-
-  auto inputRank = inputShape.getRank();
-  auto inputShapeHasTrailingOne = inputShape && inputShape.getRank() > 0 &&
-                                  inputShape.getIntDim(inputRank - 1) == 1;
-
-  auto outputRank = outputShape.getRank();
-  auto outputShapeHasNoTrailingOne =
-      outputShape && (outputShape.getRank() == 0 ||
-                      outputShape.getIntDim(outputRank - 1) != 1);
-
-  return inputShapeHasTrailingOne && outputShapeHasNoTrailingOne;
-}
-
 static bool isStaticConcat(ConcatOp op) {
   auto inputType = op.getType();
   if (!inputType.hasRank())
@@ -801,12 +771,6 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
     if (!inputTensor || !elemwiseTensor || !reshapedTensor || !broadcastTensor)
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
 
-    // TODO(#18823) find a more general solution
-    if (shouldSkipPatternIfReshapeSqueezesFinalDims(reshapedTensor)) {
-      return rewriter.notifyMatchFailure(
-          op, "Don't sink reshape that squeezes final dim.");
-    }
-
     TensorType inputTensorTy = inputTensor.getType();
 
     // Ensure the smallest rank tensor is `elemwise`
@@ -848,17 +812,6 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
           op, "matched ops have inconsistent devices");
     }
 
-    // TODO (#36567): Hack to avoid an infinite loop with the
-    // SwimViewOpThroughBinaryOpWithConstantSubtree patterns on CPU (PAQ-988).
-    if (isOnHost(op) && op.getResult().hasOneUse()) {
-      auto user = op.getResult().getUses().begin().getUser();
-      if (auto userReshapeOp = dyn_cast<ReshapeOpType>(user)) {
-        return rewriter.notifyMatchFailure(
-            op,
-            "Consumer operation is a reshape which would undo this pattern");
-      }
-    }
-
     // Moving the broadcast up preserves results: slices across the trailing
     // dims share elemwise operands, and the reshape keeps the trailing dims.
     DType broadcastDType = elemwiseTensor.getType().getDtype();
@@ -877,7 +830,10 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseBinaryOp
       newOp.setLhsInput(newBroadcast);
       newOp.setRhsInput(inputTensor);
     }
-    newOp.getResult().setType(inputTensor.getType());
+    // The reshaped operand may not have the result's dtype (`mo.pow`'s
+    // exponent).
+    newOp.getResult().setType(
+        inputTensor.getType().cloneWith(oldType.getDtype()));
 
     TensorValue output = rewriter.create<ReshapeOpType>(op->getLoc(), oldType,
                                                         newOp.getResult());
@@ -920,12 +876,6 @@ struct SinkStaticReshapeLikeOpThroughBroadcastedElementwiseUnaryOp
 
     if (!inputTensor)
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
-
-    // TODO(#18823) find a more general solution
-    if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getInput())) {
-      return rewriter.notifyMatchFailure(
-          op, "Don't sink reshape that squeezes final dim.");
-    }
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
@@ -980,12 +930,6 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
     if (!inputTensor)
       return rewriter.notifyMatchFailure(op, "Null values found in pattern.");
 
-    // TODO(#18823) find a more general solution
-    if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getInput())) {
-      return rewriter.notifyMatchFailure(
-          op, "Don't sink reshape that squeezes final dim.");
-    }
-
     TensorType inputTy = inputTensor.getType();
     TensorType reshapedTy = op.getInput().getType();
 
@@ -999,8 +943,9 @@ struct SinkStaticReshapeOpThroughSoftmaxOp
       return rewriter.notifyMatchFailure(op, "Can't sink non-last axis");
 
     // Ensure the shape of the last axis is not changed
-    if (inputTy.getRank() > 0 && inputTy.getShape().getValues().back() !=
-                                     reshapedTy.getShape().getValues().back())
+    if (inputTy.getRank() > 0 && (reshapedTy.getRank() == 0 ||
+                                  inputTy.getShape().getValues().back() !=
+                                      reshapedTy.getShape().getValues().back()))
       return rewriter.notifyMatchFailure(op, "Last axis is modified");
 
     if (!rewriter.addOps()) {
@@ -1071,13 +1016,6 @@ struct SinkSameStaticReshapeLikeOpsThroughElementwiseBinaryOp
 
     if (input1TensorTy.getShape() != input2TensorTy.getShape())
       return rewriter.notifyMatchFailure(op, "Inputs shapes must be equal");
-
-    // TODO(#18823) find a more general solution
-    if (shouldSkipPatternIfReshapeSqueezesFinalDims(op.getLhsInput()) ||
-        shouldSkipPatternIfReshapeSqueezesFinalDims(op.getRhsInput())) {
-      return rewriter.notifyMatchFailure(
-          op, "Don't sink reshape that squeezes final dim.");
-    }
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(
@@ -1305,15 +1243,6 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
           op, "Only applies to binop outputs with one use");
     }
 
-    // TODO (#36567): Hack to avoid an infinite loop between
-    // SwimReshapeThroughBinaryOpWithConstantSubtree, BroadcastReshapePattern
-    // and ElementwiseBinaryVectorPattern on CPU (PAQ-988).
-    if (isOnHost(op) && result.getType().hasRank() &&
-        result.getType().getRank() == 1) {
-      return rewriter.notifyMatchFailure(
-          op, "Ignoring to not conflict with binary vector pattern");
-    }
-
     Operation *maybeViewOp{nullptr};
     Operation *maybeConstantSubtreeRootOp{nullptr};
 
@@ -1371,19 +1300,6 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
 
     ViewOp viewOp = dyn_cast<ViewOp>(maybeViewOp);
 
-    // TODO (#36567): Hack to avoid an infinite loop between
-    // SwimReshapeThroughBinaryOpWithConstantSubtree, BroadcastReshapePattern
-    // and ElementwiseBinaryVectorPattern.
-    if (ViewOp consumerOp =
-            dyn_cast<ViewOp>(result.getUses().begin()->getOwner())) {
-
-      if (consumerOp.getResult().getType() == viewOp.getInput().getType()) {
-        return rewriter.notifyMatchFailure(
-            op, "Immediate consumer reshapes back to original shape, skipping "
-                "application");
-      }
-    }
-
     TensorValue cso =
         constantSubtreeSide == Input::LHS ? op.getLhsInput() : op.getRhsInput();
 
@@ -1406,7 +1322,8 @@ struct SwimViewOpThroughBinaryOpWithConstantSubtree
     default:
       llvm_unreachable("Should not reach here");
     }
-    op.getResult().setType(viewOp.getInput().getType());
+    op.getResult().setType(
+        viewOp.getInput().getType().cloneWith(result.getType().getDtype()));
 
     rewriter.setInsertionPointAfter(op);
     auto binOpViewOp = materializeBinOpViewOp(rewriter, op, viewOp);

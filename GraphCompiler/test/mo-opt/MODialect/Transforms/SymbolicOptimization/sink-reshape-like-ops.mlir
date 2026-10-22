@@ -167,23 +167,23 @@ mo.graph @sink_consecutive_elemwise_with_parameters<D8431, P49533, P49878>(
 // CHECK-NEXT: %[[RESHAPE_AT_END:.*]] = mo.static.reshape(%[[MUL3]])
 // CHECK-NEXT: mo.output %[[RESHAPE_AT_END]]
 
-mo.graph @dont_sink_unary_reshape_that_squeezes_final_dim(
+mo.graph @sink_unary_reshape_that_squeezes_final_dim(
     %input: !mo.tensor<[2, 1], f32>
 ) -> !mo.tensor<[2], f32> {
     %reshaped_input = mo.static.reshape(%input) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
     %exp = mo.exp(%reshaped_input) : !mo.tensor<[2], f32>
     mo.output %exp : !mo.tensor<[2], f32>
 }
-// No change.
-// CHECK: mo.graph @dont_sink_unary_reshape_that_squeezes_final_dim(
+// A reshape that drops a trailing 1 sinks like any other.
+// CHECK: mo.graph @sink_unary_reshape_that_squeezes_final_dim(
 // CHECK-SAME: %[[INPUT:.*]]: !mo.tensor<[2, 1], f32>
 // CHECK-SAME: ) -> !mo.tensor<[2], f32>
 //
-// CHECK-NEXT: %[[RESHAPED_INPUT:.*]] = mo.static.reshape(%[[INPUT]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
-// CHECK-NEXT: %[[EXP:.*]] = mo.exp(%[[RESHAPED_INPUT]]) : !mo.tensor<[2], f32>
-// CHECK-NEXT: mo.output %[[EXP]] : !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[EXP:.*]] = mo.exp(%[[INPUT]]) : !mo.tensor<[2, 1], f32>
+// CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[EXP]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: mo.output %[[RESHAPE]] : !mo.tensor<[2], f32>
 
-mo.graph @dont_sink_binary_reshape_that_squeezes_final_dim(
+mo.graph @sink_binary_reshape_that_squeezes_final_dim(
     %lhs: !mo.tensor<[2, 1], f32>,
     %rhs: !mo.tensor<[2, 1], f32>
 ) -> !mo.tensor<[2], f32> {
@@ -192,18 +192,16 @@ mo.graph @dont_sink_binary_reshape_that_squeezes_final_dim(
     %add = mo.add(%reshaped_lhs, %reshaped_rhs) : !mo.tensor<[2], f32>
     mo.output %add : !mo.tensor<[2], f32>
 }
-// No change.
-// CHECK: mo.graph @dont_sink_binary_reshape_that_squeezes_final_dim(
+// CHECK: mo.graph @sink_binary_reshape_that_squeezes_final_dim(
 // CHECK-SAME: %[[LHS:.*]]: !mo.tensor<[2, 1], f32>,
 // CHECK-SAME: %[[RHS:.*]]: !mo.tensor<[2, 1], f32>
 // CHECK-SAME: ) -> !mo.tensor<[2], f32>
 //
-// CHECK-NEXT: %[[RESHAPED_LHS:.*]] = mo.static.reshape(%[[LHS]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
-// CHECK-NEXT: %[[RESHAPED_RHS:.*]] = mo.static.reshape(%[[RHS]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
-// CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[RESHAPED_LHS]], %[[RESHAPED_RHS]]) : !mo.tensor<[2], f32>
-// CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[LHS]], %[[RHS]]) : !mo.tensor<[2, 1], f32>
+// CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[ADD]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: mo.output %[[RESHAPE]] : !mo.tensor<[2], f32>
 
-mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
+mo.graph @sink_binary_bcast_reshape_that_squeezes_final_dim(
     %lhs: !mo.tensor<[2, 1], f32>,
     %rhs: !mo.tensor<[], f32>
 ) -> !mo.tensor<[2], f32> {
@@ -212,16 +210,15 @@ mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
     %add = mo.add(%reshaped_lhs, %bcast_rhs) : !mo.tensor<[2], f32>
     mo.output %add : !mo.tensor<[2], f32>
 }
-// No change.
-// CHECK: mo.graph @dont_sink_binary_bcast_reshape_that_squeezes_final_dim(
+// CHECK: mo.graph @sink_binary_bcast_reshape_that_squeezes_final_dim(
 // CHECK-SAME: %[[LHS:.*]]: !mo.tensor<[2, 1], f32>,
 // CHECK-SAME: %[[RHS:.*]]: !mo.tensor<[], f32>
 // CHECK-SAME: ) -> !mo.tensor<[2], f32>
 //
-// CHECK-NEXT: %[[RESHAPED_LHS:.*]] = mo.static.reshape(%[[LHS]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
-// CHECK-NEXT: %[[BCAST_RHS:.*]] = mo.static.broadcast_to(%[[RHS]]) : !mo.tensor<[], f32> -> !mo.tensor<[2], f32>
-// CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[RESHAPED_LHS]], %[[BCAST_RHS]]) : !mo.tensor<[2], f32>
-// CHECK-NEXT: mo.output %[[ADD]] : !mo.tensor<[2], f32>
+// CHECK-NEXT: %[[BCAST:.*]] = mo.static.broadcast_to(%[[RHS]]) : !mo.tensor<[], f32> -> !mo.tensor<[2, 1], f32>
+// CHECK-NEXT: %[[ADD:.*]] = mo.add(%[[LHS]], %[[BCAST]]) : !mo.tensor<[2, 1], f32>
+// CHECK-NEXT: %[[RESHAPE:.*]] = mo.static.reshape(%[[ADD]]) : !mo.tensor<[2, 1], f32> -> !mo.tensor<[2], f32>
+// CHECK-NEXT: mo.output %[[RESHAPE]] : !mo.tensor<[2], f32>
 
 
 mo.graph @sink_rebind_through_unary_elemwise<D0, D1>(%in: !mo.tensor<[D0, 2, 4], f32>) -> !mo.tensor<[D1, 2, 4], f32> {
@@ -278,3 +275,26 @@ mo.graph @sink_reshape_through_softmax_scalar(%in: !mo.tensor<[], f32>) -> !mo.t
 // CHECK-NEXT:    %[[SOFTMAX:.*]] = mo.reduce.softmax(%[[IN]]) [axis = 0] : (!mo.tensor<[], f32>) -> !mo.tensor<[], f32>
 // CHECK-NEXT:    %[[RESHAPE:.*]] = mo.static.reshape(%[[SOFTMAX]]) : !mo.tensor<[], f32> -> !mo.tensor<[1], f32>
 // CHECK-NEXT:    mo.output %[[RESHAPE]] : !mo.tensor<[1], f32>
+
+// The reshaped operand is the exponent, an si32: the sunk pow keeps its own
+// f32 result.
+mo.graph @sink_reshape_of_exponent_through_pow(%base: !mo.tensor<[30], f32>, %exp: !mo.tensor<[50, 50, 30], si32>) -> !mo.tensor<[2500, 30], f32> {
+    %reshape = mo.static.reshape(%exp) : !mo.tensor<[50, 50, 30], si32> -> !mo.tensor<[2500, 30], si32>
+    %broadcast = mo.static.broadcast_to(%base) : !mo.tensor<[30], f32> -> !mo.tensor<[2500, 30], f32>
+    %pow = mo.pow(%broadcast: !mo.tensor<[2500, 30], f32>, %reshape: !mo.tensor<[2500, 30], si32>): !mo.tensor<[2500, 30], f32>
+    mo.output %pow : !mo.tensor<[2500, 30], f32>
+}
+// CHECK-LABEL: mo.graph @sink_reshape_of_exponent_through_pow
+// CHECK:       %[[POW:.*]] = mo.pow({{.*}} : !mo.tensor<[50, 50, 30], f32>, {{.*}} : !mo.tensor<[50, 50, 30], si32>) : !mo.tensor<[50, 50, 30], f32>
+// CHECK-NEXT:  %[[RESHAPE:.*]] = mo.static.reshape(%[[POW]]) : !mo.tensor<[50, 50, 30], f32> -> !mo.tensor<[2500, 30], f32>
+
+// A reshape from [1] to rank 0 drops the last axis, so it stays above the
+// softmax.
+mo.graph @dont_sink_reshape_to_rank0_through_softmax(%in: !mo.tensor<[1], f32>) -> !mo.tensor<[], f32> {
+  %0 = mo.static.reshape(%in) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
+  %1 = mo.reduce.softmax(%0) [axis = 0] : (!mo.tensor<[], f32>) -> !mo.tensor<[], f32>
+  mo.output %1 : !mo.tensor<[], f32>
+}
+// CHECK-LABEL: mo.graph @dont_sink_reshape_to_rank0_through_softmax
+// CHECK:       mo.static.reshape(%{{.*}}) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
+// CHECK-NEXT:  mo.reduce.softmax
