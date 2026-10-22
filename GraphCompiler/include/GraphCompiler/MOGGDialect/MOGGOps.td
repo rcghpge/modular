@@ -1593,6 +1593,7 @@ def MOGG_CallViewCopyOp : MOGG_Op<"call.view_copy", [
 def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
   MOGG_CallLike,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   NoTerminator,
 ]> {
   let summary = "Run a fused reduction body once per row.";

@@ -17,6 +17,9 @@ from std.ffi import external_call, c_size_t
 from std.sys import size_of, align_of
 
 from max.algorithm.functional import elementwise
+from algorithm.reduce_op import ReduceOp
+from algorithm.rowwise import launch, pick_simd_width
+from algorithm.rowwise_types import RowBody
 
 from extensibility import StaticTensorSpec
 from extensibility import (
@@ -2239,6 +2242,53 @@ def _foreach[
         target=target,
         _trace_description=_trace_name,
     ](lambda_, shape, ctx)
+
+
+@register_internal("mogg.call.rowwise")
+def _rowwise[
+    Body: RowBody,
+    //,
+    SimdMonoid: ReduceOp,
+    dtype: DType,
+    accum: DType,
+    *,
+    axis: Int,
+    target: StaticString,
+    num_phases: Int,
+    computationally_expensive: Bool,
+    dtype_size: Int,
+](body: Body, shape: Coord, ctx: DeviceContext) raises:
+    """Runs a Row API body once per row of `shape` along `axis`.
+
+    Parameters:
+        Body: The body's concrete type.
+        SimdMonoid: The fold monoid that picks the SIMD width, at width 1.
+        dtype: The element type of the input the folds walk.
+        accum: The type the folds' contributions are computed in.
+        axis: The reduced axis.
+        target: Indicates the type of the target device (e.g. "cpu", "gpu").
+        num_phases: 1 for a reduce-shaped body.
+        computationally_expensive: Whether the folds' per-element work is
+            expensive enough to change the GPU block tier's threshold.
+        dtype_size: The byte size of `dtype` when the body may split the
+            row, else 0.
+
+    Args:
+        body: The per-row body.
+        shape: The iteration domain.
+        ctx: The call context (forward this from the custom operation).
+    """
+    comptime simd_width = pick_simd_width[
+        SimdMonoid, target, 64, dtype, accum
+    ]()
+    launch[
+        axis=axis,
+        simd_width=simd_width,
+        target=target,
+        num_phases=num_phases,
+        computationally_expensive=computationally_expensive,
+        dtype_size=dtype_size,
+    ](body, shape, ctx)
 
 
 comptime _MoggSliceStrideTypesTabulator[

@@ -25,6 +25,7 @@ _CPU_ONLY_TESTS = [
     "test_is_nan.py",
     "test_matmul_packed.py",
     "test_reduce_add.py",
+    "test_rowwise_fusion.py",
     "test_shard_and_stack.py",
     "test_symbolic_dimension_validation.py",
 ]
@@ -372,6 +373,7 @@ modular_py_test(
         "conftest.py",
         "test_matmul_packed.py",
         "test_reduce_add.py",
+        "test_rowwise_fusion.py",
         "test_shard_and_stack.py",
         "test_symbolic_dimension_validation.py",
     ],

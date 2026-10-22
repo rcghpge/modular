@@ -157,6 +157,30 @@ struct EmitMojoState {
     MojoLambdaInfos savedLambdaInfo;
   };
 
+  /// Drops the bindings made while it lives. A value lowered inside a Mojo
+  /// lambda is local to it (a constant is splat to the lambda's width), so
+  /// another lambda lowers the same value again.
+  class ValueScope {
+  public:
+    explicit ValueScope(EmitMojoState &state)
+        : state(state), parent(state.valueScope) {
+      state.valueScope = this;
+    }
+    ValueScope(const ValueScope &) = delete;
+    ValueScope &operator=(const ValueScope &) = delete;
+    ~ValueScope() {
+      for (Value val : bound)
+        state.mlirValueToMojoValue.erase(val);
+      state.valueScope = parent;
+    }
+
+  private:
+    friend struct EmitMojoState;
+    EmitMojoState &state;
+    ValueScope *parent;
+    SmallVector<Value> bound;
+  };
+
   /// If true, generate compute lambdas when possible.
   bool enableComputeLambdas;
 
@@ -178,6 +202,7 @@ struct EmitMojoState {
 
 private:
   mlir::DenseMap<Value, MojoValue> mlirValueToMojoValue;
+  ValueScope *valueScope = nullptr;
 
   /// Per-tensor static byte alignment for fused load/store receivers (see
   /// `setTensorArgAlignmentFor`).
@@ -211,6 +236,8 @@ public:
     [[maybe_unused]] auto inserted =
         mlirValueToMojoValue.insert(std::make_pair(val, mojoVal)).second;
     ASSERT_STREAM(inserted, << "value already bound to a MojoValue");
+    if (valueScope)
+      valueScope->bound.push_back(val);
   }
 
   /// Record a fused load/store receiver's static byte alignment, keyed by its
@@ -427,6 +454,11 @@ public:
     if (llvm::StringRef(structName).starts_with(kInitPrefix))
       structName.erase(0, kInitPrefix.size());
     return {MojoValue(std::move(structName)), MojoValue(std::move(fnName))};
+  }
+
+  /// A compile-time index, `Idx[value]`.
+  static MojoValue getComptimeIdx(int64_t value) {
+    return MojoValue(kAliasIdx)[MojoValue(value)];
   }
 
   static MojoValue getSIMDType(DType dtype, MojoValue width) {

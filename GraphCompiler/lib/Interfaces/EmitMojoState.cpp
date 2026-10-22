@@ -621,7 +621,7 @@ MojoValue EmitMojoState::getShapeAsCoordMojoValue(MOSH::ShapeAttr shapeAttr,
   unsigned nextDynDim = 0;
   for (TypedAttr dim : shapeAttr.getValues()) {
     if (auto staticDim = MOSH::ShapeAttr::getStaticDim(dim)) {
-      coordElems.push_back(MojoValue(kAliasIdx)[*staticDim]);
+      coordElems.push_back(getComptimeIdx(*staticDim));
     } else {
       // Scalar[DType.int], not Int, to match what the ManagedTensorSlice
       // layout machinery rebinds to.
@@ -635,8 +635,7 @@ MojoValue EmitMojoState::getShapeAsCoordMojoValue(MOSH::ShapeAttr shapeAttr,
   }
   // Rank-0 tensors are represented as rank-1 with a single static `1`.
   if (coordElems.empty())
-    coordElems.push_back(
-        MojoValue(kAliasIdx)[MojoValue(static_cast<int64_t>(1))]);
+    coordElems.push_back(getComptimeIdx(1));
 
   return MojoValue(kStructCoord)({}, coordElems);
 }

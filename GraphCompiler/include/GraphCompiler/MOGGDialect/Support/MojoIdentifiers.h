@@ -387,6 +387,13 @@ constexpr llvm::StringLiteral kFnToIndexList = "layout.to_index_list";
 /// Fully qualified because `std.utils` does not re-export `coord`.
 constexpr llvm::StringLiteral kFnCoordToIndexList =
     "std.utils.coord.coord_to_index_list";
+constexpr llvm::StringLiteral kStructRowwiseRow = "algorithm.rowwise.Row";
+constexpr llvm::StringLiteral kStructRowwiseContextParams =
+    "algorithm.rowwise_types.ContextParams";
+constexpr llvm::StringLiteral kStructRowwiseContext =
+    "algorithm.rowwise_types.Context";
+constexpr llvm::StringLiteral kStructRowwiseRowCoord =
+    "algorithm.rowwise_types.RowCoord";
 /// Package-private, so qualified with `_asyncrt`.
 constexpr llvm::StringLiteral kFnCreateTask =
     "std.runtime._asyncrt.create_task";
@@ -546,6 +553,9 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"max.runtime.async_value", ""},
         {"max.runtime.asyncrt", ""},
         {"layout", ""},
+        // For the Row API that `mogg.call.rowwise` prints.
+        {"algorithm.rowwise", ""},
+        {"algorithm.rowwise_types", ""},
         // For `layout.tile_io.TileCopier`.
         {"layout.tile_io", ""},
 };

@@ -47,6 +47,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -2001,6 +2002,23 @@ LogicalResult TupleCreateOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+// Loads `width` elements of `arg` at `coord`, a `Coord`.
+static MojoValue simdLoadFromCapture(const FusedTensorArg &arg,
+                                     const MojoValue &width,
+                                     const MojoValue &alignment,
+                                     const MojoValue &coord) {
+  // The pointer-based load wants an `IndexList[rank]`, sized by the capture's
+  // own static spec.
+  MojoValue indices =
+      MojoValue(kFnCoordToIndexList)({}, {coord})
+          .rebind(MojoValue(kStructIndexList)[arg.spec.get(kParameterRank)]);
+  return MojoValue(kFnMsSimdLoadFromTensorPointer)(
+      {MojoValue(kParameterStaticSpec).equal(arg.spec),
+       MojoValue(kParameterSimdWidth).equal(width),
+       MojoValue(kParameterElementAlignment).equal(alignment)},
+      {arg.ptr, arg.shape, arg.strides, indices});
+}
+
 LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
   // Several callers set up `currentLambdaInfo`, so builder/width/alignment are
   // read by role. Every fusion lane records its receiver's decomposed
@@ -2013,17 +2031,8 @@ LogicalResult TensorLoadOp::emitMojo(EmitMojoState &state) {
   ASSERT_STREAM(lambdaInfo.lambdaBuilder,
                 "TensorLoadOp::emitMojo reached without currentLambdaInfo set");
 
-  // The loop index arrives as a `Coord`; the pointer-based load wants an
-  // `IndexList[rank]`, sized by the capture's own static spec.
-  MojoValue indices = MojoValue(kFnCoordToIndexList)({}, {idx}).rebind(
-      MojoValue(kStructIndexList)[arg.spec.get(kParameterRank)]);
-  MojoValue loaded =
-      lambdaInfo.lambdaBuilder->var(MojoValue(kFnMsSimdLoadFromTensorPointer)(
-          {MojoValue(kParameterStaticSpec).equal(arg.spec),
-           MojoValue(kParameterSimdWidth).equal(lambdaInfo.widthParameter),
-           MojoValue(kParameterElementAlignment)
-               .equal(lambdaInfo.alignmentParameter)},
-          {arg.ptr, arg.shape, arg.strides, indices}));
+  MojoValue loaded = lambdaInfo.lambdaBuilder->var(simdLoadFromCapture(
+      arg, lambdaInfo.widthParameter, lambdaInfo.alignmentParameter, idx));
   state.setMojoValueFor(getResult(), loaded);
   return success();
 }
@@ -2948,6 +2957,273 @@ void CallRowwiseOp::getAsmBlockArgumentNames(Region &region,
   size_t numCaptures = getCapturing().size();
   nameArgs(args.take_front(numCaptures), "cap", setNameFn);
   nameLeadingArgs(args.drop_front(numCaptures), {"row"}, setNameFn);
+}
+
+bool CallRowwiseOp::isThrows() { return true; }
+
+// The monoid of `fold` at SIMD width `width`, its dtype parameters bound from
+// the fold's `params`.
+static FailureOr<MojoValue>
+monoidType(EmitMojoState &state, RowwiseReduceOp fold, const MojoValue &width) {
+  KernelDeclAdaptor adaptor(
+      state.registry.lookupKernelBySymName(fold.getMonoid()));
+  StringRef widthParam = adaptor.reduction->getWidthParam().getValue();
+  DictionaryAttr bound = fold.getParamsAttr();
+  if (widthParam.empty() || !bound)
+    return fold.emitOpError("has no width parameter or bound params");
+  SmallVector<MojoValue> params;
+  for (NamedAttribute param : bound) {
+    ErrorOr<DType> dtype =
+        M::MO::fromMLIRType(cast<TypeAttr>(param.getValue()).getValue());
+    if (dtype.isError())
+      return fold.emitOpError("binds a parameter to a non-dtype type");
+    params.push_back(MojoValue(param.getName().getValue())
+                         .equal(state.mlirDTypeToMojoType(*dtype)));
+  }
+  params.push_back(MojoValue(widthParam).equal(width));
+  return MojoValue(fold.getMonoid())[params];
+}
+
+// The rowwise-body ops `fold` reads, in program order: canonicalization hoists
+// a constant the fold uses out of it, into the body.
+static SmallVector<Operation *> outerOpsReadBy(RowwiseReduceOp fold,
+                                               Block &body) {
+  llvm::SetVector<Operation *> ops;
+  SmallVector<Value> worklist;
+  fold.getBody().walk(
+      [&](Operation *op) { llvm::append_range(worklist, op->getOperands()); });
+  while (!worklist.empty()) {
+    Operation *def = worklist.pop_back_val().getDefiningOp();
+    if (def && def->getBlock() == &body && ops.insert(def))
+      llvm::append_range(worklist, def->getOperands());
+  }
+  SmallVector<Operation *> sorted = ops.takeVector();
+  llvm::sort(sorted,
+             [](Operation *a, Operation *b) { return a->isBeforeInBlock(b); });
+  return sorted;
+}
+
+// Prints the kernel as a Row API body and launches it:
+//
+//   def body[params](row_coords, mut row_ctx) {var}:                    (1)
+//     def load[width, alignment](idx) -> SIMD[dtype, width]:            (2)
+//       return <primary capture>[idx.coord]
+//     var row = Row[params, accum, dtype, axis, rank, is_cached](       (3)
+//         row_coords, Idx[cols], row_ctx, load)
+//     def contribute[w](tile: SIMD[dtype, w], idx) -> SIMD[accum, w]:   (4)
+//       <fold body, reading `tile` for the primary value>
+//     var acc = row.reduce[Monoid[..., W = params.simd_width]](
+//         contribute, load)
+//     def write(oc):                                                    (5)
+//       <row-level ops on acc.<field>, and the emit's stores at oc>
+//     row.emit(write)
+//   mogg.call.rowwise[SimdMonoid, dtype, accum, axis = ..., ...](       (6)
+//       body, shape, ctx)
+//
+// (4) repeats per fold.
+LogicalResult CallRowwiseOp::emitMojo(EmitMojoState &state) {
+  if (!getPrimary() || !getDtype() || !getAccum() || !getNumPhases() ||
+      !getDtypeSize() || !getSimdMonoid())
+    return emitOpError("isn't legalized for the Row API");
+  ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(*getDtype());
+  ErrorOr<DType> accumOr = M::MO::fromMLIRType(*getAccum());
+  if (dtypeOr.isError() || accumOr.isError())
+    return emitOpError("has a non-dtype `dtype` or `accum`");
+  MojoValue dtype = state.mlirDTypeToMojoType(*dtypeOr);
+  MojoValue accum = state.mlirDTypeToMojoType(*accumOr);
+
+  MojoValue shape = state.getMojoValueFor(getShape());
+  MojoValue context = state.getMojoValueFor(getContext());
+  FailureOr<SmallVector<FusedCaptureInfo>> captureInfosOr =
+      collectFusedCaptureInfos(state, *this, getCapturing());
+  if (failed(captureInfosOr))
+    return failure();
+
+  Block &body = getBody().front();
+  ArrayRef<BlockArgument> args = body.getArguments();
+  for (auto [arg, info] : llvm::zip(args, *captureInfosOr))
+    state.setFusedTensorArgFor(arg,
+                               {info.ptr, info.shape, info.strides, info.spec});
+  const FusedCaptureInfo &primary = (*captureInfosOr)[*getPrimary()];
+
+  SmallVector<RowwiseReduceOp> folds =
+      llvm::to_vector(body.getOps<RowwiseReduceOp>());
+  // TODO(GEX-3348): several folds need a phase each and per-row values that a
+  // later fold reads, which this printer doesn't produce yet.
+  if (folds.size() != 1)
+    return emitOpError("has ")
+           << folds.size() << " folds; only one is supported";
+  auto simdFold = llvm::find_if(folds, [&](RowwiseReduceOp fold) {
+    return fold.getMonoidAttr() == getSimdMonoidAttr();
+  });
+  if (simdFold == folds.end())
+    return emitOpError("has no fold for its SIMD monoid");
+  FailureOr<MojoValue> simdMonoid = monoidType(state, *simdFold, MojoValue(1));
+  if (failed(simdMonoid))
+    return failure();
+
+  // `Idx[cols]` when the axis is static, else `Int(shape[axis].value())`.
+  int64_t axis = getAxis();
+  MojoValue axisSize =
+      getCols() ? EmitMojoState::getComptimeIdx(*getCols())
+                : MojoValue(kStructInt)(
+                      {}, {shape[MojoValue(axis)].get("value")({}, {})});
+
+  NamedMojoDef rowCtxArg = NamedMojoDef::asVerbatim(
+      "row_ctx", MojoValue(kStructRowwiseContext)[MojoValue("params")]);
+  rowCtxArg.argConvention = "mut";
+  bool failedToLower = false;
+  auto lowerOne = [&](Operation &op) {
+    if (!failedToLower && failed(state.lowerOpToMojo(&op)))
+      failedToLower = true;
+  };
+  auto lowerAll = [&](auto &&ops) {
+    for (Operation &op : ops)
+      lowerOne(op);
+  };
+
+  // (1) def body[params](row_coords, mut row_ctx) {var}:
+  MojoValue bodyFn = state.builder.lambda(
+      "body_",
+      {NamedMojoDef::asVerbatim("params", kStructRowwiseContextParams)},
+      {NamedMojoDef::asVerbatim("row_coords", kStructCoord), rowCtxArg},
+      /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kAutomatic,
+      /*isAsync=*/false, /*raises=*/false,
+      /*captureConvention=*/"var", [&](const FunctionBody &) {
+        MojoValue params("params");
+        MojoValue rank =
+            state.builder.comptime(MojoValue("row_coords").get("rank"));
+        MojoValue rowCoord = MojoValue(kStructRowwiseRowCoord)[rank];
+
+        // (2) def load[width, alignment](idx) -> SIMD[dtype, width]:
+        MojoValue load = state.builder.lambda(
+            "load_",
+            {NamedMojoDef::asVerbatim(kParameterWidth, kStructInt),
+             NamedMojoDef::asVerbatim("alignment", kStructInt)},
+            {NamedMojoDef::asVerbatim("idx", rowCoord)},
+            MojoValue(kStructSIMD)[{dtype, MojoValue(kParameterWidth)}],
+            MojoBuilder::LambdaInline::kAutomatic, false, false, "var",
+            [&](const FunctionBody &fb) {
+              state.builder.returnsValue(simdLoadFromCapture(
+                  {primary.ptr, primary.shape, primary.strides, primary.spec},
+                  fb.parameters[0], fb.parameters[1],
+                  MojoValue("idx").get("coord")));
+            });
+
+        // (3) var row = Row[params, accum, dtype, axis, rank, is_cached](...)
+        MojoValue row = state.builder.var(
+            MojoValue(kStructRowwiseRow)[{
+                params, accum, dtype, MojoValue(axis), rank,
+                MojoValue("is_cached").equal(MojoValue(getIsCached()))}](
+                {}, {MojoValue("row_coords"), axisSize, MojoValue("row_ctx"),
+                     load}),
+            /*cache=*/false);
+
+        MojoValue emitWidth = params.get("emit_tile_width");
+        for (RowwiseReduceOp fold : folds) {
+          Block &foldBody = fold.getBody().front();
+          auto yield = cast<YieldOp>(foldBody.getTerminator());
+          auto contribution =
+              yield.getNumOperands() == 1
+                  ? dyn_cast<SimdType>(yield.getOperand(0).getType())
+                  : SimdType();
+          if (!contribution || contribution.getElementType() != *getAccum()) {
+            fold.emitOpError("must yield one contribution of the accum type");
+            failedToLower = true;
+            return;
+          }
+          if (!fold.getFieldsAttr()) {
+            fold.emitOpError("has no bound fields");
+            failedToLower = true;
+            return;
+          }
+          // (4) def contribute[w](tile, idx) -> SIMD[accum, w]:
+          MojoValue contribute = state.builder.lambda(
+              "contribute_", {NamedMojoDef::asVerbatim("w", kStructInt)},
+              {NamedMojoDef::asVerbatim(
+                   "tile", MojoValue(kStructSIMD)[{dtype, MojoValue("w")}]),
+               NamedMojoDef::asVerbatim("idx", rowCoord)},
+              MojoValue(kStructSIMD)[{accum, MojoValue("w")}],
+              MojoBuilder::LambdaInline::kAutomatic, false, false, "var",
+              [&](const FunctionBody &fb) {
+                EmitMojoState::LambdaInfosGuard guard(
+                    state, {&state.builder, fb.parameters[0], MojoValue(1)});
+                EmitMojoState::ValueScope scope(state);
+                state.setMojoValueFor(foldBody.getArgument(0),
+                                      MojoValue("idx").get("coord"));
+                for (Operation *op : outerOpsReadBy(fold, body))
+                  lowerOne(*op);
+                for (Operation &op : foldBody.without_terminator()) {
+                  if (auto primaryOp = dyn_cast<RowwisePrimaryOp>(op)) {
+                    state.setMojoValueFor(primaryOp.getResult(),
+                                          fb.arguments[0]);
+                    continue;
+                  }
+                  lowerOne(op);
+                }
+                if (!failedToLower)
+                  state.builder.returnsValue(
+                      state.getMojoValueFor(yield.getOperand(0)));
+              });
+          if (failedToLower)
+            return;
+          // var acc = row.reduce[Monoid[..., W = params.simd_width]](...)
+          FailureOr<MojoValue> monoid =
+              monoidType(state, fold, params.get(kParameterSimdWidth));
+          if (failed(monoid)) {
+            failedToLower = true;
+            return;
+          }
+          MojoValue folded = state.builder.var(
+              row.get("reduce")[*monoid]({}, {contribute, load}),
+              /*cache=*/false);
+          // Each lane of a field belongs to a different output on tiled
+          // tiers, so per-row ops read the emit's slice.
+          for (auto [result, field] :
+               llvm::zip(fold.getResults(), fold.getFieldsAttr()))
+            state.setMojoValueFor(result,
+                                  folded.get(cast<StringAttr>(field).getValue())
+                                      .get("slice")[emitWidth]({}, {}));
+        }
+        if (failedToLower)
+          return;
+
+        // (5) def write(oc): ...; row.emit(write)
+        MojoValue write = state.builder.lambda(
+            "write_", {}, {NamedMojoDef::asVerbatim("oc", rowCoord)},
+            /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kAutomatic,
+            false, false, "var", [&](const FunctionBody &) {
+              EmitMojoState::LambdaInfosGuard guard(
+                  state, {&state.builder, emitWidth, MojoValue(1)});
+              EmitMojoState::ValueScope scope(state);
+              state.setMojoValueFor(args.back(), MojoValue("oc").get("coord"));
+              for (Operation &op : body) {
+                if (isa<RowwiseReduceOp>(op))
+                  continue;
+                if (auto emit = dyn_cast<RowwiseEmitOp>(op))
+                  lowerAll(emit.getBody().front());
+                else
+                  lowerOne(op);
+              }
+            });
+        state.builder.call(row.get("emit"), {}, {write});
+      });
+  if (failedToLower)
+    return failure();
+
+  // (6) mogg.call.rowwise[SimdMonoid, dtype, accum, ...](body, shape, ctx)
+  PrimitiveDeclOp launch = state.registry.lookupPrimitive(getOperationName());
+  state.builder.call(
+      MojoValue(primitiveMojoName(launch)),
+      {*simdMonoid, dtype, accum, MojoValue("axis").equal(MojoValue(axis)),
+       MojoValue(kMoggTargetParameterName)
+           .equal(MojoValue(("\"" + getDevice() + "\"").str())),
+       MojoValue("num_phases").equal(MojoValue(*getNumPhases())),
+       MojoValue("computationally_expensive")
+           .equal(MojoValue(getComputationallyExpensive())),
+       MojoValue("dtype_size").equal(MojoValue(*getDtypeSize()))},
+      {bodyFn, shape, context});
+  return success();
 }
 
 ParseResult RowwiseReduceOp::parse(OpAsmParser &parser,
