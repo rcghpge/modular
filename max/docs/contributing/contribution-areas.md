@@ -20,6 +20,17 @@ covered here, then follow the [contribution process](contribution-process.md).
 Keep each pull request inside a single area. See
 [keep pull requests small](issue-pr-etiquette.md#keep-pull-requests-small).
 
+## Driver
+
+The driver is the device and memory layer underneath every MAX graph: it
+enumerates accelerators, allocates host and device buffers, moves data between
+them, and launches work on device queues. The Python API lives in
+[`max/python/max/driver`](/max/python/max/driver) and the C++ sources
+underneath it in [`max/driver`](/max/driver). We accept bug fixes only.
+
+To find a place to start, see the
+[open driver issues](https://github.com/modular/modular/issues?q=is%3Aissue+state%3Aopen+label%3Adriver).
+
 ## GPU programming
 
 The `max.gpu` package in [`max/mojo/max/gpu`](/max/mojo/max/gpu) is the Mojo
@@ -42,6 +53,19 @@ regression needs a [`kbench`](/max/docs/kernel-benchmarking.md) result.
 
 To find a place to start, see the
 [open kernel issues](https://github.com/modular/modular/issues?q=is%3Aissue+state%3Aopen+label%3Amax+label%3Aperformance).
+
+## Graph compiler
+
+The graph compiler in [`GraphCompiler`](/GraphCompiler) lowers a MAX graph to
+executable code: it fuses operations, selects kernels, and compiles the result
+for the target device. The runtime that executes the result lives in
+[`MLRT`](/MLRT), and the Mojo-side registration of built-in kernels and the
+extensibility API for custom operations in
+[`max/kernels/src/graph_compiler`](/max/kernels/src/graph_compiler). We accept
+bug fixes only, with a minimal graph that reproduces the problem.
+
+To find a place to start, see the
+[open graph compiler issues](https://github.com/modular/modular/issues?q=is%3Aissue+state%3Aopen+label%3Amax+label%3Agraph-api).
 
 ## Framework
 
