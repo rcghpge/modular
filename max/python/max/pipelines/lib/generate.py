@@ -83,6 +83,22 @@ __all__ = [
 _ROW_SEED_STRIDE = 1 << 32
 _U64_MASK = (1 << 64) - 1
 
+# The tokenizers pass these to the chat template call themselves, or name
+# parameters with them along the way, so a caller's copy would collide.
+_TOKENIZER_TEMPLATE_KEYS = frozenset(
+    (
+        "chat_template",
+        "conversation",
+        "delegate",
+        "fn",
+        "messages",
+        "prompt",
+        "self",
+        "tokenize",
+        "tools",
+    )
+)
+
 _logger = logging.getLogger("max.pipelines")
 
 _T = TypeVar("_T")
@@ -479,7 +495,9 @@ async def _new_contexts(
 
 
 def _row_request(
-    row: Sequence[int] | _Conversation, sampling_params: SamplingParams
+    row: Sequence[int] | _Conversation,
+    sampling_params: SamplingParams,
+    chat_template_kwargs: Mapping[str, object] | None,
 ) -> TextGenerationRequest:
     if isinstance(row, _Conversation):
         return TextGenerationRequest(
@@ -488,6 +506,11 @@ def _row_request(
             messages=row.messages,
             images=row.images,
             sampling_params=sampling_params,
+            chat_template_options=(
+                None
+                if chat_template_kwargs is None
+                else dict(chat_template_kwargs)
+            ),
         )
     return TextGenerationRequest(
         request_id=RequestID(),
@@ -504,6 +527,7 @@ def _build_contexts(
     max_new_tokens: int,
     sampling_params: SamplingParams,
     tokenizer_builds_rows: bool,
+    chat_template_kwargs: Mapping[str, object] | None,
 ) -> list[TextContext]:
     """Builds one context per row.
 
@@ -552,7 +576,7 @@ def _build_contexts(
             _new_contexts(
                 tokenizer,
                 [
-                    _row_request(row, params)
+                    _row_request(row, params, chat_template_kwargs)
                     for row, params in zip(
                         rows, row_sampling_params, strict=True
                     )
@@ -1064,6 +1088,10 @@ class GenerateIterator:
             goes.
         images: One list of encoded images per conversation, matching its
             image parts in order. Needs an architecture that takes images.
+        chat_template_kwargs: Keyword arguments passed to every row's chat
+            template as given, such as ``{"enable_thinking": False}``. Unlike
+            serve, ``reasoning_effort`` does not set the thinking switches.
+            Needs ``messages``.
         max_new_tokens: The most tokens to generate for each row.
         min_new_tokens: The fewest tokens a row generates before EOS can end
             it. Defaults to the model's generation config.
@@ -1118,8 +1146,10 @@ class GenerateIterator:
             than ``messages``, images or video on an architecture that takes
             text only, a row with more images than the tokenizer's
             ``max_images_per_request``, a row whose image count differs from
-            its image parts, or ``images`` or ``attention_mask`` without the
-            matching prompt argument. Also raised for ``output_logprobs`` outside ``[0, 7]``,
+            its image parts, ``images``, ``chat_template_kwargs`` or
+            ``attention_mask`` without the matching prompt argument, or a
+            ``chat_template_kwargs`` key the tokenizer sets itself. Also
+            raised for ``output_logprobs`` outside ``[0, 7]``,
             ``output_logprobs`` on a model that does not compute log
             probabilities, ``output_logits`` on a pipeline that is not
             synchronous, ``output_logits`` or ``output_logprobs`` with
@@ -1143,6 +1173,7 @@ class GenerateIterator:
         ]
         | None = None,
         images: Sequence[Sequence[bytes]] | None = None,
+        chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
         temperature: float | None = None,
@@ -1170,12 +1201,26 @@ class GenerateIterator:
                     "Pass images with messages, since each image needs an "
                     "image part in a message."
                 )
+            if chat_template_kwargs is not None:
+                raise ValueError(
+                    "Pass chat_template_kwargs with messages, since "
+                    "input_ids get no chat template."
+                )
             rows = _materialize_prompts(input_ids, attention_mask)
         else:
             if input_ids is not None:
                 raise ValueError("Pass input_ids or messages, not both.")
             if attention_mask is not None:
                 raise ValueError("Pass attention_mask only with input_ids.")
+            if chat_template_kwargs is not None:
+                taken = sorted(
+                    _TOKENIZER_TEMPLATE_KEYS & chat_template_kwargs.keys()
+                )
+                if taken:
+                    raise ValueError(
+                        f"chat_template_kwargs cannot set {taken[0]!r}, "
+                        "since the tokenizer sets it itself."
+                    )
             max_images = getattr(
                 pipeline.tokenizer, "max_images_per_request", None
             )
@@ -1233,6 +1278,7 @@ class GenerateIterator:
             sampling_params=sampling_params,
             tokenizer_builds_rows=messages is not None
             or issubclass(context_type, TextAndVisionContext),
+            chat_template_kwargs=chat_template_kwargs,
         )
         # After the max length check: a too-long prompt also trips these
         # limits, and their advice cannot fix it.
@@ -1634,6 +1680,7 @@ def generate(
     ]
     | None = None,
     images: Sequence[Sequence[bytes]] | None = None,
+    chat_template_kwargs: Mapping[str, object] | None = None,
     max_new_tokens: int,
     min_new_tokens: int | None = None,
     temperature: float | None = None,
@@ -1663,6 +1710,8 @@ def generate(
         messages: One conversation per row, instead of ``input_ids``.
         images: One list of encoded images per conversation, matching its
             image parts in order.
+        chat_template_kwargs: Keyword arguments for every row's chat
+            template. Needs ``messages``.
         max_new_tokens: The most tokens to generate for each row.
         min_new_tokens: The fewest tokens a row generates before EOS can end
             it.
@@ -1709,6 +1758,7 @@ def generate(
         attention_mask,
         messages=messages,
         images=images,
+        chat_template_kwargs=chat_template_kwargs,
         max_new_tokens=max_new_tokens,
         min_new_tokens=min_new_tokens,
         temperature=temperature,

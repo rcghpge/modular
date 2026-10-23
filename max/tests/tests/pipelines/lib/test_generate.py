@@ -33,6 +33,7 @@ import logging
 import weakref
 from collections.abc import Callable
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -1057,6 +1058,33 @@ def test_messages_rows_come_from_the_tokenizer() -> None:
     _assert_nothing_held(pipeline, 2)
 
 
+def test_chat_template_kwargs_reach_every_messages_row() -> None:
+    pipeline = FakePipeline()
+    tokenizer = FakeVisionTokenizer()
+    pipeline.tokenizer = tokenizer
+    messages = [_chat("1"), _chat("3 7")]
+    options = MappingProxyType({"enable_thinking": False})
+    generate(pipeline, messages=messages, max_new_tokens=5)
+    generate(
+        pipeline,
+        messages=messages,
+        chat_template_kwargs=options,
+        max_new_tokens=5,
+    )
+
+    requests = tokenizer.requests
+    assert [r.chat_template_options for r in requests] == [
+        None,
+        None,
+        {"enable_thinking": False},
+        {"enable_thinking": False},
+    ]
+    # A tokenizer that edits one row's options must not reach the next row.
+    assert requests[2].chat_template_options is not (
+        requests[3].chat_template_options
+    )
+
+
 def test_image_rows_expand_their_placeholders(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1146,6 +1174,28 @@ def test_expanded_prompt_over_the_planned_max_length_raises(
                 pipeline, _prompts(1), images=[[b"cat"]], max_new_tokens=5
             ),
             "Pass images with messages",
+        ),
+        (
+            lambda pipeline: GenerateIterator(
+                pipeline,
+                _prompts(1),
+                chat_template_kwargs={"enable_thinking": False},
+                max_new_tokens=5,
+            ),
+            "Pass chat_template_kwargs with messages",
+        ),
+        *(
+            (
+                lambda pipeline, key=key: GenerateIterator(
+                    pipeline,
+                    messages=[_chat("1")],
+                    chat_template_kwargs={key: None},
+                    max_new_tokens=5,
+                ),
+                rf"^chat_template_kwargs cannot set '{key}', since the "
+                "tokenizer",
+            )
+            for key in ("tools", "conversation")
         ),
         (
             lambda pipeline: GenerateIterator(

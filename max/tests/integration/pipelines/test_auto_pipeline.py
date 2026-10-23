@@ -200,6 +200,7 @@ def test_a_conversation_passes_messages_images_and_sampling(
                 ],
             }
         ],
+        chat_template_kwargs={"enable_thinking": False},
         max_new_tokens=3,
         top_k=4,
         seed=7,
@@ -221,6 +222,7 @@ def test_a_conversation_passes_messages_images_and_sampling(
                     ]
                 ],
                 "images": [[png]],
+                "chat_template_kwargs": {"enable_thinking": False},
                 "max_new_tokens": 3,
                 "min_new_tokens": None,
                 "temperature": None,
@@ -256,6 +258,19 @@ def test_a_conversation_drops_special_tokens(
     assert "<|im_end|>" in pipe.tokenizer.decode(new_ids)
     assert "<|im_end|>" not in text
     assert text == pipe.tokenizer.decode(new_ids, skip_special_tokens=True)
+
+
+def test_chat_template_kwargs_with_string_prompts_raise(
+    pipe: AutoPipeline,
+) -> None:
+    with pytest.raises(
+        ValueError, match="Pass chat_template_kwargs with conversations"
+    ):
+        pipe(
+            TEXT,
+            chat_template_kwargs={"enable_thinking": False},
+            max_new_tokens=1,
+        )
 
 
 def test_images_on_a_text_only_model_raise(pipe: AutoPipeline) -> None:

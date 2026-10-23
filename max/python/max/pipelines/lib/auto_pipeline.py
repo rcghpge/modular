@@ -131,6 +131,7 @@ class AutoPipeline:
         self,
         text: str | Sequence[Mapping[str, object]],
         *,
+        chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
         temperature: float | None = None,
@@ -152,6 +153,7 @@ class AutoPipeline:
         | tuple[str, ...]
         | Sequence[Sequence[Mapping[str, object]]],
         *,
+        chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
         temperature: float | None = None,
@@ -173,6 +175,7 @@ class AutoPipeline:
         | Sequence[Mapping[str, object]]
         | Sequence[Sequence[Mapping[str, object]]],
         *,
+        chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
         temperature: float | None = None,
@@ -190,8 +193,9 @@ class AutoPipeline:
 
         ``text`` is a prompt, a conversation, or a list of either, which run
         as one batch. A prompt's output starts with the prompt. A
-        conversation's output is only the new text. The sampling arguments
-        are those of :meth:`~max.pipelines.AutoModel.generate`.
+        conversation's output is only the new text. ``chat_template_kwargs``
+        applies to every conversation's chat template, and the sampling
+        arguments are those of :meth:`~max.pipelines.AutoModel.generate`.
 
         Returns:
             A string for one prompt or conversation, or a list with one
@@ -201,7 +205,8 @@ class AutoPipeline:
             TypeError: If ``text`` is not a prompt, a conversation, or a list
                 of either, or as described for
                 :class:`~max.pipelines.AutoProcessor`.
-            ValueError: If ``text`` is empty, or as described for
+            ValueError: If ``text`` is empty, if ``chat_template_kwargs``
+                comes with string prompts, or as described for
                 :class:`~max.pipelines.AutoProcessor` and
                 :meth:`~max.pipelines.AutoModel.generate`.
             RuntimeError: If the model has been closed, or as described for
@@ -246,6 +251,11 @@ class AutoPipeline:
             caller="AutoPipeline",
         )
         if all_prompts:
+            if chat_template_kwargs is not None:
+                raise ValueError(
+                    "Pass chat_template_kwargs with conversations, since "
+                    "string prompts get no chat template."
+                )
             prompt_ids: list[list[int]] = self._tokenizer(prompts)["input_ids"]
             sequences = generate_rows(prompt_ids).sequences
             texts = [
@@ -255,7 +265,10 @@ class AutoPipeline:
                 )
             ]
         else:
-            result = generate_rows(**_model_inputs(text))
+            result = generate_rows(
+                **_model_inputs(text),
+                chat_template_kwargs=chat_template_kwargs,
+            )
             texts = self._tokenizer.batch_decode(
                 [
                     sequence[length:]

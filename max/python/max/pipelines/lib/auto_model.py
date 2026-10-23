@@ -336,6 +336,7 @@ class AutoModel:
         ]
         | None = None,
         images: Sequence[Sequence[bytes]] | None = None,
+        chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
         temperature: float | None = None,
@@ -357,7 +358,8 @@ class AutoModel:
         max_new_tokens=16)`` works with an :class:`AutoTokenizer`. Pass
         ``messages`` and ``images`` instead of ``input_ids`` for chat or image
         prompts, and read each prompt's length from the result's
-        ``prompt_lengths``.
+        ``prompt_lengths``. ``chat_template_kwargs`` applies to every
+        ``messages`` row, such as ``{"enable_thinking": False}``.
 
         Raises:
             TypeError: As described for
@@ -373,6 +375,7 @@ class AutoModel:
             attention_mask,
             messages=messages,
             images=images,
+            chat_template_kwargs=chat_template_kwargs,
             max_new_tokens=max_new_tokens,
             min_new_tokens=min_new_tokens,
             temperature=temperature,
@@ -399,6 +402,7 @@ class AutoModel:
         ]
         | None = None,
         images: Sequence[Sequence[bytes]] | None = None,
+        chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
         temperature: float | None = None,
@@ -433,6 +437,7 @@ class AutoModel:
             attention_mask,
             messages=messages,
             images=images,
+            chat_template_kwargs=chat_template_kwargs,
             max_new_tokens=max_new_tokens,
             min_new_tokens=min_new_tokens,
             temperature=temperature,

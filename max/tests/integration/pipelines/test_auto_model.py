@@ -157,6 +157,25 @@ def test_generate_iter_runs_messages_like_generate(model_path: str) -> None:
     assert batch.prompt_lengths == expected.prompt_lengths
 
 
+def test_chat_template_kwargs_reach_the_template(model_path: str) -> None:
+    messages: list[list[Mapping[str, object]]] = [
+        [{"role": "user", "content": "What is 2 + 2?"}]
+    ]
+    with _load_cpu(model_path) as model:
+        default = model.generate(messages=messages, max_new_tokens=1)
+        without_prompt = model.generate(
+            messages=messages,
+            chat_template_kwargs={"add_generation_prompt": False},
+            max_new_tokens=1,
+        )
+    [default_length] = default.prompt_lengths
+    [length] = without_prompt.prompt_lengths
+    # The template's generation prompt opens the assistant turn after the
+    # conversation.
+    assert length < default_length
+    assert without_prompt.sequences[0][:length] == default.sequences[0][:length]
+
+
 def test_greedy_logits_and_log_probs_match_sequences(model_path: str) -> None:
     num_top_log_probs = 3
     with _load_cpu(model_path, max_batch_size=len(PROMPTS)) as model:
@@ -657,6 +676,7 @@ def test_generate_and_generate_iter_pass_every_argument(
             MASKS,
             messages=messages,
             images=images,
+            chat_template_kwargs={"enable_thinking": False},
             max_new_tokens=3,
             min_new_tokens=2,
             temperature=0.5,
@@ -677,6 +697,7 @@ def test_generate_and_generate_iter_pass_every_argument(
             MASKS,
             messages=messages,
             images=images,
+            chat_template_kwargs={"enable_thinking": False},
             max_new_tokens=3,
             min_new_tokens=2,
             temperature=0.5,
@@ -695,6 +716,7 @@ def test_generate_and_generate_iter_pass_every_argument(
     expected_kwargs: dict[str, object] = {
         "messages": messages,
         "images": images,
+        "chat_template_kwargs": {"enable_thinking": False},
         "max_new_tokens": 3,
         "min_new_tokens": 2,
         "temperature": 0.5,

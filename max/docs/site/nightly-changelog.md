@@ -31,6 +31,10 @@ This version is still a work in progress.
   still return no log probabilities, and `echo` without `logprobs` has no
   effect.
 
+- Qwen 3.5 now passes every `chat_template_kwargs` entry to its chat template,
+  such as `add_generation_prompt` or `preserve_thinking`. It used to keep only
+  `enable_thinking`, which still defaults to on.
+
 - MAX Serve's span attributes now sit under the entity they describe:
   `max.request_id` is now `max.request.id`, `max.batch_id` is `max.batch.id`,
   and the other request and batch attributes move under `max.request.*` and
@@ -117,6 +121,11 @@ This version is still a work in progress.
 
 - `AutoPipeline` now takes a chat conversation, or a list of them, with
   images inline, and returns only the new text for each one.
+
+- `generate()`, `GenerateIterator`, `AutoModel.generate()`,
+  `AutoModel.generate_iter()` and `AutoPipeline` take `chat_template_kwargs`,
+  which reach the chat template of every `messages` row, such as
+  `{"enable_thinking": False}` to turn off Qwen 3.5's thinking.
 
 - Removed the `blocking_sync`, `disable_timing` and `interprocess` parameters
   from the Mojo `DeviceContext.create_event()`, along with `EventFlags`. Events
