@@ -132,6 +132,10 @@ This version is still a work in progress.
   the tokenizer uses a PIL image without decoding it again. `AutoProcessor`
   now passes a copy of each PIL image instead of encoding it.
 
+- `AutoProcessor` and `AutoPipeline` now read images from http(s) URLs, `data:`
+  URIs and base64 data, including OpenAI `image_url` parts. URLs are fetched
+  with a 30 second timeout and a 100 MiB limit per image.
+
 - Removed the `blocking_sync`, `disable_timing` and `interprocess` parameters
   from the Mojo `DeviceContext.create_event()`, along with `EventFlags`. Events
   never record timing; use `DeviceContext.execution_time()` to time kernels.

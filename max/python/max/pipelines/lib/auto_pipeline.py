@@ -211,7 +211,8 @@ class AutoPipeline:
                 :meth:`~max.pipelines.AutoModel.generate`.
             RuntimeError: If the model has been closed, or as described for
                 :meth:`~max.pipelines.AutoModel.generate`.
-            OSError: If an image path cannot be read.
+            OSError: If an image path cannot be read or a URL cannot be
+                fetched.
         """
         if isinstance(text, Mapping):
             raise TypeError(_TEXT_TYPE_ERROR)
