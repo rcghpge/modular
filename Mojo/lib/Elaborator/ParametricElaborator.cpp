@@ -2697,12 +2697,8 @@ LogicalResult ParametricElaborator::run(
   // generators - everything else we don't care about.
   // Sort instantiations of each generator to ensure we have a deterministic
   // output in multithreaded execution.
-  struct SuccessfulInstances {
-    std::string paramStr;
-    InstantiatedOpInterface inst;
-  };
   auto *newBlock = new Block;
-  llvm::MapVector<GeneratorOpInterface, std::vector<SuccessfulInstances>>
+  llvm::MapVector<GeneratorOpInterface, std::vector<InstantiatedOpInterface>>
       genInstantiations;
   for (Operation &op : llvm::make_early_inc_range(*theModule.getBody())) {
     if (auto gen = dyn_cast<GeneratorOpInterface>(op)) {
@@ -2722,17 +2718,17 @@ LogicalResult ParametricElaborator::run(
       continue;
     }
 
-    genInstantiations[node.gen].push_back(SuccessfulInstances{
-        mlir::debugString(node.inputParams), node.impl.inst});
+    genInstantiations[node.gen].push_back(node.impl.inst);
   }
 
   // Now reorder all instantiations of each generator to be deterministic.
   for (auto &[gen, instantiations] : genInstantiations) {
-    llvm::sort(instantiations, [](auto &lhs, auto &rhs) {
-      return lhs.paramStr < rhs.paramStr;
-    });
-    for (auto &[_, func] : instantiations)
-      newBlock->push_back(func);
+    llvm::sort(instantiations,
+               [](InstantiatedOpInterface lhs, InstantiatedOpInterface rhs) {
+                 return lhs.getName() < rhs.getName();
+               });
+    for (InstantiatedOpInterface inst : instantiations)
+      newBlock->push_back(inst);
   }
 
   // Sort and then push on all the deferred functions.

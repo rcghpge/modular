@@ -44,7 +44,6 @@
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Threading.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "llvm/ADT/SCCIterator.h"
@@ -2942,12 +2941,8 @@ LogicalResult Elaborator::run(
   // generators - everything else we don't care about.
   // Sort instantiations of each generator to ensure we have a deterministic
   // output in multithreaded execution.
-  struct SuccessfulInstances {
-    std::string paramStr;
-    InstantiatedOpInterface inst;
-  };
   auto *newBlock = new Block;
-  llvm::MapVector<GeneratorOpInterface, std::vector<SuccessfulInstances>>
+  llvm::MapVector<GeneratorOpInterface, std::vector<InstantiatedOpInterface>>
       genInstantiations;
   for (Operation &op : llvm::make_early_inc_range(*theModule.getBody())) {
     if (auto gen = dyn_cast<GeneratorOpInterface>(op)) {
@@ -2957,7 +2952,6 @@ LogicalResult Elaborator::run(
       newBlock->push_back(&op);
     }
   }
-  SmallVector<ParamNode *> successfulNodes;
   for (ParamNode &node :
        llvm::make_pointee_range(llvm::make_second_range(g.nodes.get()))) {
     VerboseCompilerTimeTraceScope traceScope(
@@ -2967,26 +2961,18 @@ LogicalResult Elaborator::run(
       node.impl.inst.erase();
       continue;
     }
-    successfulNodes.push_back(&node);
-  }
 
-  SmallVector<std::string> paramStrs(successfulNodes.size());
-  mlir::parallelFor(
-      theModule.getContext(), 0, successfulNodes.size(), [&](size_t i) {
-        paramStrs[i] = mlir::debugString(successfulNodes[i]->inputParams);
-      });
-  for (auto [node, paramStr] : llvm::zip_equal(successfulNodes, paramStrs)) {
-    genInstantiations[node->gen].push_back(
-        SuccessfulInstances{std::move(paramStr), node->impl.inst});
+    genInstantiations[node.gen].push_back(node.impl.inst);
   }
 
   // Now reorder all instantiations of each generator to be deterministic.
   for (auto &[gen, instantiations] : genInstantiations) {
-    llvm::sort(instantiations, [](auto &lhs, auto &rhs) {
-      return lhs.paramStr < rhs.paramStr;
-    });
-    for (auto &[_, func] : instantiations)
-      newBlock->push_back(func);
+    llvm::sort(instantiations,
+               [](InstantiatedOpInterface lhs, InstantiatedOpInterface rhs) {
+                 return lhs.getName() < rhs.getName();
+               });
+    for (InstantiatedOpInterface inst : instantiations)
+      newBlock->push_back(inst);
   }
 
   // Sort and then push on all the deferred functions.
