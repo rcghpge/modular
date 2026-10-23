@@ -180,6 +180,13 @@ This version is still a work in progress.
   InternVL, Idefics3, Pixtral and Qwen 2.5 VL. These requests used to fail in
   the tokenizer.
 
+- `max serve` now returns a 400 for a prompt given as token ids, on
+  completions, chat `prompt_tokens` or embeddings, when an id is below 0 or
+  past the model's vocabulary. Such a request used to fail its whole batch.
+  `generate()`, `GenerateIterator` and `AutoModel.generate()` raise
+  `InputError` for such an id in `input_ids`. Embeddings requests the
+  tokenizer rejects, such as a too-long prompt, now return a 400, not a 500.
+
 ## Mojo language
 
 For all the updates to the Mojo language, standard library, and tools,

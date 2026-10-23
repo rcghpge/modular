@@ -45,6 +45,7 @@ import numpy.typing as npt
 from max.driver import DeviceSpec
 from max.pipelines.context import (
     EOSTracker,
+    InputError,
     LogProbabilities,
     ProcessorInputs,
     SamplingParams,
@@ -72,6 +73,7 @@ from .pipeline_variants.block_diffusion_text_generation import (
     BlockDiffusionTextGenerationPipeline,
 )
 from .registry import PIPELINE_REGISTRY
+from .tokenizer import checked_token_ids
 
 __all__ = [
     "BatchPipeline",
@@ -142,6 +144,14 @@ class _EOSTokenSource(Protocol):
 class _VocabSizeSource(Protocol):
     @property
     def tokenizer_vocab_size(self) -> int: ...
+
+
+# Vision tokenizers check ids in new_context, so only text tokenizers expose
+# the bound.
+@runtime_checkable
+class _TokenIdBoundSource(Protocol):
+    @property
+    def token_id_bound(self) -> int: ...
 
 
 @runtime_checkable
@@ -518,6 +528,18 @@ def _run_coroutine(coroutine: Coroutine[object, object, _T]) -> _T:
         return executor.submit(context.run, asyncio.run, coroutine).result()
 
 
+def _row_token_ids(
+    row: int, prompt: Sequence[int], token_id_bound: int | None
+) -> npt.NDArray[np.int64]:
+    if token_id_bound is None:
+        return np.asarray(prompt, dtype=np.int64)
+    try:
+        return checked_token_ids(prompt, token_id_bound)
+    except InputError as error:
+        error.args = (f"Row {row}: {error}",)
+        raise
+
+
 async def _new_contexts(
     tokenizer: _ContextSource, requests: Sequence[TextGenerationRequest]
 ) -> list[TextContext]:
@@ -637,6 +659,11 @@ def _build_contexts(
         if isinstance(tokenizer, _VocabSizeSource)
         else None
     )
+    token_id_bound = (
+        tokenizer.token_id_bound
+        if isinstance(tokenizer, _TokenIdBoundSource)
+        else None
+    )
     contexts = []
     for row, prompt in enumerate(rows):
         assert not isinstance(prompt, _Conversation)
@@ -644,7 +671,7 @@ def _build_contexts(
             TextContext(
                 request_id=RequestID(),
                 max_length=row_max_length(row, len(prompt)),
-                tokens=TokenBuffer(np.asarray(prompt, dtype=np.int64)),
+                tokens=TokenBuffer(_row_token_ids(row, prompt, token_id_bound)),
                 eos_tracker=EOSTracker(eos_token_ids=set(eos_token_ids)),
                 sampling_params=row_sampling_params[row],
                 vocab_size=vocab_size,
@@ -1180,7 +1207,8 @@ class GenerateIterator:
             room to generate within the planned max length, an invalid
             sampling value, penalties on a pipeline built without
             ``enable_penalties``, ``max_new_tokens`` below 1 or below
-            ``min_new_tokens``, ``attention_mask`` with a different shape
+            ``min_new_tokens``, an ``input_ids`` token id below 0 or past the
+            model's vocabulary, ``attention_mask`` with a different shape
             than ``input_ids``, or ``ignore_eos`` with a row that does not fit
             or with speculative decoding. Also raised for both or neither of
             ``input_ids`` and ``messages``, ``images`` with another row count

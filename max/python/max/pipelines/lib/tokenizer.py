@@ -20,7 +20,7 @@ import io
 import json
 import logging
 from collections import Counter
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence, Sized
 from functools import cached_property, partial
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -510,6 +510,55 @@ def resolve_eos_token_ids(
     return eos_token_ids
 
 
+def resolve_token_id_bound(
+    delegate: Sized, pipeline_config: PipelineConfig | None
+) -> int:
+    """Returns one past the largest token id a prompt may hold.
+
+    That is the model's embedding row count, the ``vocab_size`` of the text
+    config (``text_config`` or ``llm_config`` for a multimodal model). Falls
+    back to ``len(delegate)`` when the config has none.
+    """
+    if pipeline_config is not None:
+        config: object = pipeline_config.model.huggingface_config
+        for name in ("text_config", "llm_config"):
+            text_config = getattr(config, name, None)
+            if text_config is not None:
+                config = text_config
+                break
+        vocab_size = getattr(config, "vocab_size", None)
+        if isinstance(vocab_size, int):
+            return vocab_size
+    return len(delegate)
+
+
+def checked_token_ids(
+    token_ids: Sequence[int], bound: int
+) -> npt.NDArray[np.int64]:
+    """Returns the token ids as an int64 array.
+
+    Raises:
+        InputError: If an id is below 0 or not below ``bound``.
+    """
+    ids = list(token_ids)
+    try:
+        array = np.array(ids, dtype=np.int64)
+    except OverflowError:
+        # An id past int64 has no array form, so find it in Python.
+        position = next(
+            i for i, token_id in enumerate(ids) if not 0 <= token_id < bound
+        )
+    else:
+        out_of_range = np.flatnonzero((array < 0) | (array >= bound))
+        if out_of_range.size == 0:
+            return array
+        position = int(out_of_range[0])
+    raise InputError(
+        f"Prompt token id {ids[position]} at position {position} is out of "
+        f"range. Token ids must be from 0 to {bound - 1}."
+    )
+
+
 async def build_eos_tracker_for_request(
     eos_token_ids: set[int],
     request: TextGenerationRequest,
@@ -634,6 +683,9 @@ class TextTokenizer(
         self._eos_token_ids = resolve_eos_token_ids(
             self.delegate.eos_token_id, pipeline_config
         )
+        self._token_id_bound = resolve_token_id_bound(
+            self.delegate, pipeline_config
+        )
 
     def __getstate__(self) -> dict[str, Any]:
         """Pickles without the chat encoder, which may not be picklable.
@@ -655,6 +707,11 @@ class TextTokenizer(
     def tokenizer_vocab_size(self) -> int:
         """Vocabulary size of the HuggingFace tokenizer delegate."""
         return len(self.delegate)
+
+    @property
+    def token_id_bound(self) -> int:
+        """One past the largest token id a prompt may hold."""
+        return self._token_id_bound
 
     def apply_chat_template(
         self,
@@ -698,31 +755,43 @@ class TextTokenizer(
         """Transforms the provided prompt into a token array."""
         encoded_prompt: npt.NDArray[np.integer[Any]]
         if isinstance(prompt, str):
-
-            def _encode_fn(
-                prompt: str, add_special_tokens: bool
-            ) -> npt.NDArray[np.integer[Any]]:
-                return self.delegate.encode(
-                    replace_unpaired_surrogates(prompt),
-                    add_special_tokens=add_special_tokens,
-                )
-
-            # Note: the underlying tokenizer may not be thread safe in some cases, see https://github.com/huggingface/tokenizers/issues/537
-            # Add a standard (non-async) lock in the executor thread if needed.
-            encoded_prompt = await run_with_default_executor(
-                _encode_fn,
-                prompt,
-                add_special_tokens,
+            encoded_prompt = self._checked_text_ids(
+                await self._encode_text(prompt, add_special_tokens)
             )
-
-            encoded_prompt = np.array(encoded_prompt)
         else:
-            encoded_prompt = np.array(list(prompt))
+            encoded_prompt = checked_token_ids(prompt, self._token_id_bound)
 
         if self.max_length and len(encoded_prompt) > self.max_length:
             raise PromptTooLongError(len(encoded_prompt), self.max_length)
 
         return encoded_prompt
+
+    async def _encode_text(
+        self, text: str, add_special_tokens: bool
+    ) -> npt.NDArray[np.integer[Any]]:
+        def _encode_fn(
+            text: str, add_special_tokens: bool
+        ) -> npt.NDArray[np.integer[Any]]:
+            return self.delegate.encode(
+                replace_unpaired_surrogates(text),
+                add_special_tokens=add_special_tokens,
+            )
+
+        # Note: the underlying tokenizer may not be thread safe in some cases, see https://github.com/huggingface/tokenizers/issues/537
+        # Add a standard (non-async) lock in the executor thread if needed.
+        encoded = await run_with_default_executor(
+            _encode_fn, text, add_special_tokens
+        )
+        return np.array(encoded)
+
+    def _checked_text_ids(
+        self, ids: npt.NDArray[np.integer[Any]]
+    ) -> npt.NDArray[np.integer[Any]]:
+        # A tokenizer with more ids than the embedding has rows, as on
+        # Gemma 3 1B, can turn text into an id past the last row.
+        if self.tokenizer_vocab_size > self._token_id_bound:
+            return checked_token_ids(ids.tolist(), self._token_id_bound)
+        return ids
 
     async def decode(self, encoded: TokenIds, **kwargs) -> str:
         """Transforms a provided encoded token array back into readable text."""
@@ -795,9 +864,10 @@ class TextTokenizer(
             )
             return await self.encode(prompt, add_special_tokens=False)
         self._chat_encoder_outcomes["custom"] += 1
-        if self.max_length and len(ids) > self.max_length:
-            raise PromptTooLongError(len(ids), self.max_length)
-        return ids
+        checked = self._checked_text_ids(ids)
+        if self.max_length and len(checked) > self.max_length:
+            raise PromptTooLongError(len(checked), self.max_length)
+        return checked
 
     def take_chat_encoder_outcomes(self) -> dict[str, int]:
         """Returns the chats encoded since the last call, and forgets them.
@@ -813,11 +883,15 @@ class TextTokenizer(
         return outcomes
 
     async def _encode_stop_criteria(self, stop: list[str]) -> list[list[int]]:
-        """Encodes ``stop`` to be used as stop criteria during generation."""
+        """Encodes ``stop`` to be used as stop criteria during generation.
+
+        Stop strings skip the prompt range check. They never reach the
+        embedding, and an id past it only means the stop never matches.
+        """
         stop_tokenized: list[list[int]] = []
         for stop_crit in stop:
             tokenized: list[int] = (
-                await self.encode(stop_crit, False)
+                await self._encode_text(stop_crit, False)
             ).tolist()
             stop_tokenized.append(tokenized)
         return stop_tokenized
@@ -1010,6 +1084,9 @@ class TextAndVisionTokenizer(
         self._eos_token_ids = resolve_eos_token_ids(
             self.delegate.eos_token_id, pipeline_config
         )
+        self._token_id_bound = resolve_token_id_bound(
+            self.delegate, pipeline_config
+        )
 
         self.enable_prefix_caching = (
             pipeline_config.model.kv_cache.enable_prefix_caching
@@ -1120,7 +1197,7 @@ class TextAndVisionTokenizer(
 
             encoded_prompt = np.array(encoded_prompt)
         else:
-            encoded_prompt = np.array(list(prompt))
+            encoded_prompt = checked_token_ids(prompt, self._token_id_bound)
 
         return encoded_prompt
 
@@ -1195,7 +1272,9 @@ class TextAndVisionTokenizer(
         else:
             # Hugging Face processors take only text, so token ids skip the
             # processor.
-            processed_inputs = {"input_ids": [list(prompt)]}
+            processed_inputs = {
+                "input_ids": [checked_token_ids(prompt, self._token_id_bound)]
+            }
 
         if "input_ids" not in processed_inputs:
             raise ValueError(

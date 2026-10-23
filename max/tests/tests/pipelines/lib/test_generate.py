@@ -45,6 +45,7 @@ from max.driver import Buffer, DeviceSpec
 from max.pipelines.context import (
     EOSTracker,
     GenerationStatus,
+    InputError,
     LogProbabilities,
     PixelContext,
     ProcessorInputs,
@@ -95,6 +96,7 @@ VOCAB = 128
 DECOY = 1
 IMAGE_TOKEN = 50
 IMAGE_TOKENS = 4
+TOKEN_ID_BOUND = 1000
 
 
 @dataclasses.dataclass
@@ -177,6 +179,7 @@ class FakeKVManager:
 class FakeTokenizer:
     eos_token_ids: set[int] = dataclasses.field(default_factory=lambda: {EOS})
     tokenizer_vocab_size: int = 1000
+    token_id_bound: int = TOKEN_ID_BOUND
 
 
 @dataclasses.dataclass
@@ -746,6 +749,27 @@ def test_out_of_vocab_token_raises() -> None:
     pipeline = FakePipeline(tokenizer_vocab_size=102)
     with pytest.raises(RuntimeError, match="out-of-vocabulary token_id=102"):
         generate(pipeline, _prompts(NEVER), max_new_tokens=3)
+    _assert_nothing_held(pipeline, 1)
+
+
+@pytest.mark.parametrize("bad_id", [-1, TOKEN_ID_BOUND])
+def test_out_of_range_prompt_token_raises_before_claiming(bad_id: int) -> None:
+    pipeline = FakePipeline()
+    with pytest.raises(
+        InputError,
+        match=f"^Row 1: Prompt token id {bad_id} at position 2 is out of range",
+    ):
+        GenerateIterator(
+            pipeline, [[1, 7, 8], [1, 7, bad_id]], max_new_tokens=3
+        )
+    assert pipeline.kv_manager.claimed == {}
+    assert pipeline.kv_manager.contexts == []
+
+
+def test_highest_prompt_token_id_is_accepted() -> None:
+    pipeline = FakePipeline()
+    result = generate(pipeline, [[1, 7, TOKEN_ID_BOUND - 1]], max_new_tokens=3)
+    assert result.sequences == [[1, 7, TOKEN_ID_BOUND - 1, EOS]]
     _assert_nothing_held(pipeline, 1)
 
 
