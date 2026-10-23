@@ -529,7 +529,7 @@ def test_nvfp4_quantizer_stores_the_raw_tensor() -> None:
         raw = Tensor.zeros((8, 32), dtype=DType.bfloat16)
         qt = NVFP4TensorQuantizer(raw, block_size=(1, 16))
 
-        assert qt.weight is raw
+        assert qt._tensor is raw
         assert qt.block_size == (1, 16)
         assert list(qt.shape) == [8, 32]
 
@@ -560,7 +560,7 @@ def test_nvfp4_quantizer_parameter_path_is_the_raw_weight() -> None:
         parameters = dict(wrapper.parameters)
 
         assert set(parameters) == {"proj.weight"}
-        assert parameters["proj.weight"] is wrapper.proj.weight
+        assert parameters["proj.weight"] is wrapper.proj._tensor
 
 
 def test_nvfp4_quantizer_tree_roundtrip_keeps_block_size() -> None:
@@ -573,7 +573,7 @@ def test_nvfp4_quantizer_tree_roundtrip_keeps_block_size() -> None:
 
         assert isinstance(rebuilt, NVFP4TensorQuantizer)
         assert rebuilt.block_size == (1, 16)
-        assert rebuilt.weight is raw
+        assert rebuilt._tensor is raw
 
 
 def test_nvfp4_quantizer_to_moves_the_raw_tensor() -> None:
@@ -587,7 +587,7 @@ def test_nvfp4_quantizer_to_moves_the_raw_tensor() -> None:
         moved = qt.to(device)
 
         assert moved is qt
-        assert qt.weight.device == device
+        assert qt._tensor.device == device
         assert qt.block_size == (1, 16)
 
 
@@ -598,16 +598,15 @@ def test_nvfp4_quantizer_packs_nvfp4_on_first_use(sm100_arch: None) -> None:
         # 128 and 64 match the SM100 scale-atom grid, so the packed scales
         # reshape onto ``[rows, K / 16]``.
         qt = NVFP4TensorQuantizer(Tensor.zeros((128, 64), dtype=DType.bfloat16))
-        packed = qt.quant_tensor
 
-        assert packed.weight.dtype == DType.uint8
-        assert list(packed.weight.shape) == [128, 32]
-        assert packed.weight_scale.dtype == DType.float8_e4m3fn
-        assert list(packed.weight_scale.shape) == [128, 4]
-        assert packed.weight_scale_2.dtype == DType.float32
-        assert list(packed.weight_scale_2.shape) == []
-        assert packed.input_scale.dtype == DType.float32
-        assert list(packed.input_scale.shape) == []
+        assert qt.weight.dtype == DType.uint8
+        assert list(qt.weight.shape) == [128, 32]
+        assert qt.weight_scale.dtype == DType.float8_e4m3fn
+        assert list(qt.weight_scale.shape) == [128, 4]
+        assert qt.weight_scale_2.dtype == DType.float32
+        assert list(qt.weight_scale_2.shape) == []
+        assert qt.input_scale.dtype == DType.float32
+        assert list(qt.input_scale.shape) == []
 
 
 def test_type_guards_narrow_homogeneous_bundles() -> None:
@@ -622,7 +621,7 @@ def test_type_guards_narrow_homogeneous_bundles() -> None:
         )
 
         assert all_nvfp4([nvfp4, nvfp4])
-        assert not all_nvfp4([nvfp4, quantizer])
+        assert all_nvfp4([nvfp4, quantizer])
         assert not all_nvfp4([nvfp4, fp8])
         assert not all_nvfp4([nvfp4, plain])
         assert all_fp8_block([fp8, fp8])

@@ -852,8 +852,6 @@ def matmul(x: Tensor, weight: QuantAwareTensor) -> Tensor:
     - :class:`MXFP8Tensor` weight: dynamically block-quantizes ``x`` to MXFP8,
       then runs the SM100 block-scaled FP8 matmul and returns bf16.
     """
-    if isinstance(weight, NVFP4TensorQuantizer):
-        weight = weight.quant_tensor
     if isinstance(weight, FP8BlockTensor):
         return _matmul_fp8_block(x, weight)
     if isinstance(weight, NVFP4Tensor):

@@ -315,16 +315,19 @@ class _Quantizer(QTensor):
 
     Unlike the containers above, which hold a checkpoint's pre-quantized
     weight and scales, this holds the checkpoint's native-precision
-    ``weight``. :attr:`quant_tensor` quantizes it on first use and caches
-    the container, which quant ops dispatch on, so repeated matmuls --
-    eager or traced -- quantize once. A subclass wanting to re-quantize
-    under different parameters invalidates ``quant_tensor`` instead.
+    ``weight``, as ``_tensor``. A subclass also derives from its format's
+    container and exposes the container's fields as read-only properties,
+    so quant ops dispatch on it as on the container. The properties read
+    :attr:`quant_tensor`, which quantizes on first use and caches the
+    container, so repeated matmuls -- eager or traced -- quantize once. A
+    subclass wanting to re-quantize under different parameters invalidates
+    ``quant_tensor`` instead.
 
     Everything here is format-independent; a subclass supplies only
-    ``_quantize``.
+    ``_quantize`` and its container's fields.
     """
 
-    weight: Tensor
+    _tensor: Tensor
     _block_size: tuple[int, int]
 
     def __init__(self, tensor: Tensor, block_size: tuple[int, int]):
@@ -333,7 +336,7 @@ class _Quantizer(QTensor):
                 f"{type(self).__name__} needs a K that is a multiple of "
                 f"{block_size[-1]}, got {tensor.shape[-1]}"
             )
-        self.weight = tensor
+        self._tensor = tensor
         self._block_size = block_size
 
     def _quantize(self) -> QTensor:
@@ -348,7 +351,7 @@ class _Quantizer(QTensor):
     @property
     def shape(self) -> Shape:
         """Delegates shape to underlying tensor."""
-        return self.weight.shape
+        return self._tensor.shape
 
     @property
     def block_size(self) -> tuple[int, int]:
@@ -357,16 +360,20 @@ class _Quantizer(QTensor):
 
     def __tree_flatten__(self) -> tuple[dict[str, Any], None]:
         # Not vars(self): that also holds the cached quant_tensor once it is
-        # computed, which is no weight to load.
-        return {"weight": self.weight, "_block_size": self._block_size}, None
+        # computed, which is no weight to load. The tensor is keyed by its
+        # checkpoint name, though the attribute `weight` is the packed field.
+        return {"weight": self._tensor, "_block_size": self._block_size}, None
+
+    def __tree_setattr__(self, key: Any, value: Any) -> None:
+        super().__tree_setattr__("_tensor" if key == "weight" else key, value)
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
         """Delegates placement to underlying tensor."""
-        self.weight = self.weight.to(target)
+        self._tensor = self._tensor.to(target)
         return self
 
 
-class NVFP4TensorQuantizer(_Quantizer):
+class NVFP4TensorQuantizer(_Quantizer, NVFP4Tensor):
     """On-the-fly NVFP4 quantization of a bf16 weight."""
 
     def __init__(
@@ -378,7 +385,7 @@ class NVFP4TensorQuantizer(_Quantizer):
 
     def _quantize(self) -> NVFP4Tensor:
         amax = (
-            F.abs(self.weight)
+            F.abs(self._tensor)
             .max(axis=None)
             .reshape([])
             .cast(DType.float32)
@@ -388,7 +395,7 @@ class NVFP4TensorQuantizer(_Quantizer):
         decode_scale = 1.0 / encode_scale
 
         packed_value, scales_value = quantize_dynamic_block_scaled(
-            TensorValue(self.weight),
+            TensorValue(self._tensor),
             tensor_sf=TensorValue(encode_scale),
             sf_vector_size=self.block_size[1],
             scales_type=DType.float8_e4m3fn,
@@ -396,8 +403,8 @@ class NVFP4TensorQuantizer(_Quantizer):
         )
         packed = Tensor.from_graph_value(packed_value)
         scales = Tensor.from_graph_value(scales_value)
-        rows = self.weight.shape[0]
-        scale_cols = self.weight.shape[1] // self.block_size[1]
+        rows = self._tensor.shape[0]
+        scale_cols = self._tensor.shape[1] // self.block_size[1]
         weight_scale = scales.permute([0, 3, 2, 1, 4]).reshape(
             [rows, scale_cols]
         )
@@ -412,8 +419,30 @@ class NVFP4TensorQuantizer(_Quantizer):
 
     @cached_property
     def quant_tensor(self) -> NVFP4Tensor:
-        """The NVFP4 quantization of ``weight``, built on first use."""
+        """The NVFP4 quantization of the wrapped tensor, built on first use."""
         return self._quantize()
+
+    # The base class stores these as attributes. These stay read-only views
+    # of the cached quantized tensor so dispatch can read them the same way.
+    @property
+    def weight(self) -> Tensor:  # type: ignore[override]
+        """Packed NVFP4 weights."""
+        return self.quant_tensor.weight
+
+    @property
+    def weight_scale(self) -> Tensor:  # type: ignore[override]
+        """FP8 block scales."""
+        return self.quant_tensor.weight_scale
+
+    @property
+    def weight_scale_2(self) -> Tensor:  # type: ignore[override]
+        """Global weight scaling factor."""
+        return self.quant_tensor.weight_scale_2
+
+    @property
+    def input_scale(self) -> Tensor:  # type: ignore[override]
+        """Global activations scaling factor."""
+        return self.quant_tensor.input_scale
 
 
 class MXFP8Tensor(_QuantizedWeight):

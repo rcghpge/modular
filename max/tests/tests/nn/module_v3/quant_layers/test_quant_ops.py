@@ -194,8 +194,8 @@ def test_quantized_weight_nvfp4_fake(
         assert list(weight.shape) == [_MOE_DIM, _HIDDEN_DIM]
         # The dtype the checkpoint holds, not whatever device happens to be
         # available: this matches what `routed_weight_dtype` promises.
-        assert weight.weight.dtype == DType.bfloat16
-        assert weight.weight.dtype == quant_ops.routed_weight_dtype(
+        assert weight._tensor.dtype == DType.bfloat16
+        assert weight._tensor.dtype == quant_ops.routed_weight_dtype(
             nvfp4_fake_quant_config
         )
 
