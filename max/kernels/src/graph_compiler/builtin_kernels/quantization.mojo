@@ -294,23 +294,25 @@ struct ResizeNearest:
     def execute[
         coordinate_transform_mode: Int,
         round_mode: Int,
-        rank: Int,
-        dtype: DType,
-        //,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
-        size: InputTensor[rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        size: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime assert type_of(input).rank == type_of(output).rank
+        comptime assert type_of(size).rank == 1
         resize_nearest_neighbor[
             CoordinateTransformationMode(coordinate_transform_mode),
             RoundMode(round_mode),
             target=target,
         ](
-            input.to_tile_tensor[.int64](),
-            output.to_tile_tensor[.int64](),
+            input.to_tile_tensor[dtype](),
+            output.to_tile_tensor(),
             ctx,
         )
 
@@ -337,30 +339,33 @@ struct ResizeLinear:
     def execute[
         coordinate_transform_mode: Int,
         antialias: Bool,
-        rank: Int,
-        dtype: DType,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
-        size: InputTensor[rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        size: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime assert type_of(input).rank == type_of(output).rank
+        comptime assert type_of(size).rank == 1
         comptime if is_cpu[target]():
             resize_linear[
                 CoordinateTransformationMode(coordinate_transform_mode),
                 antialias,
             ](
-                input.to_tile_tensor[.int64](),
-                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[dtype](),
+                output.to_tile_tensor(),
             )
         else:
             resize_linear_gpu[
                 CoordinateTransformationMode(coordinate_transform_mode),
                 antialias,
             ](
-                input.to_tile_tensor[.int64](),
-                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[dtype](),
+                output.to_tile_tensor(),
                 ctx,
             )
 
@@ -385,19 +390,22 @@ struct ResizeBicubic:
 
     @staticmethod
     def execute[
-        rank: Int,
-        dtype: DType,
         target: StaticString,
         //,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
-        size: InputTensor[rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        size: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime assert type_of(input).rank == type_of(output).rank
+        comptime assert type_of(size).rank == 1
         resize_bicubic[dtype=dtype, target=target](
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
+            output.to_tile_tensor(),
+            input.to_tile_tensor[dtype](),
             ctx,
         )
 

@@ -152,9 +152,11 @@ from state_space.varlen_causal_conv1d import (
 )
 from max.runtime.tracing import trace_arg
 from extensibility import (
+    Input,
     InputTensor,
     InputVariadicTensors,
     ManagedTensorSlice,
+    Output,
     OutputTensor,
     StableInputVariadicTensors,
     Tensor,
@@ -460,25 +462,33 @@ struct MaxPool:
 
     @staticmethod
     def execute[
-        dtype: DType,
-        int_type: DType,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=4, ...],
-        input: InputTensor[dtype=dtype, rank=4, ...],
-        filter: InputTensor[dtype=int_type, rank=1, ...],
-        strides: InputTensor[dtype=int_type, rank=1, ...],
-        dilations: InputTensor[dtype=int_type, rank=1, ...],
-        paddings: InputTensor[dtype=int_type, rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilations: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(filter), TileTensorable)
+        comptime assert conforms_to(type_of(strides), TileTensorable)
+        comptime assert conforms_to(type_of(dilations), TileTensorable)
+        comptime assert conforms_to(type_of(paddings), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime int_type = type_of(filter).dtype
+        comptime assert type_of(output).rank == 4
+        comptime assert type_of(input).rank == 4
         max_pool[target=target](
-            input.to_tile_tensor[.int64](),
-            filter.to_tile_tensor[.int64](),
-            strides.to_tile_tensor[.int64](),
-            dilations.to_tile_tensor[.int64](),
-            paddings.to_tile_tensor[.int64](),
-            output.to_tile_tensor[.int64](),
+            input.to_tile_tensor[dtype](),
+            filter.to_tile_tensor[int_type](),
+            strides.to_tile_tensor[int_type](),
+            dilations.to_tile_tensor[int_type](),
+            paddings.to_tile_tensor[int_type](),
+            output.to_tile_tensor(),
             False,
             ctx,
         )
@@ -537,25 +547,33 @@ struct MaxPoolCeilModeTrue:
 
     @staticmethod
     def execute[
-        dtype: DType,
-        int_type: DType,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=4, ...],
-        input: InputTensor[dtype=dtype, rank=4, ...],
-        filter: InputTensor[dtype=int_type, rank=1, ...],
-        strides: InputTensor[dtype=int_type, rank=1, ...],
-        dilations: InputTensor[dtype=int_type, rank=1, ...],
-        paddings: InputTensor[dtype=int_type, rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilations: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(filter), TileTensorable)
+        comptime assert conforms_to(type_of(strides), TileTensorable)
+        comptime assert conforms_to(type_of(dilations), TileTensorable)
+        comptime assert conforms_to(type_of(paddings), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime int_type = type_of(filter).dtype
+        comptime assert type_of(output).rank == 4
+        comptime assert type_of(input).rank == 4
         max_pool[target=target](
-            input.to_tile_tensor[.int64](),
-            filter.to_tile_tensor[.int64](),
-            strides.to_tile_tensor[.int64](),
-            dilations.to_tile_tensor[.int64](),
-            paddings.to_tile_tensor[.int64](),
-            output.to_tile_tensor[.int64](),
+            input.to_tile_tensor[dtype](),
+            filter.to_tile_tensor[int_type](),
+            strides.to_tile_tensor[int_type](),
+            dilations.to_tile_tensor[int_type](),
+            paddings.to_tile_tensor[int_type](),
+            output.to_tile_tensor(),
             True,
             ctx,
         )

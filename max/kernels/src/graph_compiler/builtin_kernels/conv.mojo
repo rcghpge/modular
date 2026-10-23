@@ -117,25 +117,33 @@ struct AvgPool:
     @staticmethod
     def execute[
         count_boundary: Bool,
-        dtype: DType,
-        int_type: DType,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=4, ...],
-        input: InputTensor[dtype=dtype, rank=4, ...],
-        filter: InputTensor[dtype=int_type, rank=1, ...],
-        strides: InputTensor[dtype=int_type, rank=1, ...],
-        dilations: InputTensor[dtype=int_type, rank=1, ...],
-        paddings: InputTensor[dtype=int_type, rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilations: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(filter), TileTensorable)
+        comptime assert conforms_to(type_of(strides), TileTensorable)
+        comptime assert conforms_to(type_of(dilations), TileTensorable)
+        comptime assert conforms_to(type_of(paddings), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime int_type = type_of(filter).dtype
+        comptime assert type_of(output).rank == 4
+        comptime assert type_of(input).rank == 4
         avg_pool[count_boundary=count_boundary, target=target](
-            input.to_tile_tensor[.int64](),
-            filter.to_tile_tensor[.int64](),
-            strides.to_tile_tensor[.int64](),
-            dilations.to_tile_tensor[.int64](),
-            paddings.to_tile_tensor[.int64](),
-            output.to_tile_tensor[.int64](),
+            input.to_tile_tensor[dtype](),
+            filter.to_tile_tensor[int_type](),
+            strides.to_tile_tensor[int_type](),
+            dilations.to_tile_tensor[int_type](),
+            paddings.to_tile_tensor[int_type](),
+            output.to_tile_tensor(),
             False,
             ctx,
         )
@@ -183,25 +191,33 @@ struct AvgPoolCeilModeTrue:
     @staticmethod
     def execute[
         count_boundary: Bool,
-        dtype: DType,
-        int_type: DType,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=4, ...],
-        input: InputTensor[dtype=dtype, rank=4, ...],
-        filter: InputTensor[dtype=int_type, rank=1, ...],
-        strides: InputTensor[dtype=int_type, rank=1, ...],
-        dilations: InputTensor[dtype=int_type, rank=1, ...],
-        paddings: InputTensor[dtype=int_type, rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilations: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(filter), TileTensorable)
+        comptime assert conforms_to(type_of(strides), TileTensorable)
+        comptime assert conforms_to(type_of(dilations), TileTensorable)
+        comptime assert conforms_to(type_of(paddings), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime int_type = type_of(filter).dtype
+        comptime assert type_of(output).rank == 4
+        comptime assert type_of(input).rank == 4
         avg_pool[count_boundary=count_boundary, target=target](
-            input.to_tile_tensor[.int64](),
-            filter.to_tile_tensor[.int64](),
-            strides.to_tile_tensor[.int64](),
-            dilations.to_tile_tensor[.int64](),
-            paddings.to_tile_tensor[.int64](),
-            output.to_tile_tensor[.int64](),
+            input.to_tile_tensor[dtype](),
+            filter.to_tile_tensor[int_type](),
+            strides.to_tile_tensor[int_type](),
+            dilations.to_tile_tensor[int_type](),
+            paddings.to_tile_tensor[int_type](),
+            output.to_tile_tensor(),
             True,
             ctx,
         )
@@ -248,31 +264,52 @@ struct PadConstant:
 
     @staticmethod
     def execute[
-        dtype: DType, rank: Int, target: StaticString
+        dtype: DType, target: StaticString
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
-        padding: InputTensor[rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        padding: Some[Input & Tensor],
         constant: Scalar[dtype=dtype],
         ctx: DeviceContext,
     ) raises:
-        var paddings_ptr = padding._ptr
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(padding), TileTensorable)
+        comptime rank = type_of(output).rank
+        comptime out_dtype = type_of(output).dtype
+        comptime assert out_dtype == dtype
+        comptime assert type_of(input).rank == rank
+        comptime assert type_of(padding).rank == 1
+
+        var output_tile = output.to_tile_tensor()
+        # The helpers take one dtype for both tiles, so the input restates
+        # the output's dtype expression (MOCO-4355 stops the checker seeing
+        # that the two are equal).
+        var input_tile = input.to_tile_tensor[out_dtype]()
+        # `paddings` stays a raw pointer: the pad kernels index it directly
+        # rather than as a tensor. Under a storage policy that cannot produce a
+        # flat pointer this aborts at run time rather than compile time.
+        var paddings_ptr = padding.to_tile_tensor().ptr
 
         comptime if is_cpu[target]():
             pad_constant(
-                output.to_tile_tensor[.int64](),
-                input.to_tile_tensor[.int64](),
+                output_tile,
+                input_tile,
                 paddings_ptr,
                 constant,
             )
         elif is_gpu[target]():
             pad_constant_gpu(
-                output._ptr,
-                output.shape(),
-                input._ptr,
-                input.shape(),
+                output_tile.ptr,
+                rebind[IndexList[rank]](
+                    coord_to_index_list(output_tile.layout.shape_coord())
+                ),
+                input_tile.ptr,
+                rebind[IndexList[rank]](
+                    coord_to_index_list(input_tile.layout.shape_coord())
+                ),
                 paddings_ptr,
-                constant,
+                rebind[Scalar[out_dtype]](constant),
                 ctx,
             )
         else:
@@ -309,29 +346,38 @@ struct PadRepeat:
 
     @staticmethod
     def execute[
-        dtype: DType,
-        rank: Int,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
-        padding: InputTensor[rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        padding: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
-        var paddings_ptr = padding._ptr
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(padding), TileTensorable)
+        comptime rank = type_of(output).rank
+        comptime dtype = type_of(output).dtype
+        comptime assert type_of(input).rank == rank
+        comptime assert type_of(padding).rank == 1
+
+        var output_tile = output.to_tile_tensor()
+        var input_tile = input.to_tile_tensor[dtype]()
+        # See the note in `mo.pad.constant` on the raw `paddings` pointer.
+        var paddings_ptr = padding.to_tile_tensor().ptr
 
         comptime if is_cpu[target]():
-            pad_repeat(
-                output.to_tile_tensor[.int64](),
-                input.to_tile_tensor[.int64](),
-                paddings_ptr,
-            )
+            pad_repeat(output_tile, input_tile, paddings_ptr)
         elif is_gpu[target]():
             pad_repeat_gpu(
-                output._ptr,
-                output.shape(),
-                input._ptr,
-                input.shape(),
+                output_tile.ptr,
+                rebind[IndexList[rank]](
+                    coord_to_index_list(output_tile.layout.shape_coord())
+                ),
+                input_tile.ptr,
+                rebind[IndexList[rank]](
+                    coord_to_index_list(input_tile.layout.shape_coord())
+                ),
                 paddings_ptr,
                 ctx,
             )
@@ -359,29 +405,38 @@ struct PadReflect:
 
     @staticmethod
     def execute[
-        dtype: DType,
-        rank: Int,
         target: StaticString,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
-        padding: InputTensor[rank=1, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        padding: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
-        var paddings_ptr = padding._ptr
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert conforms_to(type_of(padding), TileTensorable)
+        comptime rank = type_of(output).rank
+        comptime dtype = type_of(output).dtype
+        comptime assert type_of(input).rank == rank
+        comptime assert type_of(padding).rank == 1
+
+        var output_tile = output.to_tile_tensor()
+        var input_tile = input.to_tile_tensor[dtype]()
+        # See the note in `mo.pad.constant` on the raw `paddings` pointer.
+        var paddings_ptr = padding.to_tile_tensor().ptr
 
         comptime if is_cpu[target]():
-            pad_reflect(
-                output.to_tile_tensor[.int64](),
-                input.to_tile_tensor[.int64](),
-                paddings_ptr,
-            )
+            pad_reflect(output_tile, input_tile, paddings_ptr)
         elif is_gpu[target]():
             pad_reflect_gpu(
-                output._ptr,
-                output.shape(),
-                input._ptr,
-                input.shape(),
+                output_tile.ptr,
+                rebind[IndexList[rank]](
+                    coord_to_index_list(output_tile.layout.shape_coord())
+                ),
+                input_tile.ptr,
+                rebind[IndexList[rank]](
+                    coord_to_index_list(input_tile.layout.shape_coord())
+                ),
                 paddings_ptr,
                 ctx,
             )

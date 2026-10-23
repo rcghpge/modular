@@ -55,7 +55,9 @@ from state_space.rms_norm_fused_residual import (
     rms_norm_fused_residual,
 )
 from extensibility import (
+    Input,
     InputTensor,
+    Output,
     OutputTensor,
     Tensor,
     TileTensorable,
@@ -73,7 +75,7 @@ comptime logger = Logger()
 
 from std.utils import IndexList
 from std.utils.coord import ComptimeInt, Coord, coord_to_index_list
-from layout import UNKNOWN_VALUE, DefaultEngine
+from layout import UNKNOWN_VALUE
 from std.utils.index import Index
 
 # ===-----------------------------------------------------------------------===#
@@ -208,8 +210,8 @@ struct ArgNonZero:
     def execute[
         target: StaticString,
     ](
-        output_buffer: OutputTensor[rank=2, ...],
-        input_buffer: InputTensor,
+        output_buffer: Some[Output & Tensor],
+        input_buffer: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
         """Executes the `mo.arg_nonzero` graph op.
@@ -222,9 +224,13 @@ struct ArgNonZero:
             input_buffer: Input tensor whose nonzero indices are found.
             ctx: Device context used to enqueue GPU work.
         """
+        comptime assert conforms_to(type_of(output_buffer), TileTensorable)
+        comptime assert conforms_to(type_of(input_buffer), TileTensorable)
+        comptime assert type_of(output_buffer).rank == 2
+
         arg_nonzero.arg_nonzero[target=target](
-            input_buffer.to_tile_tensor[.int64](),
-            output_buffer.to_tile_tensor[.int64](),
+            input_buffer.to_tile_tensor(),
+            output_buffer.to_tile_tensor(),
             ctx,
         )
 
@@ -331,9 +337,9 @@ struct RowMeanOfSquaresQK:
     def execute[
         target: StaticString,
     ](
-        output: OutputTensor[rank=2, ...],
-        q: InputTensor[rank=2, ...],
-        k: InputTensor[rank=2, ...],
+        output: Some[Output & Tensor],
+        q: Some[Input & Tensor],
+        k: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
         """Executes the `mo.reduce.row_mean_of_squares_qk` graph op.
@@ -348,23 +354,39 @@ struct RowMeanOfSquaresQK:
             k: Key tensor of shape `[M, Nk]`.
             ctx: Device context used to enqueue the kernel.
         """
-        comptime assert q.dtype == k.dtype, "q and k must share a dtype"
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(q), TileTensorable)
+        comptime assert conforms_to(type_of(k), TileTensorable)
+        comptime in_dtype = type_of(q).dtype
+        comptime assert (
+            type_of(k).dtype == in_dtype
+        ), "q and k must share a dtype"
+        comptime assert type_of(output).rank == 2
+        comptime assert type_of(q).rank == 2
+        comptime assert type_of(k).rank == 2
+
+        var output_tile = output.to_tile_tensor()
+        var q_tile = q.to_tile_tensor()
+        var k_tile = k.to_tile_tensor()
+
+        # Each tile's `dim()` carries its own linear index type, so the two
+        # sides need a common type before they can be compared.
         if (
-            output.shape()[0] != q.shape()[0]
-            or output.shape()[0] != k.shape()[0]
-            or output.shape()[1] != 2
+            Int(output_tile.dim[0]()) != Int(q_tile.dim[0]())
+            or Int(output_tile.dim[0]()) != Int(k_tile.dim[0]())
+            or Int(output_tile.dim[1]()) != 2
         ):
             raise Error("output must have shape [rows, 2] matching q/k rows")
 
-        # `k` is bitcast to `q.dtype` to unify the single `in_dtype` kernel
+        # `k` is bitcast to `q`'s dtype to unify the single `in_dtype` kernel
         # parameter (q and k share a dtype, asserted above).
         row_mean_of_squares_qk[target=target](
-            output.to_tile_tensor[.int64](),
-            q.to_tile_tensor[.int64](),
-            k.to_tile_tensor[.int64]().bitcast[q.dtype](),
-            q.shape()[0],
-            q.shape()[1],
-            k.shape()[1],
+            output_tile,
+            q_tile,
+            k_tile.bitcast[in_dtype](),
+            Int(q_tile.dim[0]()),
+            Int(q_tile.dim[1]()),
+            Int(k_tile.dim[1]()),
             ctx,
         )
 
@@ -416,13 +438,13 @@ struct ApplyQKRMSNorm:
     def execute[
         target: StaticString,
     ](
-        q_out: OutputTensor[rank=2, ...],
-        k_out: OutputTensor[rank=2, ...],
-        q: InputTensor[rank=2, ...],
-        k: InputTensor[rank=2, ...],
-        qk_var: InputTensor[dtype=.float32, rank=2, ...],
-        gamma_q: InputTensor[dtype=.float32, rank=1, ...],
-        gamma_k: InputTensor[dtype=.float32, rank=1, ...],
+        q_out: Some[Output & Tensor],
+        k_out: Some[Output & Tensor],
+        q: Some[Input & Tensor],
+        k: Some[Input & Tensor],
+        qk_var: Some[Input & Tensor],
+        gamma_q: Some[Input & Tensor],
+        gamma_k: Some[Input & Tensor],
         epsilon: Float32,
         ctx: DeviceContext,
     ) raises:
@@ -445,41 +467,77 @@ struct ApplyQKRMSNorm:
         Raises:
             Error: If output shapes do not match the corresponding inputs.
         """
-        comptime assert q.dtype == k.dtype, "q and k must share a dtype"
+        comptime assert conforms_to(type_of(q_out), TileTensorable)
+        comptime assert conforms_to(type_of(k_out), TileTensorable)
+        comptime assert conforms_to(type_of(q), TileTensorable)
+        comptime assert conforms_to(type_of(k), TileTensorable)
+        comptime assert conforms_to(type_of(qk_var), TileTensorable)
+        comptime assert conforms_to(type_of(gamma_q), TileTensorable)
+        comptime assert conforms_to(type_of(gamma_k), TileTensorable)
+        comptime in_dtype = type_of(q).dtype
         comptime assert (
-            q_out.dtype == q.dtype and k_out.dtype == q.dtype
+            type_of(k).dtype == in_dtype
+        ), "q and k must share a dtype"
+        comptime out_dtype = type_of(q_out).dtype
+        comptime assert (
+            out_dtype == in_dtype and type_of(k_out).dtype == in_dtype
         ), "outputs must match the q/k dtype"
-        if q_out.shape()[0] != q.shape()[0] or q_out.shape()[1] != q.shape()[1]:
+        comptime assert type_of(qk_var).dtype == DType.float32
+        comptime assert type_of(gamma_q).dtype == DType.float32
+        comptime assert type_of(gamma_k).dtype == DType.float32
+        comptime assert type_of(q_out).rank == 2
+        comptime assert type_of(k_out).rank == 2
+        comptime assert type_of(q).rank == 2
+        comptime assert type_of(k).rank == 2
+        comptime assert type_of(qk_var).rank == 2
+        comptime assert type_of(gamma_q).rank == 1
+        comptime assert type_of(gamma_k).rank == 1
+
+        var q_out_tile = q_out.to_tile_tensor()
+        var k_out_tile = k_out.to_tile_tensor()
+        var q_tile = q.to_tile_tensor()
+        var k_tile = k.to_tile_tensor()
+        var qk_var_tile = qk_var.to_tile_tensor()
+        var gamma_q_tile = gamma_q.to_tile_tensor()
+        var gamma_k_tile = gamma_k.to_tile_tensor()
+
+        # Each tile's `dim()` carries its own linear index type, so the two
+        # sides need a common type before they can be compared.
+        if Int(q_out_tile.dim[0]()) != Int(q_tile.dim[0]()) or Int(
+            q_out_tile.dim[1]()
+        ) != Int(q_tile.dim[1]()):
             raise Error("q_out must have shape [rows, Nq] matching q")
-        if k_out.shape()[0] != k.shape()[0] or k_out.shape()[1] != k.shape()[1]:
+        if Int(k_out_tile.dim[0]()) != Int(k_tile.dim[0]()) or Int(
+            k_out_tile.dim[1]()
+        ) != Int(k_tile.dim[1]()):
             raise Error("k_out must have shape [rows, Nk] matching k")
         if (
-            qk_var.shape()[0] != q.shape()[0]
-            or qk_var.shape()[0] != k.shape()[0]
-            or qk_var.shape()[1] != 2
+            Int(qk_var_tile.dim[0]()) != Int(q_tile.dim[0]())
+            or Int(qk_var_tile.dim[0]()) != Int(k_tile.dim[0]())
+            or Int(qk_var_tile.dim[1]()) != 2
         ):
             raise Error("qk_var must have shape [rows, 2] matching q/k rows")
-        if gamma_q.shape()[0] != q.shape()[1]:
+        if Int(gamma_q_tile.dim[0]()) != Int(q_tile.dim[1]()):
             raise Error("gamma_q must have shape [Nq] matching q cols")
-        if gamma_k.shape()[0] != k.shape()[1]:
+        if Int(gamma_k_tile.dim[0]()) != Int(k_tile.dim[1]()):
             raise Error("gamma_k must have shape [Nk] matching k cols")
 
         # `out_dtype` is inferred from `q_out`; `k_out` shares the same dtype
-        # (asserted above), so bitcast its tile tensor to `q_out.dtype` to
-        # unify the single `out_dtype` parameter. Likewise `in_dtype` is
-        # inferred from `q`, so bitcast `k` to `q.dtype`.
+        # (asserted above), so bitcast its tile tensor to unify the single
+        # `out_dtype` parameter. Likewise `in_dtype` is inferred from `q`, so
+        # bitcast `k`.
         apply_qk_rms_norm[target=target,](
-            q_out.to_tile_tensor[.int64](),
-            k_out.to_tile_tensor[.int64]().bitcast[q_out.dtype](),
-            gamma_q.to_tile_tensor[.int64](),
-            gamma_k.to_tile_tensor[.int64](),
-            qk_var.to_tile_tensor[.int64](),
-            q.to_tile_tensor[.int64](),
-            k.to_tile_tensor[.int64]().bitcast[q.dtype](),
+            q_out_tile,
+            k_out_tile.bitcast[out_dtype](),
+            gamma_q_tile.bitcast[DType.float32](),
+            gamma_k_tile.bitcast[DType.float32](),
+            qk_var_tile.bitcast[DType.float32](),
+            q_tile,
+            k_tile.bitcast[in_dtype](),
             epsilon,
-            q.shape()[0],
-            q.shape()[1],
-            k.shape()[1],
+            Int(q_tile.dim[0]()),
+            Int(q_tile.dim[1]()),
+            Int(k_tile.dim[1]()),
             ctx,
         )
 
@@ -1638,13 +1696,11 @@ struct BottomK:
 
     @staticmethod
     def execute[
-        dtype: DType,
-        rank: Int,
         target: StaticString,
     ](
-        values: OutputTensor[dtype=dtype, rank=rank, ...],
-        indices: OutputTensor[dtype=.int64, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
+        values: Some[Output & Tensor],
+        indices: Some[Output & Tensor],
+        input: Some[Input & Tensor],
         k: Scalar,
         axis: Scalar,
         sorted: Scalar[.bool],
@@ -1653,8 +1709,6 @@ struct BottomK:
         """Executes the `mo.bottom_k` graph op.
 
         Parameters:
-            dtype: Element type of the input and output tensors.
-            rank: Tensor rank of the input and output tensors.
             target: Compilation target string.
 
         Args:
@@ -1669,15 +1723,23 @@ struct BottomK:
         Raises:
             Error: If the operation parameters are invalid.
         """
+        comptime assert conforms_to(type_of(values), TileTensorable)
+        comptime assert conforms_to(type_of(indices), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime dtype = type_of(values).dtype
+        comptime assert type_of(input).rank == type_of(values).rank
+        comptime assert type_of(indices).rank == type_of(values).rank
+
+        var input_tile = input.to_tile_tensor[dtype]()
         top_k[
-            KEngine=DefaultEngine[element_width=1],
+            KEngine=type_of(input_tile).Engine,
             largest=False,
             target=target,
         ](
-            input.to_tile_tensor[.int64](),
+            input_tile,
             Int(k),
             Int(axis),
-            values.to_tile_tensor[.int64](),
+            values.to_tile_tensor(),
             indices.to_tile_tensor[.int64](),
             sorted,
             ctx,
@@ -1717,14 +1779,12 @@ struct TopK:
 
     @staticmethod
     def execute[
-        dtype: DType,
-        rank: Int,
         target: StaticString,
         _trace_name: StaticString,
     ](
-        values: OutputTensor[dtype=dtype, rank=rank, ...],
-        indices: OutputTensor[dtype=.int64, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
+        values: Some[Output & Tensor],
+        indices: Some[Output & Tensor],
+        input: Some[Input & Tensor],
         k: Scalar,
         axis: Scalar,
         sorted: Scalar[.bool],
@@ -1733,8 +1793,6 @@ struct TopK:
         """Executes the `mo.top_k` graph op.
 
         Parameters:
-            dtype: Element type of the input and output tensors.
-            rank: Tensor rank of the input and output tensors.
             target: Compilation target string.
             _trace_name: Name used for tracing and debugging.
 
@@ -1750,15 +1808,23 @@ struct TopK:
         Raises:
             Error: If the operation parameters are invalid.
         """
+        comptime assert conforms_to(type_of(values), TileTensorable)
+        comptime assert conforms_to(type_of(indices), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime dtype = type_of(values).dtype
+        comptime assert type_of(input).rank == type_of(values).rank
+        comptime assert type_of(indices).rank == type_of(values).rank
+
+        var input_tile = input.to_tile_tensor[dtype]()
         top_k[
-            KEngine=DefaultEngine[element_width=1],
+            KEngine=type_of(input_tile).Engine,
             largest=True,
             target=target,
         ](
-            input.to_tile_tensor[.int64](),
+            input_tile,
             Int(k),
             Int(axis),
-            values.to_tile_tensor[.int64](),
+            values.to_tile_tensor(),
             indices.to_tile_tensor[.int64](),
             sorted,
             ctx,
@@ -2020,22 +2086,18 @@ struct CumSum:
     @staticmethod
     def execute[
         target: StaticString,
-        dtype: DType,
-        rank: Int,
         exclusive: Int,
         reverse: Int,
         axis: Int,
     ](
-        output: OutputTensor[dtype=dtype, rank=rank, ...],
-        input: InputTensor[dtype=dtype, rank=rank, ...],
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
         """Executes the `mo.cumsum` graph op.
 
         Parameters:
             target: Compilation target string.
-            dtype: Element type of the input and output tensors.
-            rank: Tensor rank of the input and output tensors.
             exclusive: See the graph op signature.
             reverse: See the graph op signature.
             axis: Dimension along which to reduce.
@@ -2048,9 +2110,14 @@ struct CumSum:
         Raises:
             Error: If the GPU kernel launch fails.
         """
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime dtype = type_of(output).dtype
+        comptime assert type_of(input).rank == type_of(output).rank
+
         cumsum[dtype, Bool(exclusive), Bool(reverse), axis=axis, target=target](
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
+            output.to_tile_tensor(),
+            input.to_tile_tensor[dtype](),
             ctx,
         )
 
@@ -2063,8 +2130,8 @@ struct ArgSort[*, ascending: Bool]:
     def execute[
         target: StaticString
     ](
-        indices: OutputTensor[rank=1, ...],
-        input: InputTensor[rank=1, ...],
+        indices: Some[Output & Tensor],
+        input: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
         """Executes the `mx.argsort` graph op.
@@ -2080,8 +2147,13 @@ struct ArgSort[*, ascending: Bool]:
         Raises:
             Error: If the operation parameters are invalid.
         """
-        var indices_tensor = indices.to_tile_tensor[.int64]()
-        var input_tensor = input.to_tile_tensor[.int64]()
+        comptime assert conforms_to(type_of(indices), TileTensorable)
+        comptime assert conforms_to(type_of(input), TileTensorable)
+        comptime assert type_of(indices).rank == 1
+        comptime assert type_of(input).rank == 1
+
+        var indices_tensor = indices.to_tile_tensor()
+        var input_tensor = input.to_tile_tensor()
 
         comptime if target == "cpu":
             argsort[ascending=Self.ascending](indices_tensor, input_tensor)

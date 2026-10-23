@@ -501,12 +501,10 @@ struct SqueezeShape:
     @staticmethod
     def execute[
         target: StaticString,
-        dtype: DType,
-        indices_type: DType,
     ](
-        output_shape: OutputTensor[dtype=dtype, rank=1, ...],
-        input_shape: InputTensor[dtype=dtype, rank=1, ...],
-        remove_indices: InputTensor[dtype=indices_type, rank=1, ...],
+        output_shape: Some[Output & Tensor],
+        input_shape: Some[Input & Tensor],
+        remove_indices: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
         """Removes the dimensions at `remove_indices` from `input_shape`.
@@ -514,31 +512,55 @@ struct SqueezeShape:
         Raises:
             If the GPU kernel launch fails.
         """
-        var num_input_dims = input_shape.dim_size[0]()
-        var num_remove_indices = remove_indices.dim_size[0]()
-        assert (
-            num_input_dims - num_remove_indices == output_shape.dim_size[0]()
+        comptime assert conforms_to(type_of(output_shape), TileTensorable)
+        comptime assert conforms_to(type_of(input_shape), TileTensorable)
+        comptime assert conforms_to(type_of(remove_indices), TileTensorable)
+        comptime dtype = type_of(output_shape).dtype
+        comptime indices_type = type_of(remove_indices).dtype
+        comptime assert type_of(output_shape).rank == 1
+        comptime assert type_of(input_shape).rank == 1
+        comptime assert type_of(remove_indices).rank == 1
+
+        var output_tt = output_shape.to_tile_tensor()
+        var input_tt = input_shape.to_tile_tensor[dtype]()
+        var remove_tt = remove_indices.to_tile_tensor()
+        var num_input_dims = Int(input_tt.dim[0]())
+        var num_remove_indices = Int(remove_tt.dim[0]())
+        assert num_input_dims - num_remove_indices == Int(
+            output_tt.dim[0]()
         ), "Incorrect output shape."
+
+        var output_ptr = output_tt.ptr.unsafe_origin_cast[MutAnyOrigin]()
+        var output_stride = Int(output_tt.dynamic_stride(0))
+        # The helpers take mutable pointers but only read the inputs.
+        var input_ptr = input_tt.ptr.unsafe_mut_cast[True]().unsafe_origin_cast[
+            MutAnyOrigin
+        ]()
+        var input_stride = Int(input_tt.dynamic_stride(0))
+        var indices_ptr = remove_tt.ptr.unsafe_mut_cast[
+            True
+        ]().unsafe_origin_cast[MutAnyOrigin]()
+        var indices_stride = Int(remove_tt.dynamic_stride(0))
 
         comptime if is_cpu[target]():
             _squeeze_shape(
-                output_shape.unsafe_ptr(),
-                output_shape.stride_length[0](),
-                input_shape.unsafe_ptr(),
-                input_shape.stride_length[0](),
-                remove_indices.unsafe_ptr(),
-                remove_indices.stride_length[0](),
+                output_ptr,
+                output_stride,
+                input_ptr,
+                input_stride,
+                indices_ptr,
+                indices_stride,
                 num_input_dims,
                 num_remove_indices,
             )
         else:
             squeeze_shape_gpu(
-                output_shape.unsafe_ptr(),
-                output_shape.stride_length[0](),
-                input_shape.unsafe_ptr(),
-                input_shape.stride_length[0](),
-                remove_indices.unsafe_ptr(),
-                remove_indices.stride_length[0](),
+                output_ptr,
+                output_stride,
+                input_ptr,
+                input_stride,
+                indices_ptr,
+                indices_stride,
                 num_input_dims,
                 num_remove_indices,
                 ctx,
@@ -574,12 +596,10 @@ struct UnsqueezeShape:
     @staticmethod
     def execute[
         target: StaticString,
-        dtype: DType,
-        indices_type: DType,
     ](
-        output_shape: OutputTensor[dtype=dtype, rank=1, ...],
-        input_shape: InputTensor[dtype=dtype, rank=1, ...],
-        padding_indices: InputTensor[dtype=indices_type, rank=1, ...],
+        output_shape: Some[Output & Tensor],
+        input_shape: Some[Input & Tensor],
+        padding_indices: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
         """Inserts size-1 dimensions into `input_shape` at `padding_indices`.
@@ -587,31 +607,55 @@ struct UnsqueezeShape:
         Raises:
             If the GPU kernel launch fails.
         """
-        var num_input_dims = input_shape.dim_size[0]()
-        var num_padding_indices = padding_indices.dim_size[0]()
-        assert (
-            num_input_dims + num_padding_indices == output_shape.dim_size[0]()
+        comptime assert conforms_to(type_of(output_shape), TileTensorable)
+        comptime assert conforms_to(type_of(input_shape), TileTensorable)
+        comptime assert conforms_to(type_of(padding_indices), TileTensorable)
+        comptime dtype = type_of(output_shape).dtype
+        comptime indices_type = type_of(padding_indices).dtype
+        comptime assert type_of(output_shape).rank == 1
+        comptime assert type_of(input_shape).rank == 1
+        comptime assert type_of(padding_indices).rank == 1
+
+        var output_tt = output_shape.to_tile_tensor()
+        var input_tt = input_shape.to_tile_tensor[dtype]()
+        var padding_tt = padding_indices.to_tile_tensor()
+        var num_input_dims = Int(input_tt.dim[0]())
+        var num_padding_indices = Int(padding_tt.dim[0]())
+        assert num_input_dims + num_padding_indices == Int(
+            output_tt.dim[0]()
         ), "Incorrect output shape."
+
+        var output_ptr = output_tt.ptr.unsafe_origin_cast[MutAnyOrigin]()
+        var output_stride = Int(output_tt.dynamic_stride(0))
+        # The helpers take mutable pointers but only read the inputs.
+        var input_ptr = input_tt.ptr.unsafe_mut_cast[True]().unsafe_origin_cast[
+            MutAnyOrigin
+        ]()
+        var input_stride = Int(input_tt.dynamic_stride(0))
+        var indices_ptr = padding_tt.ptr.unsafe_mut_cast[
+            True
+        ]().unsafe_origin_cast[MutAnyOrigin]()
+        var indices_stride = Int(padding_tt.dynamic_stride(0))
 
         comptime if is_cpu[target]():
             _unsqueeze_shape(
-                output_shape.unsafe_ptr(),
-                output_shape.stride_length[0](),
-                input_shape.unsafe_ptr(),
-                input_shape.stride_length[0](),
-                padding_indices.unsafe_ptr(),
-                padding_indices.stride_length[0](),
+                output_ptr,
+                output_stride,
+                input_ptr,
+                input_stride,
+                indices_ptr,
+                indices_stride,
                 num_input_dims,
                 num_padding_indices,
             )
         else:
             unsqueeze_shape_gpu(
-                output_shape.unsafe_ptr(),
-                output_shape.stride_length[0](),
-                input_shape.unsafe_ptr(),
-                input_shape.stride_length[0](),
-                padding_indices.unsafe_ptr(),
-                padding_indices.stride_length[0](),
+                output_ptr,
+                output_stride,
+                input_ptr,
+                input_stride,
+                indices_ptr,
+                indices_stride,
                 num_input_dims,
                 num_padding_indices,
                 ctx,
