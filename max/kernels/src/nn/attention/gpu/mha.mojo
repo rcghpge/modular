@@ -977,6 +977,7 @@ def flash_attention_dispatch[
     comptime num_heads = config.num_heads
     comptime depth = config.depth
     comptime group = config.num_heads // kv_num_heads
+    comptime warp_size = ctx.default_device_info.warp_size
 
     # K V smem is only separate for GPUs with shared memory greater or equal to A100's.
     comptime is_shared_kv = ctx.default_device_info.shared_memory_per_multiprocessor < A100.shared_memory_per_multiprocessor
@@ -1498,7 +1499,7 @@ def flash_attention_dispatch[
                 comptime WM = BM
                 comptime WN = 32
                 # num warps in M and N, multiplied by warp size.
-                comptime num_threads = (BM // WM) * (BN // WN) * WARP_SIZE
+                comptime num_threads = (BM // WM) * (BN // WN) * warp_size
 
                 # Key tile for the single-KV-head fold arm below, the only one
                 # that sets WN == BN (one warp owns the whole key tile, so
@@ -1522,7 +1523,7 @@ def flash_attention_dispatch[
                         num_pipeline_stages * BN * BK * size_of[k_t.dtype]()
                     )
 
-                comptime num_warps = ceildiv(num_threads, WARP_SIZE)
+                comptime num_warps = ceildiv(num_threads, warp_size)
 
                 # smem for p and warp_scratch
                 shared_mem_bytes += (
@@ -1735,7 +1736,7 @@ def flash_attention_dispatch[
                                     comptime num_threads_S = (
                                         (BM_S // WM_S)
                                         * (BN_S // WN_S)
-                                        * WARP_SIZE
+                                        * warp_size
                                     )
                                     comptime kernel = mha_decoding[
                                         q.dtype,
@@ -1953,7 +1954,7 @@ def flash_attention_dispatch[
                             output.dtype,
                             depth=depth,
                             num_heads=num_heads,
-                            num_threads=WARP_SIZE,
+                            num_threads=warp_size,
                             use_exp2=reduce_use_exp2,
                         ]
 
@@ -1973,7 +1974,7 @@ def flash_attention_dispatch[
                                 num_heads,
                                 num_q_rows,
                             ),
-                            block_dim=(WARP_SIZE, 1, 1),
+                            block_dim=(warp_size, 1, 1),
                             attributes=pdl_launch_attributes(MHA_PDL_LEVEL),
                         )
                         _ = exp_sum_qk_max_data^

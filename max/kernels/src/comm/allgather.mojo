@@ -457,7 +457,7 @@ def _allgather_p2p_tma[
     """
     comptime TMA_BLOCK_SIZE = 256
     comptime TMA_BYTES_PER_COPY = 16384
-    comptime NUM_WARPS = TMA_BLOCK_SIZE // WARP_SIZE
+    comptime NUM_WARPS = TMA_BLOCK_SIZE // ctx.default_device_info.warp_size
     comptime tma_smem = (
         NUM_WARPS * TMA_BYTES_PER_COPY + NUM_WARPS * size_of[SharedMemBarrier]()
     )

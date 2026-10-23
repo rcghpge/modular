@@ -25,7 +25,6 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from max.gpu import (
-    WARP_SIZE,
     block_dim,
     block_idx,
     thread_idx,
@@ -1224,7 +1223,7 @@ def run_gemm_kernel_tc[
             b.as_imm().as_unsafe_any_origin(),
             c.as_unsafe_any_origin(),
             grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
-            block_dim=(NUM_WARPS * WARP_SIZE),
+            block_dim=(NUM_WARPS * ctx.default_device_info.warp_size),
         )
 
     time_kernel(m, run_func, ctx, M * N * K, "tensor_core")
@@ -1235,5 +1234,5 @@ def run_gemm_kernel_tc[
         b.as_imm().as_unsafe_any_origin(),
         c.as_unsafe_any_origin(),
         grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
-        block_dim=(NUM_WARPS * WARP_SIZE),
+        block_dim=(NUM_WARPS * ctx.default_device_info.warp_size),
     )

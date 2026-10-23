@@ -90,6 +90,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
             var b_tt = b.to_tile_tensor().as_unsafe_any_origin()
 
             var gpu_ctx = ctx
+            comptime warp_size = gpu_ctx.default_device_info.warp_size
             comptime if gpu_ctx.target.is_nvidia_gpu() and Self.algorithm == "mma_tile_buffers":
                 raise Error("mma_tile_buffers is AMD-only")
 
@@ -164,7 +165,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                     comptime MMA_N = 8 if gpu_ctx.target.is_nvidia_gpu() else 32
                     comptime MMA_K = 16 if gpu_ctx.target.is_nvidia_gpu() else 8
                     comptime NUM_WARPS = (BM // MMA_M) * (BN // MMA_N)
-                    comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                    comptime NUM_THREADS = NUM_WARPS * warp_size
                     comptime if gpu_ctx.target.is_nvidia_gpu():
                         comptime assert M > 0 and N > 0 and K > 0
                         comptime assert (
@@ -203,7 +204,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                     comptime MMA_N = 8 if gpu_ctx.target.is_nvidia_gpu() else 32
                     comptime MMA_K = 16 if gpu_ctx.target.is_nvidia_gpu() else 8
                     comptime NUM_WARPS = (BM // MMA_M) * (BN // MMA_N)
-                    comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                    comptime NUM_THREADS = NUM_WARPS * warp_size
                     comptime if gpu_ctx.target.is_nvidia_gpu():
                         comptime assert M > 0 and N > 0 and K > 0
                         comptime assert (
@@ -244,7 +245,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                     comptime MMA_N = 8 if gpu_ctx.target.is_nvidia_gpu() else 32
                     comptime MMA_K = 16 if gpu_ctx.target.is_nvidia_gpu() else 8
                     comptime NUM_WARPS = (BM // WM) * (BN // WN)
-                    comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                    comptime NUM_THREADS = NUM_WARPS * warp_size
                     comptime if gpu_ctx.target.is_nvidia_gpu():
                         comptime assert M > 0 and N > 0 and K > 0
                         comptime assert (
@@ -287,7 +288,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                     comptime MMA_N = 8 if gpu_ctx.target.is_nvidia_gpu() else 32
                     comptime MMA_K = 16 if gpu_ctx.target.is_nvidia_gpu() else 8
                     comptime NUM_WARPS = (BM // WM) * (BN // WN)
-                    comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                    comptime NUM_THREADS = NUM_WARPS * warp_size
                     comptime if gpu_ctx.target.is_nvidia_gpu():
                         comptime assert M > 0 and N > 0 and K > 0
                         comptime assert (
@@ -330,7 +331,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                     comptime MMA_N = 8 if gpu_ctx.target.is_nvidia_gpu() else 32
                     comptime MMA_K = 16 if gpu_ctx.target.is_nvidia_gpu() else 8
                     comptime NUM_WARPS = (BM // WM) * (BN // WN)
-                    comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                    comptime NUM_THREADS = NUM_WARPS * warp_size
                     comptime if gpu_ctx.target.is_nvidia_gpu():
                         comptime assert M > 0 and N > 0 and K > 0
                         comptime assert (
@@ -376,7 +377,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                     comptime MMA_K = 8
 
                     comptime NUM_WARPS = (BM // WM) * (BN // WN)
-                    comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                    comptime NUM_THREADS = NUM_WARPS * warp_size
 
                     # `mma_tile_buffers` takes `TileTensor` A/B/C. B is the
                     # (transposed) `row_major[N, K]` `TileTensor` built above.
@@ -426,7 +427,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
                 comptime MMA_N = 8 if gpu_ctx.target.is_nvidia_gpu() else 16
                 comptime MMA_K = 16
                 comptime NUM_WARPS = (BM // MMA_M) * (BN // MMA_N)
-                comptime NUM_THREADS = NUM_WARPS * WARP_SIZE
+                comptime NUM_THREADS = NUM_WARPS * warp_size
                 comptime naive_tensor_kernel = naive_tensor[
                     a.dtype,
                     output.dtype,

@@ -2715,7 +2715,7 @@ def grouped_quantize_nvfp4_row_amax[
         scales_offsets,
         row_indices,
         grid_dim=(num_blocks, 1, 1),
-        block_dim=(rows_per_block * WARP_SIZE,),
+        block_dim=(rows_per_block * ctx.default_device_info.warp_size,),
         attributes=pdl_launch_attributes(PDLLevel.ON),
     )
 

@@ -16,12 +16,7 @@ from std.math import align_down, align_up, ceildiv, rsqrt
 from std.sys.info import align_of, simd_width_of, size_of
 
 from std.algorithm import vectorize
-from max.gpu import (
-    WARP_SIZE,
-    block_dim,
-    block_idx,
-    thread_idx,
-)
+from max.gpu import block_dim, block_idx, thread_idx
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_gpu
@@ -772,12 +767,15 @@ def rms_norm_fused_residual_gpu[
         return residual_input_fn[simd_width](Coord(indices))
 
     comptime simd_width = simd_width_of[dtype, target=ctx.target]()
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = (
+        ctx.default_device_info.max_thread_block_size // warp_size
+    )
 
     var grid_dim = rows
     var block_dim = min(
-        align_up(ceildiv(cols, simd_width), WARP_SIZE),
-        WARP_SIZE * max_warps_per_block,
+        align_up(ceildiv(cols, simd_width), warp_size),
+        warp_size * max_warps_per_block,
     )
 
     var shared_mem_size = align_up(cols, simd_width) * size_of[dtype]()

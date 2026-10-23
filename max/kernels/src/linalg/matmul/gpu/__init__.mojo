@@ -26,11 +26,7 @@ from std.sys.info import _accelerator_arch
 from std.algorithm.functional import tile_and_unswitch
 
 from max.algorithm.functional import elementwise
-from max.gpu import (
-    WARP_SIZE,
-    global_idx,
-    thread_idx,
-)
+from max.gpu import global_idx, thread_idx
 from max.gpu.sync import barrier
 from max.gpu.primitives.grid_controls import PDLLevel
 from max.gpu.host import DeviceContext, FuncAttribute
@@ -1817,6 +1813,7 @@ def _matmul_gpu_impl[
             WARP_TILE_N: Int,
         ]() raises {imm}:
             comptime NUM_WARPS = WARPS_M * WARPS_N
+            comptime warp_size = ctx.default_device_info.warp_size
             comptime if has_epilogue_fn:
                 comptime rdna_kernel = gemm_kernel_rdna_epilogue_fn[
                     c_type,
@@ -1847,7 +1844,7 @@ def _matmul_gpu_impl[
                     Int32(k),
                     host_args=(epilogue_fn,),
                     grid_dim=(ceildiv(n, BLOCK_N), ceildiv(m, BLOCK_M)),
-                    block_dim=(NUM_WARPS * WARP_SIZE,),
+                    block_dim=(NUM_WARPS * warp_size,),
                 )
             elif has_compute_fn:
                 comptime rdna_kernel = gemm_kernel_rdna_compute_fn[
@@ -1879,7 +1876,7 @@ def _matmul_gpu_impl[
                     Int32(k),
                     host_args=(compute_fn,),
                     grid_dim=(ceildiv(n, BLOCK_N), ceildiv(m, BLOCK_M)),
-                    block_dim=(NUM_WARPS * WARP_SIZE,),
+                    block_dim=(NUM_WARPS * warp_size,),
                 )
             else:
                 comptime rdna_kernel = gemm_kernel_rdna[
@@ -1909,7 +1906,7 @@ def _matmul_gpu_impl[
                     Int32(n),
                     Int32(k),
                     grid_dim=(ceildiv(n, BLOCK_N), ceildiv(m, BLOCK_M)),
-                    block_dim=(NUM_WARPS * WARP_SIZE,),
+                    block_dim=(NUM_WARPS * warp_size,),
                 )
 
         # Large transpose_b shapes with BK=64. Two A+B tiles don't fit LDS at

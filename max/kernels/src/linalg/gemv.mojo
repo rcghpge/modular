@@ -1737,6 +1737,7 @@ def _gevm_kernel_impl[
 def _amd_gemv_config[
     simd_width: Int,
     max_thread_block_size: Int,
+    warp_size: Int,
     static_K: Int,
     has_N: Bool,
     static_N: Int,
@@ -1746,7 +1747,7 @@ def _amd_gemv_config[
     Returns (num_threads, tile_n, unroll_factor).
 
     Works for both FP8 (simd_width=16) and BF16 (simd_width=8). All
-    thresholds derive from simd_width, WARP_SIZE, and
+    thresholds derive from simd_width, warp_size, and
     max_thread_block_size.
 
     Thread count: pick from {64, 128, 256} to balance wave parallelism
@@ -1771,7 +1772,7 @@ def _amd_gemv_config[
     # Single warp (64T) avoids LDS cross-warp reduction overhead.
     # BF16: K≤1024 (tile_k=512, 2 iters), FP8: K≤2048 (tile_k=1024, 2 iters).
     var num_threads: Int
-    if static_K <= 2 * WARP_SIZE * simd_width:
+    if static_K <= 2 * warp_size * simd_width:
         num_threads = 64
     elif static_K >= 2 * tile_k_256 or static_K % tile_k_256 == 0:
         # ≥2 clean iterations, or exactly 1 clean iteration at 256T.
@@ -1791,7 +1792,7 @@ def _amd_gemv_config[
     # is profitable at fewer K-iterations (≥3 vs ≥4 for FP8).
     comptime min_k_iters_for_tile_n = 3 if simd_width <= 8 else 4
     if k_iters >= min_k_iters_for_tile_n and has_N:
-        var wavefront_capacity = static_N * (num_threads // WARP_SIZE)
+        var wavefront_capacity = static_N * (num_threads // warp_size)
         if wavefront_capacity >= min_waves_per_simd * max_thread_block_size * 4:
             tile_n = 4
         elif (
@@ -2313,7 +2314,8 @@ def _gemv_gpu_dispatch_impl[
     var n = shape.N
     var k = shape.K
 
-    comptime WARPS_PER_BLOCK = 1024 // WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime WARPS_PER_BLOCK = 1024 // warp_size
     comptime c_type = c.dtype
     comptime a_type = a.dtype
     comptime b_type = b.dtype
@@ -2445,6 +2447,7 @@ def _gemv_gpu_dispatch_impl[
                     comptime config = _amd_gemv_config[
                         simd_width,
                         ctx.default_device_info.max_thread_block_size,
+                        warp_size,
                         static_K,
                         has_N,
                         static_N,
@@ -2472,10 +2475,10 @@ def _gemv_gpu_dispatch_impl[
         case GEMVAlgorithm.GemvKernelVector:
             logger.info("Executing: GEMV_KERNEL_VECTOR kernel")
 
-            comptime check_bounds_k = static_K % (WARP_SIZE * simd_width) != 0
+            comptime check_bounds_k = static_K % (warp_size * simd_width) != 0
             var block_dim = min(
-                align_up(k // simd_width, WARP_SIZE),
-                WARP_SIZE * WARPS_PER_BLOCK,
+                align_up(k // simd_width, warp_size),
+                warp_size * WARPS_PER_BLOCK,
             )
             if n == 1:
                 comptime if transpose_b:
@@ -2496,7 +2499,7 @@ def _gemv_gpu_dispatch_impl[
                         k,
                         epilogue_fn,
                         compute_fn,
-                        ceildiv(m, block_dim // WARP_SIZE),
+                        ceildiv(m, block_dim // warp_size),
                         block_dim,
                         ctx,
                     )
@@ -2523,7 +2526,7 @@ def _gemv_gpu_dispatch_impl[
                         k,
                         epilogue_fn,
                         compute_fn,
-                        ceildiv(m, block_dim // WARP_SIZE),
+                        ceildiv(m, block_dim // warp_size),
                         block_dim,
                         ctx,
                     )
@@ -2547,7 +2550,7 @@ def _gemv_gpu_dispatch_impl[
                         k,
                         epilogue_fn,
                         compute_fn,
-                        ceildiv(n, block_dim // WARP_SIZE),
+                        ceildiv(n, block_dim // warp_size),
                         block_dim,
                         ctx,
                     )
@@ -2576,7 +2579,7 @@ def _gemv_gpu_dispatch_impl[
                         epilogue_fn,
                         compute_fn,
                         ceildiv(n, rows * warps_per_block),
-                        WARP_SIZE * warps_per_block,
+                        warp_size * warps_per_block,
                         ctx,
                     )
 
@@ -2589,12 +2592,12 @@ def _gemv_gpu_dispatch_impl[
                     var resident_warps = (
                         ctx.default_device_info.sm_count
                         * ctx.default_device_info.threads_per_multiprocessor
-                        // WARP_SIZE
+                        // warp_size
                     )
                     return n > 4 * resident_warps
 
                 comptime multirow_max_k = (
-                    _GEMV_MULTIROW_MAX_K_ITERS * WARP_SIZE * simd_width
+                    _GEMV_MULTIROW_MAX_K_ITERS * warp_size * simd_width
                 )
 
                 comptime if static_K <= 0:
@@ -2634,7 +2637,7 @@ def _gemv_gpu_dispatch_impl[
                         Int32(k),
                         host_args=(epilogue_fn,),
                         grid_dim=ceildiv(n, WARPS_PER_BLOCK),
-                        block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                        block_dim=warp_size * WARPS_PER_BLOCK,
                         attributes=pdl_launch_attributes(pdl_level),
                     )
                 elif has_compute_fn:
@@ -2655,7 +2658,7 @@ def _gemv_gpu_dispatch_impl[
                         Int32(k),
                         host_args=(compute_fn,),
                         grid_dim=ceildiv(n, WARPS_PER_BLOCK),
-                        block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                        block_dim=warp_size * WARPS_PER_BLOCK,
                         attributes=pdl_launch_attributes(pdl_level),
                     )
                 else:
@@ -2674,7 +2677,7 @@ def _gemv_gpu_dispatch_impl[
                         Int32(m),
                         Int32(k),
                         grid_dim=ceildiv(n, WARPS_PER_BLOCK),
-                        block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                        block_dim=warp_size * WARPS_PER_BLOCK,
                         attributes=pdl_launch_attributes(pdl_level),
                     )
             else:
@@ -2697,7 +2700,7 @@ def _gemv_gpu_dispatch_impl[
                         Int32(k),
                         host_args=(epilogue_fn,),
                         grid_dim=ceildiv(m, WARPS_PER_BLOCK),
-                        block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                        block_dim=warp_size * WARPS_PER_BLOCK,
                         attributes=pdl_launch_attributes(pdl_level),
                     )
                 elif has_compute_fn:
@@ -2717,7 +2720,7 @@ def _gemv_gpu_dispatch_impl[
                         Int32(k),
                         host_args=(compute_fn,),
                         grid_dim=ceildiv(m, WARPS_PER_BLOCK),
-                        block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                        block_dim=warp_size * WARPS_PER_BLOCK,
                         attributes=pdl_launch_attributes(pdl_level),
                     )
                 else:
@@ -2736,7 +2739,7 @@ def _gemv_gpu_dispatch_impl[
                         Int32(n),
                         Int32(k),
                         grid_dim=ceildiv(m, WARPS_PER_BLOCK),
-                        block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                        block_dim=warp_size * WARPS_PER_BLOCK,
                         attributes=pdl_launch_attributes(pdl_level),
                     )
 
@@ -2748,7 +2751,7 @@ def _gemv_gpu_dispatch_impl[
                     a_type,
                     b_type,
                     EpilogueFnType,
-                    tile_size=WARP_SIZE * WARPS_PER_BLOCK,
+                    tile_size=warp_size * WARPS_PER_BLOCK,
                     pdl_level=pdl_level,
                 ]
                 ctx.enqueue_function[kernel](
@@ -2759,8 +2762,8 @@ def _gemv_gpu_dispatch_impl[
                     Int32(n),
                     Int32(k),
                     host_args=(epilogue_fn,),
-                    grid_dim=ceildiv(n, WARP_SIZE),
-                    block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                    grid_dim=ceildiv(n, warp_size),
+                    block_dim=warp_size * WARPS_PER_BLOCK,
                     attributes=pdl_launch_attributes(pdl_level),
                 )
             elif has_compute_fn:
@@ -2769,7 +2772,7 @@ def _gemv_gpu_dispatch_impl[
                     a_type,
                     b_type,
                     ComputeFnType,
-                    tile_size=WARP_SIZE * WARPS_PER_BLOCK,
+                    tile_size=warp_size * WARPS_PER_BLOCK,
                     pdl_level=pdl_level,
                 ]
                 ctx.enqueue_function[kernel](
@@ -2780,8 +2783,8 @@ def _gemv_gpu_dispatch_impl[
                     Int32(n),
                     Int32(k),
                     host_args=(compute_fn,),
-                    grid_dim=ceildiv(n, WARP_SIZE),
-                    block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                    grid_dim=ceildiv(n, warp_size),
+                    block_dim=warp_size * WARPS_PER_BLOCK,
                     attributes=pdl_launch_attributes(pdl_level),
                 )
             else:
@@ -2789,7 +2792,7 @@ def _gemv_gpu_dispatch_impl[
                     c_type,
                     a_type,
                     b_type,
-                    tile_size=WARP_SIZE * WARPS_PER_BLOCK,
+                    tile_size=warp_size * WARPS_PER_BLOCK,
                     pdl_level=pdl_level,
                 ]
                 ctx.enqueue_function[kernel](
@@ -2799,8 +2802,8 @@ def _gemv_gpu_dispatch_impl[
                     Int32(m),
                     Int32(n),
                     Int32(k),
-                    grid_dim=ceildiv(n, WARP_SIZE),
-                    block_dim=WARP_SIZE * WARPS_PER_BLOCK,
+                    grid_dim=ceildiv(n, warp_size),
+                    block_dim=warp_size * WARPS_PER_BLOCK,
                     attributes=pdl_launch_attributes(pdl_level),
                 )
 
@@ -2977,6 +2980,7 @@ def _gemv_gpu_impl[
     var n = shape.N
     var k = shape.K
     comptime simd_width = simd_width_of[a_type, target=ctx.target]()
+    comptime warp_size = ctx.default_device_info.warp_size
 
     comptime has_M = c.static_shape[0] > -1
     comptime has_N = c.static_shape[1] > -1
@@ -3032,7 +3036,7 @@ def _gemv_gpu_impl[
         else:
             kernel_func = GEMVAlgorithm.GemvKernel
 
-    elif m == 1 and n % WARP_SIZE == 0 and k % WARP_SIZE == 0:
+    elif m == 1 and n % warp_size == 0 and k % warp_size == 0:
         kernel_func = GEMVAlgorithm.GevmKernel
 
     else:

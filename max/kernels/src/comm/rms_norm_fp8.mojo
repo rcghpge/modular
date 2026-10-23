@@ -229,7 +229,10 @@ def _rms_norm_fused_fp8_gpu[
     var scale_output_1d = TileTensor(scale_output._storage, row_major(rows))
 
     # Dispatch based on column count (following rms_norm_gpu pattern)
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = (
+        ctx.default_device_info.max_thread_block_size // warp_size
+    )
     comptime base_simd_width = simd_width_of[in_dtype, target=ctx.target]()
 
     # Dispatch: select SIMD width and kernel strategy based on column count
@@ -256,10 +259,10 @@ def _rms_norm_fused_fp8_gpu[
         )
 
     if cols % base_simd_width == 0:
-        if cols <= (WARP_SIZE * base_simd_width * max_warps_per_block):
+        if cols <= (warp_size * base_simd_width * max_warps_per_block):
             launch[base_simd_width, True]()
         elif (
-            cols <= (WARP_SIZE * (base_simd_width * 2) * max_warps_per_block)
+            cols <= (warp_size * (base_simd_width * 2) * max_warps_per_block)
             and cols % (base_simd_width * 2) == 0
         ):
             launch[base_simd_width * 2, True]()
@@ -543,8 +546,11 @@ def _rms_norm_fused_fp8_gpu_launch[
     Selects between warp-tiling and block-tiling kernels at compile time.
     """
 
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
-    comptime threads_per_block = max_warps_per_block * WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = (
+        ctx.default_device_info.max_thread_block_size // warp_size
+    )
+    comptime threads_per_block = max_warps_per_block * warp_size
 
     var grid_dim = rows
     var block_dim = threads_per_block

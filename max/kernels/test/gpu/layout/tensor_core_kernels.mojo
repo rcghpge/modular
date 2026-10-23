@@ -196,7 +196,7 @@ def test_load_and_mma_and_multiply_operands[
         lhs.device_tensor().as_unsafe_any_origin(),
         rhs.device_tensor().as_unsafe_any_origin(),
         grid_dim=(1, 1),
-        block_dim=(WARP_SIZE),
+        block_dim=(ctx.default_device_info.warp_size),
     )
     ctx.synchronize()
 
@@ -218,7 +218,7 @@ def test_write_res_operand[
     ctx.enqueue_function[mma_load_and_print_kernel_fn](
         dst.device_tensor().as_unsafe_any_origin(),
         grid_dim=(1, 1),
-        block_dim=(WARP_SIZE),
+        block_dim=(ctx.default_device_info.warp_size),
     )
     dst.to_host()
     var result = dst.host_tensor()
@@ -369,6 +369,6 @@ def test_load_operands_ldmatrix[
         lhs.device_tensor().as_unsafe_any_origin(),
         rhs.device_tensor().as_unsafe_any_origin(),
         grid_dim=(1, 1),
-        block_dim=(WARP_SIZE),
+        block_dim=(ctx.default_device_info.warp_size),
     )
     ctx.synchronize()

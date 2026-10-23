@@ -117,7 +117,11 @@ def check_mask[dtype: DType, width: Int](ctx: DeviceContext) raises:
         dtype, width, output.origin, input.origin, coordinates.origin
     ]
     ctx.enqueue_function[kernel](
-        output, input, coordinates, grid_dim=1, block_dim=WARP_SIZE
+        output,
+        input,
+        coordinates,
+        grid_dim=1,
+        block_dim=ctx.default_device_info.warp_size,
     )
     ctx.enqueue_copy(output_host, output_dev)
     ctx.synchronize()

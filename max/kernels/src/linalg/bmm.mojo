@@ -2163,7 +2163,9 @@ def blockwise_scaled_fp8_matmul_amd_batched[
         K=K,
     ]
 
-    comptime num_threads = (BM // WM) * (BN // WN) * WARP_SIZE
+    comptime num_threads = (
+        (BM // WM) * (BN // WN) * ctx.default_device_info.warp_size
+    )
     ctx.enqueue_function[kernel](
         c,
         a,

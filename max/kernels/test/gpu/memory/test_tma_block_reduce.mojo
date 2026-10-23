@@ -23,7 +23,6 @@ from max.gpu import (
     block_dim,
     block_idx,
     thread_idx,
-    WARP_SIZE,
     lane_id,
     warp_id,
 )
@@ -179,8 +178,9 @@ def test_tma_block_reduce[
     dtype: DType, use_tma: Bool
 ](ctx: DeviceContext, rows: Int, cols: Int, benchmark: Bool = False,) raises:
     var n = rows * cols
+    comptime warp_size = ctx.default_device_info.warp_size
     comptime simd_width = simd_width_of[dtype, target=ctx.target]()
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
+    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // warp_size
     comptime accum_type = get_accum_type[dtype]()
 
     var h_data = unsafe_alloc[Scalar[dtype]](n)
@@ -194,8 +194,8 @@ def test_tma_block_reduce[
 
     var grid_dim = rows
     var block_dim = min(
-        ceildiv(ceildiv(cols, simd_width), WARP_SIZE) * WARP_SIZE,
-        WARP_SIZE * max_warps_per_block,
+        ceildiv(ceildiv(cols, simd_width), warp_size) * warp_size,
+        warp_size * max_warps_per_block,
     )
 
     var result_host = unsafe_alloc[Scalar[accum_type]](grid_dim)

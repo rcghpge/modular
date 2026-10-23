@@ -2943,7 +2943,7 @@ def fp8_index_score_sm100_prefill[
     # right when the producer is not a full warpgroup.
     comptime assert (
         _NUM_SOFTMAX_THREADS * CFG.reg_consumer
-        + WARP_SIZE * CFG.prod_warps * CFG.reg_producer
+        + ctx.default_device_info.warp_size * CFG.prod_warps * CFG.reg_producer
         <= 65536 // CFG.ctas_per_sm
     ), (
         "the warpgroup register caps must fit the per-SM register file at"

@@ -68,7 +68,6 @@ from std.sys import (
 
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
-    WARP_SIZE,
     block_idx,
     grid_dim,
     thread_idx,
@@ -1108,8 +1107,11 @@ def _dispatch_fused_kernel[
     if rows == 0:
         return
 
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
-    comptime threads_per_block = max_warps_per_block * WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = (
+        ctx.default_device_info.max_thread_block_size // warp_size
+    )
+    comptime threads_per_block = max_warps_per_block * warp_size
     comptime base_simd_width = simd_width_of[in_dtype, target=ctx.target]()
     comptime sw1 = base_simd_width
     comptime sw2 = base_simd_width * 2
@@ -1334,18 +1336,18 @@ def _dispatch_fused_kernel[
 
     # Warp-tiling: each thread handles simd_width elements. Wider simd for
     # larger column counts.
-    if cols <= (WARP_SIZE * sw1 * max_warps_per_block):
+    if cols <= (warp_size * sw1 * max_warps_per_block):
         if use_2stage:
             launch_2stage[sw1]()
         else:
             launch_1stage[sw1]()
-    elif cols <= (WARP_SIZE * sw2 * max_warps_per_block) and cols % sw2 == 0:
+    elif cols <= (warp_size * sw2 * max_warps_per_block) and cols % sw2 == 0:
         if use_2stage:
             launch_2stage[sw2]()
         else:
             launch_1stage[sw2]()
     else:
-        comptime max_cols = WARP_SIZE * sw2 * max_warps_per_block
+        comptime max_cols = warp_size * sw2 * max_warps_per_block
         raise Error(
             "allreduce_rmsnorm: cols ("
             + String(cols)

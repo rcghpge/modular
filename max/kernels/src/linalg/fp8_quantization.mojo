@@ -276,11 +276,12 @@ def quantize_tensor_dynamic_scaled_fp8[
 
     comptime group_size = num_cols if group_size_or_per_token == -1 else group_size_or_per_token
     comptime simd_width = 16 if group_size % 16 == 0 else 8 if group_size % 8 == 0 else 4
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // warp_size
     comptime warps_per_block = min(
-        ceildiv(group_size // simd_width, WARP_SIZE), max_warps_per_block
+        ceildiv(group_size // simd_width, warp_size), max_warps_per_block
     )
-    comptime num_threads = warps_per_block * WARP_SIZE
+    comptime num_threads = warps_per_block * warp_size
 
     comptime assert (
         group_size % simd_width == 0
@@ -441,12 +442,13 @@ def quantize_dynamic_scaled_fp8[
 
     comptime group_size = num_cols if group_size_or_per_token == -1 else group_size_or_per_token
     comptime simd_width = 16 if group_size % 16 == 0 else 8 if group_size % 8 == 0 else 4
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // warp_size
     comptime groups_per_warp = _groups_per_warp[group_size, simd_width]()
     comptime warps_per_block = _SUBWARP_BLOCK_WARPS if groups_per_warp > 0 else min(
-        ceildiv(group_size // simd_width, WARP_SIZE), max_warps_per_block
+        ceildiv(group_size // simd_width, warp_size), max_warps_per_block
     )
-    comptime num_threads = warps_per_block * WARP_SIZE
+    comptime num_threads = warps_per_block * warp_size
     comptime rows_per_block = warps_per_block * groups_per_warp if groups_per_warp > 0 else 1
 
     comptime assert (
@@ -1069,11 +1071,12 @@ def batched_quantize_dynamic_scaled_fp8[
 
     comptime group_size = num_cols if group_size_or_per_token == -1 else group_size_or_per_token
     comptime simd_width = 16 if group_size % 16 == 0 else 8 if group_size % 8 == 0 else 4
-    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
+    comptime warp_size = ctx.default_device_info.warp_size
+    comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // warp_size
     comptime warps_per_block = min(
-        ceildiv(group_size // simd_width, WARP_SIZE), max_warps_per_block
+        ceildiv(group_size // simd_width, warp_size), max_warps_per_block
     )
-    comptime num_threads = warps_per_block * WARP_SIZE
+    comptime num_threads = warps_per_block * warp_size
 
     comptime assert (
         group_size % simd_width == 0
