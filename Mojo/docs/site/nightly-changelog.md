@@ -74,6 +74,7 @@ This version is still a work in progress.
   - `List`
   - `ManagedAllocation`
   - `Span`
+  - `String`
   - `StringSpan`
   - `ThinAllocation`
 
