@@ -108,6 +108,8 @@ def open_image(image: bytes | Image.Image) -> Image.Image:
     test callers) or as a ``PIL.Image`` that the API server already decoded and
     validated once at admission (see
     :attr:`~max.pipelines.modeling.types.TextGenerationRequest.decoded_images`).
+    A ``PIL.Image`` passed to :func:`~max.pipelines.lib.generate.generate`
+    arrives the same way.
     Routing both through this helper lets a tokenizer reuse the pre-decoded
     image instead of decoding the same bytes a second time.
 

@@ -382,6 +382,8 @@ class TextGenerationRequest:
     An individual entry is ``None`` when the admission decode was skipped
     because the tokenizer already holds that image's preprocessed tensor --
     the same per-index fallback to :attr:`images` applies.
+    :func:`~max.pipelines.lib.generate.generate` also fills it, with each PIL
+    image its caller passed and ``None`` for each image passed as bytes.
     """
     max_decoded_bytes: int | None = None
     """
@@ -478,7 +480,8 @@ class TextGenerationRequest:
         admission decode for an image whose preprocessed tensor the tokenizer
         already holds, leaving a ``None`` in that slot. Such an image is only
         decoded if the tokenizer actually needs its pixels, which a cache hit
-        means it does not.
+        means it does not. A ``None`` also marks an image that a
+        :func:`~max.pipelines.lib.generate.generate` caller passed as bytes.
         """
         if not self.decoded_images:
             return list(self.images)

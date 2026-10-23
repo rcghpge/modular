@@ -127,6 +127,11 @@ This version is still a work in progress.
   which reach the chat template of every `messages` row, such as
   `{"enable_thinking": False}` to turn off Qwen 3.5's thinking.
 
+- `images` on `generate()`, `GenerateIterator`, `AutoModel.generate()` and
+  `AutoModel.generate_iter()` takes PIL images as well as encoded bytes, and
+  the tokenizer uses a PIL image without decoding it again. `AutoProcessor`
+  now passes a copy of each PIL image instead of encoding it.
+
 - Removed the `blocking_sync`, `disable_timing` and `interprocess` parameters
   from the Mojo `DeviceContext.create_event()`, along with `EventFlags`. Events
   never record timing; use `DeviceContext.execution_time()` to time kernels.

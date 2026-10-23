@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import io
 import os
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -33,12 +32,6 @@ __all__ = ["AutoProcessor", "ProcessorOutput"]
 
 _IMAGE_HINTS = ("detail", "max_long_side_pixel")
 
-# The modes Pillow writes as PNG. Other modes, such as CMYK, convert to RGBA
-# when they carry alpha and to RGB otherwise.
-_PNG_MODES = frozenset(
-    {"1", "L", "LA", "I", "I;16", "I;16B", "P", "RGB", "RGBA"}
-)
-
 
 class ProcessorOutput(TypedDict):
     """The inputs :class:`~max.pipelines.AutoProcessor` returns for a batch.
@@ -50,8 +43,9 @@ class ProcessorOutput(TypedDict):
     messages: list[list[TextGenerationRequestMessage]]
     """One conversation per row, with a placeholder part for each image."""
 
-    images: list[list[bytes]]
-    """Each row's images as encoded bytes, in the order of its image parts."""
+    images: list[list[bytes | Image.Image]]
+    """Each row's images as encoded bytes or PIL images, in the order of its
+    image parts."""
 
 
 class AutoProcessor:
@@ -118,8 +112,8 @@ class AutoProcessor:
         Face message format. An image part holds a PIL image, encoded bytes
         or a local path (plain or ``file://``) under ``"image"`` or
         ``"path"``, and keeps its ``detail`` and ``max_long_side_pixel``
-        hints. Each row's images come out as encoded bytes in the order of
-        its image parts.
+        hints. Each row's images come out in the order of its image parts, a
+        PIL image as a copy and anything else as encoded bytes.
 
         Raises:
             TypeError: If a conversation, message, content part or image has
@@ -152,9 +146,9 @@ class AutoProcessor:
 
 def _model_inputs(conversations: object) -> ProcessorOutput:
     messages: list[list[TextGenerationRequestMessage]] = []
-    images: list[list[bytes]] = []
+    images: list[list[bytes | Image.Image]] = []
     for row, conversation in enumerate(_conversation_rows(conversations)):
-        row_images: list[bytes] = []
+        row_images: list[bytes | Image.Image] = []
         messages.append(
             [
                 _convert_message(message, row, row_images)
@@ -166,7 +160,7 @@ def _model_inputs(conversations: object) -> ProcessorOutput:
 
 
 def _convert_message(
-    message: object, row: int, images: list[bytes]
+    message: object, row: int, images: list[bytes | Image.Image]
 ) -> TextGenerationRequestMessage:
     if not isinstance(message, Mapping):
         raise TypeError(
@@ -182,7 +176,9 @@ def _convert_message(
     return TextGenerationRequestMessage.model_validate(fields)
 
 
-def _convert_part(part: object, row: int, images: list[bytes]) -> object:
+def _convert_part(
+    part: object, row: int, images: list[bytes | Image.Image]
+) -> object:
     if not isinstance(part, Mapping):
         raise TypeError(
             f"Row {row} has a content part of type {type(part).__name__}. "
@@ -190,7 +186,7 @@ def _convert_part(part: object, row: int, images: list[bytes]) -> object:
         )
     kind = part.get("type")
     if kind == "image":
-        images.append(_image_bytes(part, row))
+        images.append(_image(part, row))
         return ImageContentPart.model_validate(
             {key: part[key] for key in _IMAGE_HINTS if key in part}
         )
@@ -237,17 +233,14 @@ def _remote_image(row: int) -> ValueError:
     )
 
 
-def _image_bytes(part: Mapping[object, object], row: int) -> bytes:
+def _image(part: Mapping[object, object], row: int) -> bytes | Image.Image:
     image = part.get("image")
     if image is None:
         image = part.get("path")
     if isinstance(image, Image.Image):
-        if image.mode not in _PNG_MODES:
-            has_alpha = {"A", "a"} & set(image.getbands())
-            image = image.convert("RGBA" if has_alpha else "RGB")
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        return buffer.getvalue()
+        # The copy holds its own pixels, so a caller may close or edit the
+        # image before generate() encodes it.
+        return image.copy()
     if isinstance(image, bytes):
         return image
     if isinstance(image, str) and image.lower().startswith("file://"):

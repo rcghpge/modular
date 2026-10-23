@@ -65,6 +65,7 @@ modular_py_test(
         requirement("click"),
         requirement("cyclopts"),
         requirement("numpy"),
+        requirement("pillow"),
         requirement("pydantic"),
         requirement("pytest-mock"),
         requirement("pyyaml"),

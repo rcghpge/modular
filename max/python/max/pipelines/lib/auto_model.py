@@ -34,6 +34,7 @@ from max.pipelines.modeling.types import (
     PipelineTask,
     TextGenerationRequestMessage,
 )
+from PIL import Image
 from transformers import AutoTokenizer as _HFAutoTokenizer
 from transformers import BatchEncoding, PreTrainedTokenizerBase
 
@@ -335,7 +336,7 @@ class AutoModel:
             Sequence[TextGenerationRequestMessage | Mapping[str, object]]
         ]
         | None = None,
-        images: Sequence[Sequence[bytes]] | None = None,
+        images: Sequence[Sequence[bytes | Image.Image]] | None = None,
         chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
@@ -401,7 +402,7 @@ class AutoModel:
             Sequence[TextGenerationRequestMessage | Mapping[str, object]]
         ]
         | None = None,
-        images: Sequence[Sequence[bytes]] | None = None,
+        images: Sequence[Sequence[bytes | Image.Image]] | None = None,
         chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,

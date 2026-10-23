@@ -114,21 +114,37 @@ def test_image_parts_become_placeholders_in_order(
     assert out["images"] == [[_png_bytes("red"), _png_bytes("blue")]]
 
 
-def test_pil_images_are_encoded_as_png(processor: AutoProcessor) -> None:
+def test_pil_images_come_out_as_copies(processor: AutoProcessor) -> None:
+    rgb = _png("red")
+    cmyk = Image.new("CMYK", (4, 3), (0, 255, 255, 0))
+    [[first, second]] = processor(_image_turn(rgb, cmyk))["images"]
+    for kept, image in ((first, rgb), (second, cmyk)):
+        assert isinstance(kept, Image.Image)
+        assert kept is not image
+        assert kept.mode == image.mode
+        assert list(kept.getdata()) == list(image.getdata())
+
+
+def test_pil_images_outlive_close(processor: AutoProcessor) -> None:
     image = _png("red")
-    [[encoded]] = processor(_image_turn(image))["images"]
-    with Image.open(io.BytesIO(encoded)) as decoded:
-        assert decoded.format == "PNG"
-        assert list(decoded.getdata()) == list(image.getdata())
+    out = processor(_image_turn(image))
+    image.close()
+    [[kept]] = out["images"]
+    assert isinstance(kept, Image.Image)
+    assert list(kept.getdata()) == list(_png("red").getdata())
 
 
-def test_cmyk_images_are_encoded_as_rgb(processor: AutoProcessor) -> None:
-    image = Image.new("CMYK", (4, 3), (0, 255, 255, 0))
-    [[encoded]] = processor(_image_turn(image))["images"]
-    with Image.open(io.BytesIO(encoded)) as decoded:
-        assert decoded.format == "PNG"
-        assert decoded.mode == "RGB"
-        assert list(decoded.getdata()) == list(image.convert("RGB").getdata())
+def test_pil_images_outlive_their_file(
+    processor: AutoProcessor, tmp_path: Path
+) -> None:
+    path = tmp_path / "red.png"
+    path.write_bytes(_png_bytes("red"))
+    with Image.open(path) as image:
+        out = processor(_image_turn(image))
+    # generate() encodes the image after the caller's block closes its file.
+    [[kept]] = out["images"]
+    assert isinstance(kept, Image.Image)
+    assert list(kept.getdata()) == list(_png("red").getdata())
 
 
 @pytest.mark.parametrize("key", ["image", "path"])
@@ -145,13 +161,6 @@ def test_local_paths_are_read(
         [{"role": "user", "content": [{"type": "image", key: as_path(path)}]}]
     )
     assert out["images"] == [[_png_bytes("red")]]
-
-
-def test_alpha_images_keep_their_alpha(processor: AutoProcessor) -> None:
-    image = Image.new("PA", (4, 3))
-    [[encoded]] = processor(_image_turn(image))["images"]
-    with Image.open(io.BytesIO(encoded)) as decoded:
-        assert decoded.mode == "RGBA"
 
 
 def test_file_urls_are_read_as_local_paths(
@@ -219,11 +228,13 @@ def test_rows_build_valid_requests(processor: AutoProcessor) -> None:
         ]
     )
     for messages, images in zip(out["messages"], out["images"], strict=True):
+        encoded = [image for image in images if isinstance(image, bytes)]
+        assert encoded == images
         request = TextGenerationRequest(
             request_id=RequestID(),
             model_name=REPO_ID,
             messages=messages,
-            images=images,
+            images=encoded,
         )
         assert request.number_of_images == len(images)
 

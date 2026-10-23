@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import dataclasses
+import io
 import logging
 import operator
 import shlex
@@ -62,6 +63,7 @@ from max.pipelines.modeling.types import (
     TextGenerationRequest,
     TextGenerationRequestMessage,
 )
+from PIL import Image
 
 from .config import PipelineConfig
 from .interfaces import PipelineModel
@@ -104,6 +106,12 @@ _logger = logging.getLogger("max.pipelines")
 _T = TypeVar("_T")
 
 _warned_unwarmed_pipelines: weakref.WeakSet[BatchPipeline] = weakref.WeakSet()
+
+# The modes Pillow writes as PNG. Other modes, such as CMYK, convert to RGBA
+# when they carry alpha and to RGB otherwise.
+_PNG_MODES = frozenset(
+    {"1", "L", "LA", "I", "I;16", "I;16B", "P", "RGB", "RGBA"}
+)
 
 
 class _KVCacheParams(Protocol):
@@ -326,6 +334,26 @@ def _materialize_prompts(
 class _Conversation:
     messages: list[TextGenerationRequestMessage]
     images: list[bytes]
+    decoded_images: list[Image.Image | None]
+
+
+def _encode_image(
+    image: bytes | Image.Image,
+) -> tuple[bytes, Image.Image | None]:
+    """Returns an image's encoded bytes and, for a PIL image, the decoded one.
+
+    A PIL image is encoded as PNG, since tokenizers hash the bytes. The
+    decoded image returned is the one encoded, so both decode to the same
+    pixels.
+    """
+    if isinstance(image, bytes):
+        return image, None
+    if image.mode not in _PNG_MODES:
+        has_alpha = {"A", "a"} & set(image.getbands())
+        image = image.convert("RGBA" if has_alpha else "RGB")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue(), image
 
 
 def _plural(count: int, noun: str) -> str:
@@ -337,7 +365,7 @@ def _materialize_conversations(
     messages: Sequence[
         Sequence[TextGenerationRequestMessage | Mapping[str, object]]
     ],
-    images: Sequence[Sequence[bytes]] | None,
+    images: Sequence[Sequence[bytes | Image.Image]] | None,
     caller: str,
     max_images: int | None,
 ) -> list[_Conversation]:
@@ -357,11 +385,11 @@ def _materialize_conversations(
         for row in messages
     ]
     if images is None:
-        row_images: list[list[bytes]] = [[] for _ in rows]
+        row_images: list[list[bytes | Image.Image]] = [[] for _ in rows]
     else:
         shape_error = TypeError(
-            "images must be a list of encoded image lists, one per row. Wrap "
-            "one row's images as [images]."
+            "images must be a list of image lists, one per row, each image "
+            "encoded bytes or a PIL image. Wrap one row's images as [images]."
         )
         image_rows = list(images)
         # Hugging Face takes a flat list of PIL images, whose items don't
@@ -374,7 +402,9 @@ def _materialize_conversations(
             raise shape_error
         row_images = [list(row) for row in image_rows]
         if not all(
-            isinstance(image, bytes) for row in row_images for image in row
+            isinstance(image, (bytes, Image.Image))
+            for row in row_images
+            for image in row
         ):
             raise shape_error
         if len(row_images) != len(rows):
@@ -430,19 +460,26 @@ def _materialize_conversations(
                 f"pipeline takes at most {_plural(max_images, 'image')} per "
                 "row, as max serve does."
             )
-    for row, (num_parts, encoded) in enumerate(
+    for row, (num_parts, row_entries) in enumerate(
         zip(image_parts, row_images, strict=True)
     ):
-        if len(encoded) != num_parts:
+        if len(row_entries) != num_parts:
             raise ValueError(
                 f"Row {row} has {_plural(num_parts, 'image part')} but "
-                f"{_plural(len(encoded), 'image')}. Pass one encoded image "
-                "per image part, in order."
+                f"{_plural(len(row_entries), 'image')}. Pass one image per "
+                "image part, in order."
             )
-    return [
-        _Conversation(conversation, encoded)
-        for conversation, encoded in zip(rows, row_images, strict=True)
-    ]
+    conversations = []
+    for conversation, row_entries in zip(rows, row_images, strict=True):
+        encoded = [_encode_image(image) for image in row_entries]
+        conversations.append(
+            _Conversation(
+                conversation,
+                [data for data, _ in encoded],
+                [decoded for _, decoded in encoded],
+            )
+        )
+    return conversations
 
 
 def _resolve_sampling_params(
@@ -505,6 +542,7 @@ def _row_request(
             model_name="",
             messages=row.messages,
             images=row.images,
+            decoded_images=row.decoded_images,
             sampling_params=sampling_params,
             chat_template_options=(
                 None
@@ -1086,8 +1124,10 @@ class GenerateIterator:
             :class:`~max.pipelines.modeling.types.TextGenerationRequestMessage`
             or a dict in the same shape, with an image part where each image
             goes.
-        images: One list of encoded images per conversation, matching its
-            image parts in order. Needs an architecture that takes images.
+        images: One list of images per conversation, matching its image
+            parts in order, each as encoded bytes or a PIL image. A PIL
+            image reaches the tokenizer as is, without a second decode.
+            Needs an architecture that takes images.
         chat_template_kwargs: Keyword arguments passed to every row's chat
             template as given, such as ``{"enable_thinking": False}``. Unlike
             serve, ``reasoning_effort`` does not set the thinking switches.
@@ -1127,7 +1167,8 @@ class GenerateIterator:
     Raises:
         TypeError: If ``input_ids`` or ``attention_mask`` is not a list of
             integer lists, ``messages`` is not a list of conversations, or
-            ``images`` is not a list of byte-string lists.
+            ``images`` is not a list of lists of encoded bytes or PIL
+            images.
         ValueError: If the request needs a feature GenerateIterator leaves to
             ``max serve``: LoRA, a model that does not generate text, a block
             diffusion model, video inputs, device graph capture with
@@ -1172,7 +1213,7 @@ class GenerateIterator:
             Sequence[TextGenerationRequestMessage | Mapping[str, object]]
         ]
         | None = None,
-        images: Sequence[Sequence[bytes]] | None = None,
+        images: Sequence[Sequence[bytes | Image.Image]] | None = None,
         chat_template_kwargs: Mapping[str, object] | None = None,
         max_new_tokens: int,
         min_new_tokens: int | None = None,
@@ -1679,7 +1720,7 @@ def generate(
         Sequence[TextGenerationRequestMessage | Mapping[str, object]]
     ]
     | None = None,
-    images: Sequence[Sequence[bytes]] | None = None,
+    images: Sequence[Sequence[bytes | Image.Image]] | None = None,
     chat_template_kwargs: Mapping[str, object] | None = None,
     max_new_tokens: int,
     min_new_tokens: int | None = None,
@@ -1708,8 +1749,8 @@ def generate(
         input_ids: One token-id prompt per row, as lists or a 2D array.
         attention_mask: Zeros mark padding in ``input_ids`` to drop.
         messages: One conversation per row, instead of ``input_ids``.
-        images: One list of encoded images per conversation, matching its
-            image parts in order.
+        images: One list of images per conversation, matching its image
+            parts in order, each as encoded bytes or a PIL image.
         chat_template_kwargs: Keyword arguments for every row's chat
             template. Needs ``messages``.
         max_new_tokens: The most tokens to generate for each row.

@@ -29,6 +29,7 @@ import asyncio
 import contextvars
 import dataclasses
 import gc
+import io
 import logging
 import weakref
 from collections.abc import Callable
@@ -70,6 +71,7 @@ from max.pipelines.lib.pipeline_variants.block_diffusion_text_generation import 
     BlockDiffusionTextGenerationPipeline,
 )
 from max.pipelines.lib.registry import PIPELINE_REGISTRY
+from max.pipelines.lib.tokenizer import open_image
 from max.pipelines.lora import LoRAConfig
 from max.pipelines.modeling.types import (
     BatchType,
@@ -83,6 +85,7 @@ from max.pipelines.modeling.types import (
 )
 from max.pipelines.sampling import SamplingConfig, request_row_seed
 from max.pipelines.speculative import SpeculativeConfig
+from PIL import Image
 
 EOS = 2
 NEVER = 99
@@ -1128,6 +1131,98 @@ def test_image_rows_expand_their_placeholders(
     _assert_nothing_held(pipeline, 2)
 
 
+def _png_bytes(image: Image.Image) -> bytes:
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_pil_images_reach_the_tokenizer_without_a_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+    _image_arch(monkeypatch)
+    tokenizer = pipeline.tokenizer
+    assert isinstance(tokenizer, FakeVisionTokenizer)
+    red = Image.new("RGB", (4, 3), "red")
+    blue = _png_bytes(Image.new("RGB", (4, 3), "blue"))
+    pixels: list[list[object]] = []
+    new_context = tokenizer.new_context
+
+    async def decoding_new_context(
+        request: TextGenerationRequest,
+    ) -> TextAndVisionContext:
+        # As every vision tokenizer reads its images.
+        pixels.extend(
+            list(open_image(image).getdata())
+            for image in request.images_for_processing()
+        )
+        return await new_context(request)
+
+    monkeypatch.setattr(tokenizer, "new_context", decoding_new_context)
+    opened: list[object] = []
+    image_open: Callable[..., Image.Image] = Image.open
+
+    def counting_open(*args: object, **kwargs: object) -> Image.Image:
+        opened.append(args[0])
+        return image_open(*args, **kwargs)
+
+    monkeypatch.setattr(Image, "open", counting_open)
+    generate(
+        pipeline,
+        messages=[_chat("7", num_images=2), _chat("7", num_images=1)],
+        images=[[red, blue], [blue]],
+        max_new_tokens=5,
+    )
+
+    image_row, bytes_row = tokenizer.requests
+    assert image_row.images == [_png_bytes(red), blue]
+    assert image_row.decoded_images == [red, None]
+    assert image_row.images_for_processing()[0] is red
+    assert bytes_row.images == [blue]
+    assert bytes_row.decoded_images == [None]
+    # Only the two blue bytes entries are decoded.
+    assert len(opened) == 2
+    assert pixels == [
+        list(red.getdata()),
+        list(Image.new("RGB", (4, 3), "blue").getdata()),
+        list(Image.new("RGB", (4, 3), "blue").getdata()),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("image", "mode"),
+    [
+        (Image.new("CMYK", (4, 3), (0, 255, 255, 0)), "RGB"),
+        (Image.new("PA", (4, 3)), "RGBA"),
+        (Image.new("LA", (4, 3)), "LA"),
+    ],
+)
+def test_pil_images_encode_as_the_png_they_decode_to(
+    monkeypatch: pytest.MonkeyPatch, image: Image.Image, mode: str
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+    _image_arch(monkeypatch)
+    generate(
+        pipeline,
+        messages=[_chat("7", num_images=1)],
+        images=[[image]],
+        max_new_tokens=5,
+    )
+
+    assert isinstance(pipeline.tokenizer, FakeVisionTokenizer)
+    [request] = pipeline.tokenizer.requests
+    [encoded] = request.images
+    [decoded] = request.decoded_images
+    assert decoded is not None
+    assert decoded.mode == mode
+    with Image.open(io.BytesIO(encoded)) as from_bytes:
+        assert from_bytes.format == "PNG"
+        assert from_bytes.mode == mode
+        assert list(from_bytes.getdata()) == list(decoded.getdata())
+    assert list(decoded.getdata()) == list(image.convert(mode).getdata())
+
+
 def test_token_rows_report_their_prompt_lengths() -> None:
     output = generate(FakePipeline(), [[1, 7, 8], [2, 7]], max_new_tokens=5)
     assert output.prompt_lengths == [3, 2]
@@ -1252,11 +1347,11 @@ class _FlatImage:
     ("messages", "images", "message"),
     [
         (_chat("1"), None, r"Wrap one conversation as \[messages\]"),
-        ([_chat("1", num_images=1)], [b"cat"], "list of encoded image lists"),
+        ([_chat("1", num_images=1)], [b"cat"], "list of image lists"),
         (
             [_chat("1", num_images=2)],
             [_FlatImage(), _FlatImage()],
-            "list of encoded image lists",
+            "list of image lists",
         ),
     ],
 )
