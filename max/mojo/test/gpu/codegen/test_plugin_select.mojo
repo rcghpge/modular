@@ -21,6 +21,8 @@ from std.sys import llvm_intrinsic
 from std.sys.info import CompilationTarget
 from std.testing import TestSuite, assert_false, assert_true
 
+from std._gpu.host.info import TargetAcceleratorCollection
+
 from std._plugin import (
     PluginHooks,
     StdPlugin,
@@ -35,8 +37,11 @@ from max._plugin import (
 )
 from max._plugin._trait import DefaultMaxPluginHooks
 from max._plugin.cuda import CudaMaxPlugin, CudaMaxPluginHooks
+from max._plugin.cuda.targets import CudaTargets
 from max._plugin.hip import HipMaxPlugin, HipMaxPluginHooks
+from max._plugin.hip.targets import HipTargets
 from max._plugin.metal import MetalMaxPlugin, MetalMaxPluginHooks
+from max._plugin.metal.targets import MetalTargets
 from max.gpu.host import get_gpu_target
 from max.gpu.sync import barrier
 from max.gpu.sync.sync import _BarrierPluginHookFnType
@@ -57,6 +62,7 @@ struct PayloadMaxPlugin(MaxPlugin):
 
 
 struct PayloadMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
+    comptime warp_size = 32
     comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = _marker_barrier
 
 
@@ -210,6 +216,21 @@ def test_builtin_targets_carry_their_plugin() raises:
     var llvm = _compile_barrier_kernel[nvidia]()
     assert_true("@llvm.nvvm.barrier" in llvm, llvm)
     assert_false("@llvm.nvvm.membar.gl()" in llvm, llvm)
+
+
+def _assert_warp_sizes_match_table[C: TargetAcceleratorCollection]():
+    comptime for idx in range(C.TARGETS.length):
+        comptime entry = C.TARGETS[idx]
+        comptime target = CompilationTarget[_mlir_value=entry.mlir_target]()
+        comptime assert (
+            MaxPluginForTarget[target].warp_size == entry.gpu_info.warp_size
+        ), "a plugin's warp_size disagrees with its target table"
+
+
+def test_builtin_warp_sizes_match_target_tables() raises:
+    _assert_warp_sizes_match_table[CudaTargets]()
+    _assert_warp_sizes_match_table[HipTargets]()
+    _assert_warp_sizes_match_table[MetalTargets]()
 
 
 def test_unlisted_stdlib_plugin_gets_default() raises:

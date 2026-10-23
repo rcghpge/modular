@@ -84,6 +84,7 @@ struct CudaMaxPlugin(MaxPlugin):
 
 
 struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
+    comptime warp_size = 32
     comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = _barrier
     comptime syncwarp_fn: OptionalReg[_SyncwarpPluginHookFnType] = _syncwarp
     comptime async_copy_commit_group_fn: OptionalReg[

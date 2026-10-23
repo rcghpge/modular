@@ -23,11 +23,12 @@ from std._gpu.host.info import (
     TargetAcceleratorType,
 )
 from std._plugin.selector import Plugin
-from std.sys.info import CompilationTarget
+from std.sys.info import CompilationTarget, _accelerator_arch
 
 from max.gpu import PDLLevel
 from max.gpu.globals import WARP_SIZE
 from max.gpu.host import DeviceContext
+from max.gpu.host.info import get_gpu_info
 from max.gpu.memory.memory import (
     _AsyncCopyGroupPluginHookFnType,
     _AsyncCopyWaitGroupPluginHookFnType,
@@ -88,6 +89,15 @@ trait MaxPluginHooks:
 
     comptime _handles_elementwise: Bool = False
     """Whether this plugin overrides MAX elementwise dispatch."""
+
+    comptime warp_size: Int
+    """The number of lanes in a warp on the target, which `WARP_SIZE` reads.
+
+    It has no default: the trait's warp primitives are sized by it, so a GPU
+    plugin that left it out would still compile, with the warp size of
+    whatever accelerator the build targets, and be wrong. A plugin whose
+    targets have no warps of their own uses `_accelerator_warp_size()`.
+    """
 
     comptime barrier_fn: OptionalReg[_BarrierPluginHookFnType] = None
     """Lowers `barrier()`, which synchronizes the threads of a block and
@@ -347,7 +357,22 @@ struct DefaultMaxPlugin(MaxPlugin):
 
 
 struct DefaultMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
-    pass
+    comptime warp_size = _accelerator_warp_size()
+
+
+def _accelerator_warp_size() -> Int:
+    """Returns the warp size of the build's `--target-accelerator`.
+
+    Host code sizes its launches with it, and it is 0 when the build targets
+    no accelerator.
+
+    Returns:
+        The accelerator's warp size, or 0 without an accelerator.
+    """
+    comptime if _accelerator_arch() == "":
+        return 0
+    else:
+        return get_gpu_info().warp_size
 
 
 struct DefaultTargets(TargetAcceleratorCollection):
