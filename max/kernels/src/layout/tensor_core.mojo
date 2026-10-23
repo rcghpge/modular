@@ -1131,21 +1131,54 @@ struct TensorCore[
         comptime num_n_mmas = b_frag.static_shape[0]
         comptime assert num_m_mmas > 0 and num_n_mmas > 0
         comptime assert c_frag.static_shape[0] == num_m_mmas * num_n_mmas
+        # Scalar alignment on sub-word dtypes (fp8) keeps the groups from
+        # being promoted to registers, so every MMA goes through local memory.
+        comptime a_align = _register_group_alignment[
+            Self.in_type, Self.a_reg_type.length
+        ](num_m_mmas, a_frag.static_stride[0])
+        comptime b_align = _register_group_alignment[
+            Self.in_type, Self.b_reg_type.length
+        ](num_n_mmas, b_frag.static_stride[0])
+        comptime c_align = _register_group_alignment[
+            Self.out_type, Self.c_reg_type.length
+        ](num_m_mmas * num_n_mmas, c_frag.static_stride[0])
         comptime for m_mma in range(num_m_mmas):
             comptime for n_mma in range(num_n_mmas):
                 comptime c_index = n_mma * num_m_mmas + m_mma
-                var accum = c_frag.load[alignment=align_of[Self.out_type]()](
-                    (c_index, 0)
-                )
+                var accum = c_frag.load[alignment=c_align]((c_index, 0))
                 mma(
                     accum,
-                    a_frag.load[alignment=align_of[Self.in_type]()]((m_mma, 0)),
-                    b_frag.load[alignment=align_of[Self.in_type]()]((n_mma, 0)),
+                    a_frag.load[alignment=a_align]((m_mma, 0)),
+                    b_frag.load[alignment=b_align]((n_mma, 0)),
                     accum,
                 )
-                c_frag.store[alignment=align_of[Self.out_type]()](
-                    (c_index, 0), accum
-                )
+                c_frag.store[alignment=c_align]((c_index, 0), accum)
+
+
+def _register_group_alignment[
+    dtype: DType, group_size: Int
+](num_groups: Int, group_stride: Int) -> Int:
+    """Returns the alignment shared by every register group of a fragment.
+
+    Groups are vector-aligned when the fragment base is and the group stride
+    is a whole number of groups. Padded or dynamic strides fall back to the
+    scalar alignment.
+
+    Parameters:
+        dtype: The element type of the fragment.
+        group_size: The number of elements in one register group.
+
+    Args:
+        num_groups: The number of register groups in the fragment.
+        group_stride: The static stride between groups in scalars, or -1
+            when it is dynamic.
+
+    Returns:
+        The alignment in bytes to load and store each group with.
+    """
+    if num_groups == 1 or (group_stride > 0 and group_stride % group_size == 0):
+        return align_of[SIMD[dtype, group_size]]()
+    return align_of[dtype]()
 
 
 @inline(.always)
