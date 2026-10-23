@@ -31,10 +31,11 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.experimental import functional as F
 from max.experimental.compilation import CompiledCallable
+from max.experimental.nn._weight_utils import _SAFE_CAST_DTYPES, log_casts
 from max.experimental.nn.module import Module as _ModuleV3
 from max.experimental.tensor import Tensor, default_dtype
 from max.graph import DeviceRef, Graph, Value
-from max.graph.weights import Weights, WeightsAdapter
+from max.graph.weights import WeightData, Weights, WeightsAdapter
 from max.nn.comm.ep import EPConfig
 from max.nn.kv_cache import (
     CacheLeafParamInterface,
@@ -70,6 +71,7 @@ from max.pipelines.modeling.config_enums import (
     SupportedEncoding,
     supported_encoding_dtype,
 )
+from max.pipelines.weights.weight_loading import auto_cast_weights_from_env
 from max.profiler import traced
 from transformers import AutoConfig
 from typing_extensions import TypeVar
@@ -83,6 +85,51 @@ if TYPE_CHECKING:
     from .batch_processor import BatchProcessor
 
 logger = logging.getLogger("max.pipelines")
+
+
+def _cast_to_parameter_dtypes(
+    module: Any, state_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Casts float32 and bfloat16 checkpoint weights to their parameter's dtype.
+
+    ModuleV3 models have strict dtype checks: a weight's dtype must match its
+    parameter's, so a float32 checkpoint can't load into a bfloat16 module
+    without a cast. This function converts each ``WeightData`` value whose
+    dtype and parameter dtype are both float32 or bfloat16, and returns
+    every other value unchanged. The conversion runs in the current process
+    through ``WeightData.astype()``. That lets it work inside a daemonic
+    serve worker, which can't start the child process that
+    ``compile(auto_cast=True)`` compiles in. Setting
+    ``MODULAR_AUTO_CAST_WEIGHTS=false`` turns the cast off. ``log_casts()``
+    reports all the casts in one warning.
+
+    Args:
+        module: The ModuleV3 module whose parameters set the target dtypes.
+        state_dict: The checkpoint weights, keyed by parameter name.
+
+    Returns:
+        A copy of ``state_dict`` with the cast weights, or ``state_dict``
+        itself when the cast is off.
+    """
+    if not auto_cast_weights_from_env():
+        return state_dict
+    dtypes = {name: param.dtype for name, param in module.parameters}
+    adapted = dict(state_dict)
+    casts: dict[tuple[DType, DType], int] = {}
+    for name, value in state_dict.items():
+        dtype = dtypes.get(name)
+        if (
+            isinstance(value, WeightData)
+            and dtype is not None
+            and value.dtype != dtype
+            and {value.dtype, dtype} <= _SAFE_CAST_DTYPES
+        ):
+            adapted[name] = value.astype(dtype)
+            cast = (value.dtype, dtype)
+            casts[cast] = casts.get(cast, 0) + 1
+    log_casts(casts)
+    return adapted
+
 
 ArchConfigT = TypeVar("ArchConfigT")
 _ModelConfigT = TypeVar("_ModelConfigT", default=Any)
@@ -1278,6 +1325,7 @@ class ModuleV3PipelineModelWithKVCache(
                 self._modulev3_extra_input_types = (
                     self._lora_manager.symbolic_inputs(self.device_refs[0])
                 )
+        state_dict = _cast_to_parameter_dtypes(nn_model, state_dict)
         return {
             GraphRole.DECODER: GraphSpec(
                 nn_model,
