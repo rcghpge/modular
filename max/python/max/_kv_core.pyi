@@ -358,10 +358,11 @@ class JengaBlockPool:
     def alloc_block(self, cache_id: str) -> LittleKVCacheBlock:
         """Returns a fresh block of ``cache_id``, claiming huge blocks as needed.
 
-        Prefers claiming a pristine huge block over handing out a free little
-        block that is still committed, so a prefix is evicted only when
-        nothing else is left. Handing out a committed block evicts it: its
-        bytes are about to be overwritten.
+        Prefers free blocks in huge blocks a request already holds, so idle
+        huge blocks stay parked for any cache, and claiming a pristine huge
+        block over handing out a free little block that is still committed,
+        so a prefix is evicted only when nothing else is left. Handing out a
+        committed block evicts it: its bytes are about to be overwritten.
 
         Raises:
             InsufficientBlocksError: If the pool has no bytes left to serve
@@ -446,6 +447,14 @@ class JengaBlockPool:
         the same of a pool that has handed nothing out yet, making the answer
         a property of the pool's geometry rather than of what it currently
         holds. A count of 0 or less asks for nothing.
+        """
+
+    def max_satisfiable_multiple(
+        self, unit: Mapping[str, int], at_capacity: bool = False
+    ) -> int:
+        """Returns the most multiples of ``unit`` :meth:`can_satisfy_demand` accepts.
+
+        Returns 0 if ``unit`` asks for nothing.
         """
 
     def reset_prefix_cache(self) -> dict[str, int]:

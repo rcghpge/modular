@@ -44,7 +44,7 @@ from max.pipelines.architectures.qwen3.model_config import Qwen3Config
 from max.pipelines.kv_cache import JengaKVCacheManager
 from max.pipelines.kv_cache.paged_kv_cache.jenga_block_pool import (
     JengaGeometry,
-    stranding_warning,
+    _stranding_warning,
 )
 from max.pipelines.lib import KVCacheConfig
 from max.pipelines.speculative.config import SpeculativeConfig
@@ -143,11 +143,11 @@ def test_geometry_is_pinned(
         blocks,
         strides,
     )
-    assert stranding_warning(geometry, len(leaves), BUDGET) is None
+    assert _stranding_warning(geometry, len(leaves), BUDGET) is None
 
 
 def test_stranding_warning_fires_past_five_percent() -> None:
     # DeepSeek-V4.1's former 1.07 GiB huge block, over six leaves.
     coarse = JengaGeometry(23, 1_149_763_584, {}, {})
-    warning = stranding_warning(coarse, 6, BUDGET)
+    warning = _stranding_warning(coarse, 6, BUDGET)
     assert warning is not None and "29.5%" in warning

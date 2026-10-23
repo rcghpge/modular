@@ -359,7 +359,7 @@ def plan_jenga_geometry(
     )
 
 
-def stranding_warning(
+def _stranding_warning(
     geometry: JengaGeometry, num_leaves: int, available_bytes: int
 ) -> str | None:
     """Returns a warning when the huge block can strand more than a threshold of the budget.

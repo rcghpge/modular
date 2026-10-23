@@ -17,6 +17,7 @@ from __future__ import annotations
 from array import array
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from max._kv_core import blocks_held_of_hit
 from max.nn.kv_cache import KVCacheGroupId
@@ -72,6 +73,9 @@ class KVGroupCoordinatorInterface:
     group_id: KVCacheGroupId
     page_size: int
     """Tokens per page, which turns a window width into a block count."""
+    demand_plateaus: ClassVar[bool] = True
+    """Whether a request's pages stop growing past some length, so admission
+    counts this leaf's headroom in requests rather than pages."""
 
     rows: dict[RequestID, dict[str, list[LittleKVCacheBlock]]] = field(
         default_factory=dict, kw_only=True
@@ -425,6 +429,8 @@ class KVGroupCoordinatorInterface:
 @dataclass(frozen=True)
 class FullKVGroupCoordinator(KVGroupCoordinatorInterface):
     """A group whose caches read their whole history."""
+
+    demand_plateaus: ClassVar[bool] = False
 
     def claimable_hashes(
         self, desired_hashes: Sequence[bytes]
